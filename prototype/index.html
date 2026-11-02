@@ -1,0 +1,2179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>说清楚，再开工 · 客户需求 → 自动软件工厂（可点原型）</title>
+<style>
+:root{
+  --bg:#f4f1e9;
+  --bg-2:#ece7db;
+  --paper:#fbf8f1;
+  --paper-2:#fffdf8;
+  --ink:#211e18;
+  --ink-2:#4b453a;
+  --muted:#736b5d;
+  --faint:#a49b8a;
+  --line:#e1dacb;
+  --line-2:#cec5b3;
+  --accent:#38479b;
+  --accent-2:#2b3878;
+  --tint:#eceefa;
+  --tint-2:#dfe2f4;
+  --accent-line:#c3c9e7;
+  --green:#2f6b4d;
+  --green-2:#24543c;
+  --green-tint:#eaf2ec;
+  --green-line:#c3d8ca;
+  --amber:#8a5a12;
+  --amber-tint:#f8f0df;
+  --amber-line:#e4d3b0;
+  --red:#9a3a2c;
+  --red-tint:#f9ece8;
+  --red-line:#e9c9c1;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --r:10px;
+  --r-sm:6px;
+  --shadow-float:0 18px 44px -28px rgba(33,30,24,.5),0 1px 2px rgba(33,30,24,.06);
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--sans);font-size:14px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+::selection{background:var(--tint-2);color:var(--accent-2)}
+button{font-family:inherit;color:inherit}
+button,input,textarea{font-size:inherit}
+a{color:var(--accent-2)}
+h1,h2,h3,h4,h5,p,ol,ul{margin:0}
+ul,ol{padding:0}
+svg{display:block;flex:none}
+code,.mono{font-family:var(--mono)}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+#app{max-width:1280px;margin:0 auto;padding:0 32px 116px}
+.eyebrow{
+  font-size:10.5px;letter-spacing:.16em;color:var(--muted);
+  display:flex;align-items:center;gap:8px;text-transform:uppercase;
+}
+.serif{font-family:var(--serif);font-weight:600;letter-spacing:.01em}
+
+/* ---------- top ---------- */
+.top{
+  border-top:2px solid var(--ink);
+  display:flex;justify-content:space-between;align-items:flex-start;gap:24px;
+  padding:18px 0 16px;border-bottom:1px solid var(--line-2);margin-bottom:24px;
+}
+.brand{display:flex;gap:13px;align-items:flex-start;min-width:0}
+.mark{
+  width:36px;height:36px;border:1px solid var(--line-2);border-radius:8px;
+  display:grid;place-items:center;color:var(--ink);background:var(--paper);flex:none;margin-top:2px;
+}
+.title h1{font-family:var(--serif);font-size:26px;font-weight:600;line-height:1.15;letter-spacing:.02em}
+.title p{margin-top:4px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.proto{
+  font-size:9px;letter-spacing:.14em;color:var(--accent-2);
+  border:1px solid var(--accent-line);background:var(--tint);border-radius:3px;padding:1px 5px;
+}
+.top-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px;flex:none}
+.top-row{display:flex;align-items:center;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;padding:2px;background:var(--paper)}
+.seg button{border:0;background:transparent;font-size:12px;padding:5px 11px;border-radius:6px;color:var(--muted);cursor:pointer;line-height:1.4}
+.seg button.on{background:var(--ink);color:var(--paper-2)}
+.seg button:hover:not(.on){color:var(--ink)}
+.stages{display:flex;align-items:center;gap:2px;flex-wrap:wrap;justify-content:flex-end}
+.stg{
+  display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;background:transparent;
+  font-size:11.5px;color:var(--muted);padding:4px 7px;border-radius:6px;cursor:pointer;line-height:1.4;
+}
+.stg .n{font-size:9.5px;color:var(--faint);letter-spacing:.04em}
+.stg:hover{background:var(--bg-2);color:var(--ink)}
+.stg.on{color:var(--accent-2);background:var(--tint);border-color:var(--accent-line)}
+.stg.on .n{color:var(--accent)}
+.stg.done .n{color:var(--green)}
+.path{font-size:11px;color:var(--faint)}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  border:1px solid var(--line-2);background:var(--paper-2);color:var(--ink);
+  border-radius:8px;padding:8px 13px;font-size:12.5px;cursor:pointer;
+  transition:background .14s ease,border-color .14s ease,color .14s ease,transform .08s ease;
+  text-align:center;
+}
+.btn:hover{background:var(--bg-2);border-color:var(--faint)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);border-color:var(--accent-2);color:#fff}
+.btn-primary:hover{background:var(--accent-2);border-color:var(--accent-2);color:#fff}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted);padding:6px 8px}
+.btn-ghost:hover{background:var(--bg-2);color:var(--ink)}
+.btn-sm{padding:5px 9px;font-size:11.5px;border-radius:6px}
+.btn-wide{width:100%;padding:10px 14px;margin-top:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.lnk{
+  border:0;background:transparent;padding:0;color:var(--muted);font-size:11px;cursor:pointer;
+  text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--line-2);
+}
+.lnk:hover{color:var(--accent-2);text-decoration-color:var(--accent-line)}
+
+/* ---------- customer layout ---------- */
+.customer{display:grid;grid-template-columns:380px minmax(0,1fr);gap:32px;align-items:start}
+.talk{
+  position:sticky;top:16px;height:calc(100vh - 132px);min-height:520px;
+  display:flex;flex-direction:column;background:var(--paper);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;
+}
+.talk-head{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--line);background:var(--paper-2);
+}
+.talk-head b{font-size:12px;font-weight:600}
+.talk-head .live{width:6px;height:6px;border-radius:50%;background:var(--green);flex:none}
+.talk-head .meta{margin-left:auto;font-size:10.5px;color:var(--faint)}
+.talk-scroll{flex:1;overflow-y:auto;padding:18px 18px 104px;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.talk-scroll::-webkit-scrollbar{width:8px}
+.talk-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;border:2px solid var(--paper)}
+
+.opening{padding-top:2px}
+.display{font-family:var(--serif);font-size:27px;line-height:1.3;letter-spacing:.01em;font-weight:600;margin-bottom:8px}
+.lede{font-size:12.5px;color:var(--muted);line-height:1.6}
+.composer{border:1px solid var(--line-2);border-radius:10px;background:var(--paper-2);margin-top:14px;transition:border-color .14s ease}
+.composer:focus-within{border-color:var(--accent-line)}
+.composer textarea{
+  display:block;width:100%;border:0;background:transparent;resize:vertical;
+  min-height:82px;max-height:180px;padding:11px 12px 6px;outline:none;color:var(--ink);
+  font-family:inherit;font-size:13.5px;line-height:1.6;
+}
+.composer textarea::placeholder{color:var(--faint)}
+.composer-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:6px 8px 8px 12px;border-top:1px solid var(--line);
+}
+.helper{font-size:10.5px;color:var(--faint);line-height:1.4}
+.samples{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.sample{
+  text-align:left;border:1px dashed var(--line-2);background:transparent;border-radius:7px;
+  padding:8px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2);cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,color .12s ease;
+}
+.sample:hover{border-color:var(--accent-line);background:var(--tint);color:var(--accent-2)}
+.sample .q{color:var(--faint);margin-right:4px}
+.industries{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;align-items:center}
+.industries .lab{font-size:10px;color:var(--faint);margin-right:2px}
+.chip{
+  border:1px solid var(--line-2);background:var(--paper-2);border-radius:999px;
+  padding:3px 8px;font-size:10.5px;color:var(--ink-2);cursor:pointer;line-height:1.5;
+  transition:background .12s ease,border-color .12s ease,color .12s ease;
+}
+.chip:hover{border-color:var(--accent-line);background:var(--tint);color:var(--accent-2)}
+.chip.on{background:var(--accent);border-color:var(--accent-2);color:#fff}
+
+.said{border-left:2px solid var(--line-2);padding:1px 0 1px 10px;margin:0 0 12px;font-size:12.5px;color:var(--ink-2)}
+.said .lab{display:block;font-size:9.5px;color:var(--faint);letter-spacing:.08em;margin-bottom:2px}
+.say{display:flex;gap:8px;align-items:flex-start;margin:12px 0}
+.say .who{
+  flex:none;font-size:9.5px;color:var(--accent-2);background:var(--tint);
+  border:1px solid var(--accent-line);border-radius:4px;padding:1px 5px;margin-top:2px;
+}
+.say p{font-size:12.5px;line-height:1.7;color:var(--ink-2)}
+
+.q{border-top:1px solid var(--line);margin-top:16px;padding-top:15px}
+.q.current{animation:rise .24s ease both}
+.q-head{display:flex;align-items:baseline;gap:7px;margin-bottom:3px}
+.q-num{font-size:9.5px;color:var(--faint);letter-spacing:.06em;flex:none}
+.q h3{font-size:13.5px;font-weight:600;line-height:1.5}
+.q .hint{font-size:10.5px;color:var(--muted);margin-bottom:9px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.opts.trio{grid-template-columns:1fr 1fr 1fr}
+.opt{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  border:1px solid var(--line);background:var(--paper-2);border-radius:7px;
+  padding:8px 9px;font-size:12px;text-align:left;cursor:pointer;line-height:1.4;
+  transition:background .12s ease,border-color .12s ease,color .12s ease;
+}
+.opt:hover{border-color:var(--accent-line);background:var(--tint)}
+.opt.on{border-color:var(--accent);background:var(--tint);color:var(--accent-2)}
+.opt .ok{width:14px;height:14px;flex:none;color:var(--accent)}
+.osub{display:block;font-size:9.5px;color:var(--muted);font-weight:400;margin-top:1px;line-height:1.45}
+.opt.on .osub{color:var(--accent-2);opacity:.85}
+.answered{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;font-size:12px;color:var(--muted)}
+.answered .val{border:1px solid var(--accent-line);background:var(--tint);color:var(--accent-2);border-radius:5px;padding:2px 8px;font-size:12px}
+.answered .val.multi{display:flex;gap:5px;flex-wrap:wrap;padding:2px 4px;background:transparent;border:0}
+.answered .val.multi span{border:1px solid var(--accent-line);background:var(--tint);border-radius:4px;padding:1px 6px}
+.freefield{margin-top:2px}
+.freefield textarea{
+  width:100%;border:1px solid var(--line-2);border-radius:7px;background:var(--paper-2);
+  padding:9px 10px;min-height:64px;resize:vertical;outline:none;font-family:inherit;font-size:12.5px;line-height:1.6;
+}
+.freefield textarea:focus{border-color:var(--accent-line)}
+.freefield textarea::placeholder{color:var(--faint)}
+.examples{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.ex{
+  border:1px dashed var(--line-2);background:transparent;border-radius:5px;
+  font-size:10.5px;color:var(--muted);padding:4px 7px;cursor:pointer;text-align:left;line-height:1.4;
+}
+.ex:hover{border-color:var(--accent-line);background:var(--tint);color:var(--accent-2)}
+
+.summary{
+  border:1px solid var(--accent-line);background:var(--tint);border-radius:10px;
+  padding:15px;margin-top:18px;animation:rise .26s ease both;
+}
+.summary .eyebrow{margin-bottom:5px}
+.summary h3{font-family:var(--serif);font-size:20px;font-weight:600;line-height:1.35}
+.three{list-style:none;margin:10px 0 4px;display:flex;flex-direction:column}
+.three li{display:flex;gap:9px;padding:7px 0;border-top:1px solid var(--accent-line);font-size:12px;line-height:1.6;color:var(--ink-2)}
+.three li .i{
+  flex:none;width:16px;height:16px;border:1px solid var(--accent-line);background:var(--paper-2);
+  color:var(--accent-2);border-radius:50%;display:grid;place-items:center;font-size:9px;margin-top:2px;
+}
+.summary .note{font-size:10.5px;color:var(--muted);margin-top:6px}
+.roundhead{
+  display:flex;align-items:center;gap:8px;margin:18px 0 0;padding-top:16px;
+  border-top:1px solid var(--line-2);font-size:10px;letter-spacing:.14em;color:var(--muted);
+}
+.roundhead .bar{flex:1;height:1px;background:var(--line)}
+.roundhead b{font-weight:500;color:var(--ink-2);letter-spacing:.08em}
+.recap{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:11px 12px;margin-top:12px}
+.recap-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.recap-top .eyebrow{font-size:9.5px}
+.recap p{font-size:11.5px;color:var(--ink-2);line-height:1.65}
+.recap p + p{margin-top:3px}
+.recap .rnote{color:var(--muted);font-size:10.5px}
+
+/* carrier cards */
+.carriers{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.carrier{
+  position:relative;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;
+  padding:9px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;
+  transition:border-color .13s ease,background .13s ease;
+}
+.carrier:hover{border-color:var(--accent-line);background:var(--tint)}
+.carrier.on{border-color:var(--accent);background:var(--tint);box-shadow:inset 0 0 0 1px var(--accent)}
+.carrier-top{display:flex;align-items:center;gap:7px}
+.carrier .cname{font-size:11.5px;font-weight:600;line-height:1.4}
+.carrier .t{font-size:9px;color:var(--muted);margin-left:auto;border:1px solid var(--line);border-radius:3px;padding:0 3px;background:var(--paper);white-space:nowrap}
+.carrier .cgo,.carrier .cbad{font-size:10px;line-height:1.45;display:flex;gap:4px;align-items:flex-start;color:var(--ink-2)}
+.carrier .cgo .k,.carrier .cbad .k{flex:none;margin-top:2px}
+.carrier .cgo .k{color:var(--green)}
+.carrier .cbad .k{color:var(--amber)}
+.carrier .badge{position:absolute;top:7px;right:7px;width:15px;height:15px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center}
+.mini{
+  position:relative;width:30px;height:48px;border:1px solid var(--line-2);border-radius:5px;
+  background:var(--paper);padding:3px;flex:none;overflow:hidden;
+}
+.mini .mb{display:block;height:2px;border-radius:1px;background:var(--line);margin-bottom:2px}
+.mini .mb.w1{width:70%}
+.mini .mb.w2{width:100%}
+.mini .mb.acc{background:var(--accent-line)}
+.mini .mh{height:5px;border-bottom:1px solid var(--line);margin:-3px -3px 4px;display:flex;align-items:center;justify-content:flex-end;padding-right:2px}
+.mini .mh i{display:block;width:1px;height:3px;background:var(--line-2);margin-left:1px}
+.carrier-detail{border:1px dashed var(--accent-line);background:var(--tint);border-radius:7px;padding:8px 9px;margin-top:8px;font-size:11px;line-height:1.6;color:var(--accent-2)}
+.carrier-detail b{font-weight:600}
+
+/* pay scenario */
+.scenarios{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.scenario{
+  border:1px solid var(--line);background:var(--paper-2);border-radius:8px;padding:8px;
+  text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+}
+.scenario:hover{border-color:var(--accent-line);background:var(--tint)}
+.scenario.on{border-color:var(--accent);background:var(--tint)}
+.scenario .art{border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:1px;color:var(--ink-2)}
+.scenario b{font-size:10.5px;font-weight:600}
+.scenario span{font-size:9.5px;color:var(--muted);line-height:1.45}
+
+/* tech cards */
+.tech{border:1px solid var(--line);background:var(--paper-2);border-radius:10px;padding:11px;margin-top:12px;animation:rise .22s ease both}
+.tech-head{display:flex;align-items:baseline;gap:7px;margin-bottom:7px}
+.tech-head .n{font-size:9.5px;color:var(--faint)}
+.tech-head h4{font-size:12.5px;font-weight:600}
+.tech-head .st{margin-left:auto;font-size:9.5px;color:var(--muted)}
+.tech.delegated{border-style:dashed;border-color:var(--amber-line);background:var(--amber-tint)}
+.tech.delegated .st{color:var(--amber)}
+.tech.delegated{animation:fly .42s cubic-bezier(.2,.8,.2,1) both}
+@keyframes fly{0%{transform:translateX(0);opacity:.7}55%{transform:translateX(9px);opacity:1}100%{transform:none}}
+.trow{
+  display:grid;grid-template-columns:62px 1fr 1fr;gap:7px;align-items:start;
+  border-top:1px dashed var(--line);padding:8px 0;cursor:pointer;text-align:left;width:100%;
+  background:transparent;border-left:0;border-right:0;border-bottom:0;
+}
+.trow:first-of-type{border-top:1px solid var(--line)}
+.trow:hover .tname{color:var(--accent-2)}
+.trow.on .tname{color:var(--accent-2)}
+.trow.on .tname::after{content:"✓";margin-left:4px;font-size:9px}
+.tname{font-size:11px;font-weight:600;line-height:1.4}
+.tname .note{display:block;font-size:9px;color:var(--muted);font-weight:400;margin-top:1px}
+.tname .rec{display:inline-block;margin-left:4px;font-size:8px;color:var(--green);border:1px solid var(--green-line);background:var(--green-tint);border-radius:3px;padding:0 3px;line-height:1.5;font-weight:400;vertical-align:1px}
+.tcell{display:flex;gap:4px;font-size:9.5px;line-height:1.45;color:var(--ink-2)}
+.tcell .k{flex:none;margin-top:2px;color:var(--green)}
+.tcell.bad .k{color:var(--amber)}
+.tech .actions{display:flex;align-items:center;gap:8px;margin-top:9px}
+.btn-delegate{
+  flex:1;border:1px solid var(--accent-line);background:var(--tint);color:var(--accent-2);
+  border-radius:7px;padding:9px 10px;font-size:11.5px;cursor:pointer;text-align:center;
+  transition:background .12s ease,border-color .12s ease;
+}
+.btn-delegate:hover{background:var(--tint-2);border-color:var(--accent)}
+.btn-delegate[disabled]{background:var(--amber-tint);border-color:var(--amber-line);color:var(--amber);cursor:default}
+.delegated-note{border-top:1px dashed var(--amber-line);margin-top:9px;padding-top:8px;font-size:10.5px;color:var(--amber);line-height:1.55}
+.delegated-note b{font-weight:600}
+.tech .undo{font-size:10px}
+
+/* ---------- visual / phones ---------- */
+.visual{min-width:0}
+.visual-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.visual-head .r{display:flex;align-items:center;gap:10px}
+.visual-head .tag{font-size:10.5px;letter-spacing:.12em;color:var(--muted)}
+.visual-note{font-size:10.5px;color:var(--faint);text-align:right}
+.legend{display:flex;justify-content:center;gap:20px;align-items:center;margin:8px 0 2px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border:1px solid var(--line-2);border-radius:2px;display:inline-block;background:var(--paper-2)}
+.legend .f i{border-color:var(--accent-line);background:var(--tint)}
+.legend .b i{border-color:var(--ink-2);background:var(--bg-2)}
+
+.phones{min-height:720px;display:flex;justify-content:center;align-items:flex-start;padding-top:6px}
+.stack{position:relative;width:612px;height:716px;flex:none}
+.phone{
+  position:absolute;width:300px;height:620px;padding:8px;border-radius:38px;
+  background:var(--paper);border:1px solid var(--line-2);
+  box-shadow:0 30px 60px -46px rgba(33,30,24,.55);
+}
+.phone.back{left:306px;top:4px;transform:rotate(4.5deg);background:#f8f3e9;z-index:1}
+.phone.front{left:0;top:74px;transform:rotate(-.8deg);z-index:2}
+.screen{
+  height:100%;border-radius:30px;border:1px solid #e7e0d0;background:var(--paper-2);
+  display:flex;flex-direction:column;overflow:hidden;animation:softin .3s ease both;
+}
+.ph-tag{
+  position:absolute;top:-19px;left:14px;font-size:9.5px;color:var(--muted);
+  letter-spacing:.1em;display:flex;align-items:center;gap:5px;white-space:nowrap;
+}
+.ph-tag i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.phone.back .ph-tag i{background:var(--ink-2)}
+
+.shell{flex:none;border-bottom:1px solid var(--line);background:#fbf7ee}
+.statusbar{display:flex;align-items:center;justify-content:space-between;padding:7px 13px 2px;font-size:8.5px;color:var(--ink-2)}
+.statusbar .r{display:flex;gap:3px;align-items:flex-end}
+.statusbar .r i{display:block;width:2px;background:var(--ink-2);border-radius:1px}
+.statusbar .r i:nth-child(1){height:3px}
+.statusbar .r i:nth-child(2){height:5px}
+.statusbar .r i:nth-child(3){height:7px}
+.statusbar .batt{width:12px;height:6px;border:1px solid var(--ink-2);border-radius:1px;position:relative;margin-left:2px}
+.statusbar .batt::after{content:"";position:absolute;right:-3px;top:17%;height:66%;width:2px;background:var(--ink-2);border-radius:0 1px 1px 0}
+.wxnav{display:flex;align-items:center;gap:6px;padding:3px 10px 7px;font-size:10.5px}
+.wxnav .bk{color:var(--ink-2)}
+.wxnav .ttl{flex:1;text-align:center;font-weight:600;font-size:11px;padding-right:38px}
+.capsule{display:flex;align-items:center;gap:3px;border:1px solid var(--line-2);border-radius:99px;padding:2px 6px;height:16px;background:var(--paper-2)}
+.capsule i{width:2.5px;height:2.5px;background:var(--ink-2);border-radius:50%}
+.capsule .dot{width:7px;height:7px;border:1px solid var(--ink-2);border-radius:50%;margin-left:2px}
+.officialnav{display:flex;align-items:center;gap:7px;padding:6px 11px 8px}
+.avatar{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:9.5px;flex:none}
+.officialnav b{font-size:10.5px;font-weight:600;line-height:1.2}
+.officialnav small{display:block;font-size:8px;color:var(--muted);font-weight:400}
+.follow{margin-left:auto;font-size:8.5px;border:1px solid var(--green-line);background:var(--green-tint);color:var(--green);border-radius:99px;padding:2px 6px}
+.webnav{padding:6px 9px 7px;display:flex;align-items:center;gap:6px}
+.urlbar{flex:1;display:flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:99px;background:var(--paper);padding:3px 8px;font-size:8.5px;color:var(--muted);min-width:0}
+.urlbar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appnav{display:flex;align-items:center;gap:8px;padding:4px 12px 8px;font-size:10px}
+.appnav b{font-size:10.5px;font-weight:600;flex:1}
+.entry{
+  display:flex;align-items:center;gap:5px;margin:8px 11px 0;padding:5px 7px;
+  border:1px dashed var(--line-2);border-radius:5px;font-size:8.5px;color:var(--muted);
+  background:rgba(255,255,255,.4);
+}
+.entry .k{color:var(--accent-2);flex:none}
+.app-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:11px 12px 8px;overflow:hidden}
+.ph-eyebrow{font-size:8px;letter-spacing:.1em;color:var(--muted)}
+.hero h3{font-size:16.5px;line-height:1.32;font-weight:600;margin:1px 0 3px;letter-spacing:.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hero p{font-size:9px;color:var(--muted);line-height:1.5}
+.slot,.prow{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 8px;
+}
+.slot b,.prow b{font-size:10px;font-weight:600;line-height:1.4}
+.slot small,.prow small{display:block;font-size:8px;color:var(--muted);font-weight:400}
+.slot .n{font-size:8.5px;color:var(--muted);white-space:nowrap}
+.slot.sel{border-color:var(--accent);background:var(--tint)}
+.slot.sel .n{color:var(--accent-2)}
+.prow .price{font-size:13px;font-weight:600;letter-spacing:.02em}
+.prow .price em{font-size:8px;font-style:normal;font-weight:400;color:var(--muted);margin-left:1px}
+.ph-cta{background:var(--accent);color:#fff;border-radius:6px;text-align:center;font-size:10px;padding:8px;margin-top:6px}
+.ph-info{display:flex;flex-direction:column;gap:4px;margin-top:auto}
+.ph-info .promo{border:1px dashed var(--line-2);border-radius:5px;padding:5px 6px;font-size:8.5px;color:var(--ink-2);background:#fffdf7;line-height:1.5}
+.ph-info .row{display:flex;justify-content:space-between;gap:6px;border-top:1px dashed var(--line);padding-top:4px;font-size:8.5px;color:var(--muted)}
+.ph-info .row b{font-weight:500;color:var(--ink-2)}
+.ph-btnrow{display:flex;gap:6px;margin-top:2px}
+.ph-btn{flex:1;border:1px solid var(--line-2);border-radius:6px;text-align:center;font-size:9.5px;padding:7px;background:#fff}
+.ph-btn.acc{background:var(--accent);border-color:var(--accent);color:#fff}
+.ph-field{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);padding:6px 1px;font-size:9px;color:var(--muted)}
+.ph-field i{flex:1;height:1px;background:var(--line)}
+.ph-formnote{margin-top:auto;border:1px dashed var(--line-2);border-radius:5px;padding:6px;font-size:8.5px;color:var(--muted);text-align:center}
+.integ{
+  display:flex;align-items:center;gap:5px;border:1px dashed var(--accent-line);background:var(--tint);
+  color:var(--accent-2);border-radius:5px;padding:4px 6px;font-size:8.5px;line-height:1.4;
+}
+.payrow{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid var(--line);background:#faf6ec;padding:7px 12px;font-size:8.5px;color:var(--ink-2)}
+.payrow .r{color:var(--muted)}
+.payrow .k{color:var(--muted)}
+.ph-foot{flex:none;border-top:1px dashed var(--line);padding:5px 12px 7px;font-size:7.5px;color:var(--faint);display:flex;justify-content:space-between}
+.ph-skel{display:flex;flex-direction:column;gap:6px;margin-top:auto;margin-bottom:auto;align-items:center;text-align:center;padding:10px}
+.ph-skel .ghost{width:100%;height:24px;border:1px dashed var(--line-2);border-radius:5px;background:var(--paper)}
+.ph-skel .skel-ic{width:36px;height:36px;border:1px dashed var(--line-2);border-radius:50%;display:grid;place-items:center;color:var(--faint);margin-bottom:2px}
+.bghost{height:26px;border:1px dashed var(--line-2);border-radius:5px;background:rgba(255,255,255,.4)}
+.ph-skel p{font-size:9px;color:var(--faint);line-height:1.5;margin-top:4px}
+
+/* back phone */
+.back-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:11px 12px 9px;overflow:hidden}
+.bhead{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.bhead b{font-size:11px;font-weight:600}
+.bhead .t{font-size:8px;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 4px;background:#fff}
+.bstats{display:flex;gap:5px}
+.bstat{flex:1;border:1px solid var(--line);border-radius:5px;background:#fff;padding:5px 6px}
+.bstat .k{font-size:7.5px;color:var(--muted);letter-spacing:.05em}
+.bstat .v{font-size:13px;font-weight:600;line-height:1.3}
+.bstat .v em{font-style:normal;font-size:7.5px;font-weight:400;color:var(--muted);margin-left:1px}
+.bsec h5{font-size:8px;letter-spacing:.1em;color:var(--muted);margin:0 0 3px;font-weight:500}
+.brow{display:flex;align-items:center;gap:5px;justify-content:space-between;font-size:8.5px;padding:3.5px 0;border-top:1px dashed var(--line);line-height:1.4}
+.brow .l{display:flex;align-items:center;gap:4px;min-width:0}
+.brow .l b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .dot{width:4px;height:4px;border-radius:50%;background:var(--line-2);flex:none}
+.brow .dot.done{background:var(--green)}
+.brow .dot.wait{background:var(--amber)}
+.brow .r{color:var(--muted);font-size:8px;white-space:nowrap}
+.btags{display:flex;flex-wrap:wrap;gap:3px}
+.btag{font-size:7.5px;border:1px solid var(--line-2);border-radius:3px;padding:1px 4px;color:var(--muted);background:#fff;line-height:1.5}
+.bnote{border:1px dashed var(--line-2);border-radius:5px;padding:6px;font-size:8.5px;color:var(--muted);text-align:center;line-height:1.5;background:rgba(255,255,255,.4)}
+.bdone{border:1px solid var(--accent-line);background:var(--tint);border-radius:5px;padding:5px 6px;font-size:8px;line-height:1.5;color:var(--accent-2)}
+.bpay{display:flex;justify-content:space-between;font-size:8px;color:var(--muted);border-top:1px solid var(--line);padding-top:5px;margin-top:auto}
+.hl{outline:2px solid var(--accent);outline-offset:2px;background:var(--tint) !important;border-radius:4px}
+[data-el]{transition:background .12s ease,outline-color .12s ease}
+.confirm .phones [data-el]{cursor:pointer}
+.confirm .phones [data-el]:hover{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+
+/* solo + compare strip (variant B) */
+.solo{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+.solo .phone{position:relative;left:auto;top:auto;transform:none}
+.solo .ph-tag{left:12px}
+.cstrip{
+  width:100%;max-width:520px;border:1px solid var(--line);background:var(--paper);
+  border-radius:10px;padding:12px 14px;
+}
+.cstrip-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.cstrip-head .eyebrow{font-size:9.5px}
+.cstrip-head .n{font-size:9.5px;color:var(--faint)}
+.crow{display:grid;grid-template-columns:1fr 18px 1.15fr;gap:6px;align-items:start;padding:6px 0;border-top:1px dashed var(--line);font-size:10.5px;line-height:1.5}
+.crow .a{color:var(--muted)}
+.crow .arw{color:var(--faint);display:flex;justify-content:center;padding-top:1px}
+.crow .b{color:var(--ink-2)}
+.crow .b b{font-weight:600;color:var(--ink)}
+.cstrip .foot{margin-top:7px;font-size:9.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:6px;line-height:1.5}
+.solo-legend{margin-bottom:0}
+
+/* ledger */
+.ledger{
+  display:grid;grid-template-columns:1fr 1fr;gap:26px;
+  border-top:1px solid var(--line-2);margin-top:16px;padding-top:13px;
+  max-width:680px;margin-left:auto;margin-right:auto;
+}
+.ledger h4{font-size:9.5px;letter-spacing:.14em;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.ledger h4 .c{font-size:9px;border:1px solid var(--line);border-radius:99px;padding:0 5px;color:var(--faint);letter-spacing:0;background:var(--paper)}
+.ledger ul{list-style:none;display:flex;flex-direction:column;gap:4px}
+.ledger li{font-size:11px;line-height:1.5;display:flex;gap:6px;align-items:flex-start;color:var(--ink-2)}
+.ledger li .k{flex:none;color:var(--green);margin-top:2px}
+.ledger .pending li{color:var(--muted)}
+.ledger .pending li .k{color:var(--amber);margin-top:2px}
+.ledger li.empty{color:var(--faint);font-size:10.5px;padding-left:12px}
+.ledger li em{font-style:normal;color:var(--faint);font-size:9.5px;margin-left:2px}
+
+/* ---------- confirm ---------- */
+.confirm{padding-top:2px}
+.confirm h2{font-family:var(--serif);font-size:25px;line-height:1.3;font-weight:600;margin:4px 0 6px}
+.confirm .lede{font-size:11.5px;color:var(--muted);line-height:1.6}
+.clines{list-style:none;margin:14px 0 0;border-top:1px solid var(--line-2)}
+.cline{
+  padding:10px 10px 10px 12px;margin:0 -10px;border-radius:7px;border-bottom:1px solid var(--line);
+  cursor:pointer;position:relative;transition:background .12s ease;
+}
+.cline:hover{background:var(--paper-2)}
+.cline.sel{background:var(--tint);box-shadow:inset 2px 0 0 var(--accent)}
+.cline-top{display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.cline-top .n{font-size:9px;color:var(--faint);letter-spacing:.08em;flex:none}
+.cline-top .lab{font-size:9.5px;color:var(--muted);letter-spacing:.06em}
+.cline-top .edit{margin-left:auto;flex:none}
+.cline .txt{font-size:12.5px;line-height:1.55;color:var(--ink);padding-right:24px}
+.cline.sel .txt{color:var(--accent-2)}
+.cline .editbox{display:flex;gap:6px;margin-top:4px}
+.cline input{
+  flex:1;border:1px solid var(--accent-line);border-radius:6px;background:var(--paper-2);
+  padding:6px 8px;font-size:12px;outline:none;min-width:0;color:var(--ink);
+}
+.cline input:focus{border-color:var(--accent)}
+.nolist{margin-top:14px}
+.nolist .lab{font-size:9.5px;color:var(--muted);letter-spacing:.1em;margin-bottom:5px}
+.nolist .chips{display:flex;flex-wrap:wrap;gap:4px}
+.nolist .no{border:1px solid var(--red-line);background:var(--red-tint);color:var(--red);border-radius:4px;padding:2px 6px;font-size:10px;line-height:1.5}
+.nolist .none{font-size:10.5px;color:var(--faint)}
+.confirm-actions{margin-top:16px}
+.confirm-actions .fine{font-size:9.5px;color:var(--faint);margin-top:7px;line-height:1.5}
+.acts{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.act{
+  display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:var(--paper-2);
+  border-radius:7px;padding:8px 10px;font-size:11.5px;animation:rise .26s ease both;
+}
+.act .ic{color:var(--green);flex:none}
+.act .t{margin-left:auto;font-size:8.5px;color:var(--faint);letter-spacing:.06em}
+.act.done{border-color:var(--green-line);background:var(--green-tint)}
+.goto{
+  border:1px solid var(--accent-line);background:var(--tint);border-radius:9px;padding:12px;
+  margin-top:12px;animation:rise .3s ease both;
+}
+.goto p{font-size:11px;color:var(--ink-2);line-height:1.6;margin-bottom:8px}
+
+/* ---------- factory ---------- */
+.factory{padding-bottom:10px}
+body.is-factory .switchbar,body.is-factory .help-btn,body.is-factory .help-panel{display:none}
+.ticketbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border:1px solid var(--line-2);background:var(--paper);border-radius:10px;padding:11px 14px;
+}
+.ticketbar .id{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 5px;letter-spacing:.02em}
+.ticketbar b{font-size:13px;font-weight:600}
+.ticketbar .client{font-size:11px;color:var(--muted)}
+.ticketbar .grow{flex:1}
+.tstatus{
+  font-family:var(--mono);font-size:10px;border:1px solid var(--green-line);background:var(--green-tint);
+  color:var(--green);border-radius:4px;padding:2px 7px;letter-spacing:.02em;
+  display:inline-flex;align-items:center;gap:3px;cursor:pointer;
+}
+button.tstatus:hover{border-color:var(--ink-2)}
+.tstatus.wait{border-color:var(--amber-line);background:var(--amber-tint);color:var(--amber)}
+.tstatus.done{border-color:var(--green-line);background:var(--green-tint);color:var(--green)}
+.tstatus.draft{border-color:var(--line-2);background:var(--bg-2);color:var(--muted)}
+.fhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0 8px}
+.fhead .l{display:flex;align-items:baseline;gap:10px}
+.fhead h2{font-family:var(--serif);font-size:20px;font-weight:600}
+.fhead .note{font-size:10.5px;color:var(--muted)}
+.legend-sk{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:10px;color:var(--muted)}
+.legend-sk .sk{cursor:default}
+.pipe{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;margin-bottom:16px}
+.pstep{
+  position:relative;border:1px solid var(--line);background:var(--paper);border-radius:9px;
+  padding:9px 9px 8px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+  min-height:128px;transition:border-color .13s ease,background .13s ease;
+}
+.pstep:hover{border-color:var(--accent-line);background:var(--tint)}
+.pstep.on{border-color:var(--accent);background:var(--tint);box-shadow:inset 0 0 0 1px var(--accent)}
+.pstep .n{font-size:8.5px;color:var(--faint);letter-spacing:.08em}
+.pstep .pname{font-size:12px;font-weight:600;line-height:1.3}
+.pstep .out{font-size:9.5px;color:var(--muted);line-height:1.45}
+.pstep .skrow{display:flex;flex-wrap:wrap;gap:3px;margin-top:auto;padding-top:3px}
+.pstep .who{font-size:8.5px;color:var(--faint)}
+.pstep:not(:last-child)::after{
+  content:"";position:absolute;right:-6px;top:50%;width:5px;height:5px;
+  border-top:1px solid var(--line-2);border-right:1px solid var(--line-2);
+  transform:translateY(-50%) rotate(45deg);
+}
+.sk{
+  font-family:var(--mono);font-size:8px;line-height:1.6;border:1px solid var(--line-2);
+  border-radius:3px;padding:0 4px;white-space:nowrap;letter-spacing:-.01em;
+}
+.sk[data-t="remix"]{color:var(--accent-2);border-color:var(--accent-line);background:var(--tint)}
+.sk[data-t="direct"]{color:var(--ink-2);border-color:var(--line-2);background:var(--bg-2)}
+.sk[data-t="cond"]{color:var(--amber);border-color:var(--amber-line);background:var(--amber-tint);border-style:dashed}
+.fgrid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:18px;align-items:start}
+.blocks{display:flex;flex-direction:column;gap:11px;min-width:0}
+.block{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:13px 15px}
+.block-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.block-head .n{font-size:9px;color:var(--faint);letter-spacing:.08em}
+.block-head h3{font-size:13px;font-weight:600}
+.block-head .note{margin-left:auto;font-size:9.5px;color:var(--muted)}
+.block .desc{font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:8px}
+.once{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.cond{display:grid;grid-template-columns:128px 1fr;gap:8px;align-items:start;padding:7px 0;border-top:1px dashed var(--line)}
+.cond:first-of-type{border-top:0;padding-top:2px}
+.cond .why{font-size:10.5px;color:var(--ink-2);line-height:1.5}
+.gate{padding:8px 0;border-top:1px dashed var(--line)}
+.gate:first-of-type{border-top:0;padding-top:2px}
+.gate-q{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-bottom:5px}
+.gate-q .n{font-size:8.5px;color:var(--faint)}
+.gate-q b{font-size:11.5px;font-weight:600}
+.gate-q .from{font-size:9px;color:var(--accent-2);border:1px solid var(--accent-line);background:var(--tint);border-radius:3px;padding:0 4px}
+.gate-q .count{margin-left:auto;font-family:var(--mono);font-size:8.5px;color:var(--faint)}
+.gopts{display:flex;flex-wrap:wrap;gap:4px}
+.gopt{
+  display:flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--paper-2);
+  border-radius:5px;padding:4px 6px;font-size:10px;line-height:1.4;cursor:pointer;
+}
+.gopt:hover{border-color:var(--accent-line);background:var(--tint)}
+.gopt.on{border-color:var(--accent);background:var(--tint);color:var(--accent-2)}
+.gopt em{font-style:normal;font-size:7.5px;color:var(--green);border:1px solid var(--green-line);background:var(--green-tint);border-radius:2px;padding:0 2px;line-height:1.5}
+.gate .remind{font-family:var(--mono);font-size:8.5px;color:var(--faint);margin-top:5px}
+.detail{
+  position:sticky;top:16px;border:1px solid var(--line-2);background:var(--paper);
+  border-radius:11px;padding:15px;min-height:360px;
+}
+.detail-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
+.detail h2{font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.25;margin:2px 0 3px}
+.detail .sub{font-size:10.5px;color:var(--muted);line-height:1.55}
+.detail .skrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
+.dsec{border-top:1px solid var(--line);padding-top:9px;margin-top:11px}
+.dsec h4{font-size:8.5px;letter-spacing:.14em;color:var(--muted);font-weight:500;margin-bottom:3px}
+.dsec p{font-size:11.5px;line-height:1.65;color:var(--ink-2)}
+.dwho{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2)}
+.dwho .av{width:20px;height:20px;border-radius:50%;border:1px solid var(--line-2);background:var(--bg-2);display:grid;place-items:center;color:var(--muted)}
+.dnote{font-size:10.5px;color:var(--muted);line-height:1.6;border-left:2px solid var(--line-2);padding-left:8px;margin-top:10px}
+.dlines{list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.dlines li{display:flex;gap:7px;font-size:10.5px;line-height:1.55;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:4px}
+.dlines li:first-child{border-top:0;padding-top:1px}
+.dlines .dlab{flex:none;width:46px;font-size:9px;color:var(--muted);letter-spacing:.04em;padding-top:1px}
+.dno{font-size:9.5px;color:var(--red);line-height:1.5;margin-top:6px;border-top:1px dashed var(--line);padding-top:5px}
+.dpulse{animation:softin .22s ease both}
+
+.statusband{border:1px solid var(--line-2);background:var(--paper);border-radius:11px;padding:12px 14px;margin-top:16px}
+.sb-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.sb-head .l{display:flex;align-items:baseline;gap:8px}
+.sb-head h3{font-size:12px;font-weight:600}
+.sb-head .note{font-size:9.5px;color:var(--muted)}
+.sb-head .sim{display:flex;align-items:center;gap:6px}
+.states{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.state{
+  border:1px solid transparent;background:transparent;border-radius:6px;padding:6px 7px;
+  text-align:left;cursor:pointer;line-height:1.35;transition:background .12s ease,border-color .12s ease;
+}
+.state:hover{background:var(--bg-2)}
+.state .i{display:block;font-size:8px;color:var(--faint);letter-spacing:.06em}
+.state .nm{font-size:10.5px;color:var(--ink-2);display:block}
+.state.done .nm{color:var(--green)}
+.state.on{background:var(--accent);border-color:var(--accent-2)}
+.state.on .i,.state.on .nm{color:#fff}
+.state.sel{outline:1px dashed var(--accent-line);outline-offset:1px}
+.sb-foot{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);font-size:9.5px;color:var(--faint);line-height:1.5}
+.sb-foot .dot{width:5px;height:5px;border-radius:50%;background:var(--amber);flex:none}
+
+/* ---------- floating bits ---------- */
+.switchbar{
+  position:fixed;left:20px;bottom:16px;z-index:60;
+  display:flex;align-items:center;gap:4px;padding:5px 7px;
+  background:var(--paper-2);border:1px solid var(--line-2);border-radius:99px;box-shadow:var(--shadow-float);
+}
+.switchbar .lab{min-width:218px;text-align:center;padding:0 6px;line-height:1.25}
+.switchbar .lab b{font-size:11.5px;font-weight:600}
+.switchbar .lab .sub{display:block;font-size:8.5px;color:var(--faint);margin-top:1px;letter-spacing:.02em}
+.iconbtn{
+  width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:transparent;
+  display:grid;place-items:center;cursor:pointer;color:var(--ink-2);padding:0;
+}
+.iconbtn:hover{background:var(--bg-2);border-color:var(--line-2)}
+.help-btn{
+  position:fixed;right:22px;bottom:22px;z-index:59;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--line-2);background:var(--paper-2);border-radius:99px;padding:8px 13px;
+  font-size:11.5px;cursor:pointer;box-shadow:var(--shadow-float);
+}
+.help-btn:hover{background:var(--bg-2)}
+.help-panel{
+  position:fixed;right:22px;bottom:68px;z-index:59;width:284px;
+  background:var(--paper-2);border:1px solid var(--line-2);border-radius:11px;
+  box-shadow:var(--shadow-float);padding:13px;
+}
+.help-panel h3{font-size:12.5px;font-weight:600;margin-bottom:3px}
+.help-panel p{font-size:10.5px;color:var(--muted);line-height:1.55;margin-bottom:8px}
+.help-panel textarea{
+  width:100%;border:1px solid var(--line-2);border-radius:6px;background:var(--paper);
+  padding:7px 8px;min-height:64px;resize:vertical;outline:none;font-family:inherit;font-size:12px;line-height:1.5;
+}
+.help-panel textarea:focus{border-color:var(--accent-line)}
+.help-panel .row{display:flex;align-items:center;justify-content:space-between;margin-top:7px;gap:8px}
+.help-panel .fine{font-size:9px;color:var(--faint);line-height:1.4}
+.toast{
+  position:fixed;left:50%;bottom:80px;transform:translateX(-50%) translateY(8px);z-index:90;
+  background:var(--ink);color:var(--paper-2);border-radius:8px;padding:8px 13px;font-size:11.5px;
+  opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;max-width:min(560px,90vw);
+  box-shadow:0 12px 30px -18px rgba(0,0,0,.5);line-height:1.5;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* compare modal */
+.modal{
+  position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:24px;
+  background:rgba(33,30,24,.34);
+}
+.sheet{
+  width:min(760px,100%);max-height:calc(100vh - 48px);overflow:auto;
+  background:var(--paper);border:1px solid var(--line-2);border-radius:14px;
+  padding:22px 24px 20px;box-shadow:0 40px 90px -50px rgba(0,0,0,.55);
+  animation:rise .2s ease both;
+}
+.sheet-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:10px}
+.sheet h2{font-family:var(--serif);font-size:25px;line-height:1.25;font-weight:600;margin-top:3px}
+.sheet .close{border:1px solid var(--line);background:transparent;border-radius:6px;width:28px;height:28px;display:grid;place-items:center;cursor:pointer}
+.sheet .close:hover{background:var(--bg-2)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+.cmp-col{border:1px solid var(--line);border-radius:9px;padding:13px;background:var(--paper-2)}
+.cmp-col.now{background:var(--bg-2)}
+.cmp-col.next{border-color:var(--accent-line);background:var(--tint)}
+.cmp-tag{font-size:9.5px;letter-spacing:.14em;color:var(--muted);display:block;margin-bottom:4px}
+.cmp-col.next .cmp-tag{color:var(--accent-2)}
+.cmp-title{font-size:13px;font-weight:600;margin-bottom:7px}
+.cmp-col ol{list-style:none;counter-reset:c;display:flex;flex-direction:column;gap:5px}
+.cmp-col li{font-size:11px;line-height:1.55;color:var(--ink-2);display:flex;gap:6px}
+.cmp-col li .n{flex:none;width:14px;height:14px;border:1px solid var(--line-2);border-radius:50%;display:grid;place-items:center;font-size:8px;color:var(--muted);margin-top:1px;background:var(--paper)}
+.cmp-col.next li .n{border-color:var(--accent-line);color:var(--accent-2)}
+.sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap}
+.sheet-foot .fine{font-size:10px;color:var(--faint);line-height:1.5}
+
+@keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes softin{from{opacity:.55}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important;transition:none !important}
+}
+
+/* ---------- responsive ---------- */
+@media (max-width:1180px){
+  #app{padding:0 22px 112px}
+  .customer{grid-template-columns:340px minmax(0,1fr);gap:24px}
+  .fgrid{grid-template-columns:minmax(0,1fr) 344px;gap:14px}
+  .stack{width:606px}
+  .phone.back{left:300px}
+  .pipe{gap:6px}
+  .pstep{padding:8px;min-height:126px}
+}
+@media (max-width:1040px){
+  .top{gap:16px}
+  .title h1{font-size:24px}
+  .title p{max-width:360px}
+  .customer{grid-template-columns:330px minmax(0,1fr);gap:20px}
+  .talk{height:calc(100vh - 124px)}
+  .stack{width:600px;height:708px}
+  .phone.back{left:296px;top:2px}
+  .phone.front{top:70px}
+  .phones{min-height:708px}
+  .pipe{grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+  .pstep{padding:7px;min-height:132px}
+  .pstep .pname{font-size:11.5px}
+  .pstep .out{font-size:9px}
+  .pstep .sk{font-size:7.5px}
+  .fgrid{grid-template-columns:minmax(0,1fr) 320px;gap:12px}
+  .cond{grid-template-columns:112px 1fr}
+  .states{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .state .nm{font-size:10px}
+  .detail{padding:13px}
+}
+@media (max-width:900px){
+  .customer{grid-template-columns:1fr}
+  .talk{position:static;height:auto;max-height:80vh;min-height:420px}
+  .phones{min-height:0;padding:30px 0 6px}
+  .stack{width:600px;max-width:100%;height:708px;transform-origin:top center}
+  .fgrid{grid-template-columns:1fr}
+  .detail{position:static}
+  .pipe{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .pstep{min-height:110px}
+  .pstep::after{display:none}
+  .states{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .top{flex-wrap:wrap}
+  .top-right{align-items:flex-start}
+  .help-btn{right:14px;bottom:76px}
+  .ledger{max-width:none}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<button class="help-btn" id="helpBtn" type="button" aria-expanded="false" aria-controls="helpPanel">
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.4"/><path d="M6.1 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.7.5-.7 1"/><circle cx="8" cy="11.6" r=".6" fill="currentColor" stroke="none"/></svg>
+  找人
+</button>
+
+<div class="help-panel" id="helpPanel" hidden>
+  <h3>卡住了就说一声</h3>
+  <p>这句会挂在你的草稿上。运营者手机收到提醒，稍后回你。</p>
+  <textarea id="helpText" placeholder="比如：送货费怎么算，我不敢写。"></textarea>
+  <div class="row">
+    <span class="fine">只给运营者看</span>
+    <button class="btn btn-primary btn-sm" type="button" data-act="help-send">发出去</button>
+  </div>
+</div>
+
+<div class="switchbar" id="switchbar" role="group" aria-label="原型变体切换">
+  <button class="iconbtn" type="button" data-act="variant-prev" aria-label="上一个变体">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+  </button>
+  <div class="lab">
+    <b id="variantKey">A · 双手机斜叠</b>
+    <span class="sub">变体只换右侧的表达，流程不变</span>
+  </div>
+  <button class="iconbtn" type="button" data-act="variant-next" aria-label="下一个变体">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+  </button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= 工具 ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clip = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+
+const ICONS = {
+  mark:'<path d="M8 1.6v12.8M1.6 8h12.8M3.5 3.5l9 9M12.5 3.5l-9 9"/>',
+  check:'<path d="M3 8.2 6.2 11.4 13 4.6"/>',
+  arrow:'<path d="M3.5 8h9M8.8 4.8 12 8l-3.2 3.2"/>',
+  chev:'<path d="M6 3.5 10.5 8 6 12.5"/>',
+  edit:'<path d="M10.6 2.9l2.5 2.5L6 12.5 3 13l.5-3z"/>',
+  x:'<path d="M4 4l8 8M12 4l-8 8"/>',
+  alert:'<path d="M8 2.8 14 13.2H2z"/><path d="M8 6.2v3.4"/><circle cx="8" cy="11.4" r=".55" fill="currentColor" stroke="none"/>',
+  clock:'<circle cx="8" cy="8" r="6"/><path d="M8 4.6V8l2.4 1.5"/>',
+  user:'<circle cx="8" cy="5.4" r="2.5"/><path d="M3.2 13.6c.6-2.2 2.5-3.4 4.8-3.4s4.2 1.2 4.8 3.4"/>',
+  phone:'<path d="M5.2 2.6 6.8 5 5.6 6.6c.8 1.8 2 3 3.8 3.8L11 9.2l2.4 1.6-.5 2.4c-.1.5-.6.9-1.1.9C6.9 14 2 9.1 2 4.3c0-.5.4-1 .9-1.1z"/>',
+  search:'<circle cx="7.1" cy="7.1" r="4.2"/><path d="M10.3 10.3 13.6 13.6"/>',
+  qr:'<path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3z"/><path d="M9 9h1.6v1.6H9zM12 9h1.2v1.4M9 12.2h1.2M12.4 12.2h.8"/>',
+  link:'<path d="M6.6 9.4 9.4 6.6M7.2 4.9l1-1a2.55 2.55 0 0 1 3.6 3.6l-1 1M8.8 11.1l-1 1a2.55 2.55 0 0 1-3.6-3.6l1-1"/>',
+  chat:'<path d="M3 3.6h10v6.8H7.4L4.4 13v-2.6H3z"/>',
+  shop:'<path d="M3 6.4 4 3h8l1 3.4M3 6.4h10V13H3zM6.4 13V9.6h3.2V13"/>',
+  grid:'<path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"/>',
+  bell:'<path d="M4 11.5h8l-1-1.6V7a3 3 0 0 0-6 0v2.9zM6.6 13.2a1.5 1.5 0 0 0 2.8 0"/>',
+  lock:'<rect x="4" y="7" width="8" height="6" rx="1"/><path d="M5.7 7V5.3a2.3 2.3 0 0 1 4.6 0V7"/>',
+  replay:'<path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.8v2.7h-2.7"/>',
+  send:'<path d="M2.6 8 13.4 3l-3 10.4-2.6-3.6z"/>',
+  factory:'<path d="M2.5 13V7l3.5 2V7l3.5 2V7l4 2.4V13zM2.5 13h11"/><path d="M5 4.2V2.6h2v1.6"/>',
+  eye:'<path d="M1.6 8s2.4-3.9 6.4-3.9S14.4 8 14.4 8s-2.4 3.9-6.4 3.9S1.6 8 1.6 8z"/><circle cx="8" cy="8" r="1.8"/>',
+  down:'<path d="M8 3.2v9M4.6 8.8 8 12.2l3.4-3.4"/>'
+};
+function ic(name, size = 14){
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
+}
+
+/* ================= 内容 ================= */
+const SAMPLES = [
+  '街坊想订明天上午的砂糖橘，我提前备好，他们到店来拿。',
+  '有人问价，我总要翻聊天记录截图，想让他们自己看到今天的价。',
+  '店里进货靠本子记，卖到哪样没了也说不清。'
+];
+const INDUSTRIES = ['预约','问价','登记','库存','收款','其他'];
+const INDUSTRY_SENTENCE = {
+  '预约':'街坊想订明天上午的砂糖橘，到店来拿。',
+  '问价':'街坊想自己看到今天的水果价，不用等我回。',
+  '登记':'来过的街坊想留个电话，下次到货我通知他。',
+  '库存':'店里卖了多少、还剩多少，我想一眼看到。',
+  '收款':'收了谁的钱、还欠多少，我不想再翻本子。',
+  '其他':'我想把店里最麻烦的那一步挪到手机上。'
+};
+const CARRIERS = {
+  miniapp:{name:'微信小程序', short:'小程序', good:'不用下载，微信里用', bad:'要执照，审核 1–3 天', time:'约 2 周',
+    more:'街坊点开就能用，你不用教。要营业执照注册，审核一到三天。'},
+  official:{name:'公众号', short:'公众号', good:'老顾客都在这里', bad:'页面弱，容易跳出去', time:'约 1 周',
+    more:'发消息直接到人，老顾客不用重新找。页面能力弱，点深了会跳到外面。'},
+  web:{name:'网页', short:'网页', good:'一个链接就能看', bad:'微信里打开偏慢', time:'约 3 天',
+    more:'改一个字都不用等审核。发到群里点开就能看，微信里打开会慢半拍。'},
+  app:{name:'独立 App', short:'App', good:'体验最完整', bad:'要下载，要上架', time:'约 4 周',
+    more:'能放到手机桌面，像正经生意。街坊得先下载，上架还要审一遍。'}
+};
+const FOUND = {
+  qr:{label:'扫码', sub:'门口贴个码，来店里的人顺手扫'},
+  link:{label:'发链接', sub:'你发到街坊群，点开就能用'},
+  search:{label:'搜得到', sub:'微信里搜「阿香水果」，能找到'}
+};
+const PAY_LABEL = {'要':'要，先在手机上付','不要':'不要，到店再付','说不清':'说不清'};
+const EXISTING = ['微信群','公众号','Excel','没有'];
+const EXP = {none:'没做过', tools:'用过现成工具', dev:'有技术同事'};
+const TECH = {
+  data:{
+    title:'数据放哪',
+    hint:'街坊的名字、电话、订单，存在哪里。',
+    opts:[
+      {v:'cn', name:'国内', note:'阿里云或腾讯云', rec:true, pro:'打开快，备案和客服都在国内', con:'要备案，换地方麻烦'},
+      {v:'overseas', name:'海外', note:'不用备案', pro:'开通快，能省一步', con:'国内打开慢一点，合规要另想办法'}
+    ]
+  },
+  account:{
+    title:'账号用谁的',
+    hint:'收款和通知走哪个号，关系到街坊信谁。',
+    opts:[
+      {v:'own', name:'你的微信', note:'街坊认你', pro:'收款通知都走你的号，关系在你手里', con:'你要保管好，换人得交接'},
+      {v:'managed', name:'我们代管', note:'你省事', pro:'出问题我们处理，你什么都不用管', con:'账号不在你名下，以后搬家要迁移'}
+    ]
+  },
+  budget:{
+    title:'每月愿意花多少',
+    hint:'服务器、域名、通知短信都算在里面。',
+    opts:[
+      {v:'low', name:'0–100 元', note:'一个月一顿饭', pro:'够一个小站和域名', con:'超支要先说一声'},
+      {v:'mid', name:'100–500 元', note:'更稳一点', pro:'能加通知和备份', con:'用不上就浪费'},
+      {v:'high', name:'500 元以上', note:'生意大一点', pro:'能接支付和短信', con:'先想清楚值不值'},
+      {v:'you', name:'你定', note:'让运营者报', pro:'按你需要来', con:'开工前你要看一眼账单'}
+    ]
+  }
+};
+const TECH_LABEL = {
+  data:{cn:'国内',overseas:'海外'},
+  account:{own:'你的微信',managed:'我们代管'},
+  budget:{low:'0–100',mid:'100–500',high:'500 以上',you:'你定'}
+};
+
+const FLOW = [
+  {id:'clarify', name:'澄清', out:'人话确认单', who:'客户 + 网页',
+    skills:[['grilling 问法','remix'],['准入清单','direct'],['prototype 三风格','remix']],
+    input:'客户的三段回答，加上他自己改过的确认单',
+    output:'人话确认单、3 行复述、不做清单',
+    note:'网页 agent 按准入清单问，不问技术。答完压成一张能点头的单子。'},
+  {id:'spec', name:'写规格', out:'spec', who:'机器',
+    skills:[['/to-spec','direct']],
+    input:'确认单和完整问答记录',
+    output:'spec：问题、方案、用户故事、不做清单',
+    note:'不再问人。把已有的对话合成一份能拆票的规格。'},
+  {id:'tickets', name:'拆票', out:'票 + 阻塞边', who:'机器',
+    skills:[['/to-tickets','direct']],
+    input:'spec',
+    output:'5 张票。每张能单独演示，写清阻塞边和验收条件',
+    note:'票按依赖排，不按急。客户说的「急」不改变顺序。'},
+  {id:'build', name:'实现', out:'代码 + 测试 + 截图 + trace', who:'机器',
+    skills:[['/implement','direct'],['/tdd','direct']],
+    input:'一张没有阻塞的票，和约定好的 seam',
+    output:'代码、测试、页面截图、一次运行的 trace',
+    note:'五个容器同时跑。每张票先写测试，再写实现。'},
+  {id:'review', name:'评审', out:'评审意见', who:'机器',
+    skills:[['/code-review','direct']],
+    input:'这次改动、票、spec',
+    output:'按标准和需求两条轴挑毛病',
+    note:'spec 找不到就跳过需求这一轴。所以入口必须留一份 spec。'},
+  {id:'pr', name:'提 PR', out:'PR + 主干', who:'机器',
+    skills:[['/pr','direct'],['自动合并','cond']],
+    input:'过了评审的改动，和四样证据',
+    output:'PR。四样证据齐了才合，合完删分支',
+    note:'四样证据：测试绿、截图、trace、评审意见。'},
+  {id:'accept', name:'验收', out:'通过 / 驳回', who:'你',
+    skills:[['人眼','direct']],
+    input:'PR、截图、测试结果',
+    output:'通过进主干，驳回回开发中',
+    note:'驳回不重开单。回第 4 步，另开一条分支改。'}
+];
+const STATES = [
+  {name:'草稿', sub:'客户还在答，网页上没有确认。',
+    input:'客户正在答第 1 段', output:'问答记录（内存）', who:'客户',
+    skills:[['grilling 问法','remix'],['准入清单','direct']]},
+  {name:'已确认', sub:'客户点了「就按这个来」，还没进队列。',
+    input:'确认单，5 行都点过', output:'确认单 + 不做清单', who:'客户',
+    skills:[['grilling 问法','remix'],['prototype 三风格','remix']]},
+  {name:'已进队列', sub:'工单、仓库、需求都建好了，推了微信。',
+    input:'确认单', output:'工单 #127、客户仓库、需求草稿', who:'服务器',
+    skills:[['gh issue create','direct'],['git init','direct']]},
+  {name:'等你定', sub:'五类技术问题停在 Orca 的待定列。',
+    input:'五类技术问题', output:'每条三个选项，带推荐', who:'你',
+    skills:[['准入清单','direct']]},
+  {name:'开工', sub:'技术选择点完，机器开始写。',
+    input:'你点头的技术选择', output:'代码、测试、截图、trace', who:'机器',
+    skills:[['/implement','direct'],['/tdd','direct']]},
+  {name:'待验收', sub:'PR 和四样证据到了，等你点通过。',
+    input:'PR、四样证据', output:'截图、改动摘要、测试结果', who:'你',
+    skills:[['/code-review','direct'],['/pr','direct']]},
+  {name:'完成', sub:'合进主干，客户能打开地址看。',
+    input:'你的通过', output:'主干 + 部署 + 客户能看的地址', who:'机器 + 你',
+    skills:[['/pr','direct'],['自动合并','cond']]}
+];
+const GATES = [
+  {id:'stack', q:'技术栈', from:null, opts:[['Next.js + Tailwind',true],['纯静态 HTML',false],['客户已有栈',false]]},
+  {id:'deploy', q:'部署到哪', from:null, opts:[['共用一台服务器',true],['单独租一台',false],['客户自己的服务器',false]]},
+  {id:'third', q:'第三方账号', from:'account', opts:[['微信测试号 + GitHub',true],['再加短信',false],['都不接',false]]},
+  {id:'data', q:'数据怎么存', from:'data', opts:[['国内托管',true],['只存本机文件',false],['以导出表格为主',false]]},
+  {id:'budget', q:'每月花多少', from:'budget', opts:[['0–100 元',true],['100–500 元',false],['500 元以上',false]]}
+];
+
+/* ================= 状态 ================= */
+function readVariant(){
+  try {
+    const v = new URL(location.href).searchParams.get('variant');
+    if (v && v.toUpperCase() === 'B') return 'B';
+  } catch (e) {}
+  return /variant=B/i.test(location.hash || '') ? 'B' : 'A';
+}
+function writeVariant(v){
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set('variant', v);
+    history.replaceState(null, '', u.href);
+  } catch (e) {}
+}
+function blank(){
+  return {
+    view:'customer', round:1, variant:readVariant(),
+    raw:'', rawDraft:'', industry:'', industryHint:'',
+    audience:null, action:null, how:null, done:null, doneDraft:'',
+    excludes:[], excludeDraft:[], excludesDone:false,
+    carrier:null, found:null, pay:null, payUnsure:false, existing:[], existingDraft:[], existingDone:false,
+    experience:null,
+    tech:{data:null, account:null, budget:null},
+    delegated:{data:false, account:false, budget:false},
+    lines:{}, editing:null, selLine:null,
+    confirmed:false, actions:0, sim:0,
+    detail:{kind:'step', i:0},
+    gate:{},
+    compareOpen:false, compareSeen:false,
+    scrollBottom:false, talkTop:false
+  };
+}
+let S = blank();
+let actionTimer = null;
+
+function stageMeta(){
+  if (S.round === 2) return '第 2 段 · 载体和走向';
+  if (S.round === 3) return '第 3 段 · 技术细节';
+  if (S.round === 'confirm') return '第 4 步 · 确认单';
+  return '第 1 段 · 只问需求';
+}
+function stageNum(){ return S.round === 'confirm' ? 4 : S.round; }
+function techResolved(k){ return !!S.tech[k] || !!S.delegated[k]; }
+function techPendingList(){ return ['data','account','budget'].filter(k => !techResolved(k)); }
+function gatePending(){ return GATES.filter(g => S.gate[g.id] === undefined); }
+
+/* ================= 派生文案 ================= */
+function guessIndustry(raw){
+  if (/预约|订|时间段|取货|来拿/.test(raw)) return '预约';
+  if (/价|报价|多少钱|贵/.test(raw)) return '问价';
+  if (/登记|名单|电话|填/.test(raw)) return '登记';
+  if (/库存|进货|剩|卖完/.test(raw)) return '库存';
+  if (/付款|收款|付钱|账/.test(raw)) return '收款';
+  return '其他';
+}
+function echoSentence(){
+  switch (S.industry) {
+    case '预约': return '街坊在手机上挑一个取货时间，你按单备货，他们到店来拿。';
+    case '问价': return '街坊自己看到今天的价，你不用一张张截图回。';
+    case '登记': return '来的人自己把信息留下，你有一份能翻的名单。';
+    case '库存': return '卖了什么、还剩什么，你在一个地方能看到。';
+    case '收款': return '谁付过、还欠多少，你自己能对上。';
+    default: return '你把现在最麻烦的那一步挪到手机上，少跑一趟。';
+  }
+}
+function audienceWord(){
+  if (S.audience === '顾客') return '附近街坊';
+  if (S.audience === '员工') return '店里的人';
+  if (S.audience === '自己') return '你自己';
+  if (S.audience === '还说不清') return '先当街坊用';
+  return '街坊';
+}
+function audienceLine(){
+  if (S.audience === '员工') return '店里三个人，只有他们能进';
+  if (S.audience === '自己') return '只有你自己用，别人看不到';
+  if (S.audience === '还说不清') return '先给街坊看，以后可能要加店员';
+  return '附近街坊，不用登录，点开就能用';
+}
+function taskSentence(){
+  switch (S.action) {
+    case '预约': return '街坊在手机上选明天上午来取水果的时间段，你按单备货。';
+    case '看价': return '街坊在手机上看到今天的水果价，看中了就进店。';
+    case '联系': return '街坊在手机上点一下就能打电话或留言，你顺手回。';
+    case '填表': return '街坊在手机上填一张表，你收到一份整理好的名单。';
+    default: return '街坊在手机上看到一个能用的入口，知道今天有什么。';
+  }
+}
+function entryLabel(){
+  if (S.found === 'link') return '你把链接发到街坊群';
+  if (S.found === 'search') return '微信里搜「阿香水果」';
+  if (S.found === 'qr') return '扫店门口的二维码';
+  return '扫店门口的二维码';
+}
+function entrySentence(){
+  const entry = entryLabel();
+  if (S.carrier === 'miniapp') return entry + '，微信里直接打开。';
+  if (S.carrier === 'official') return entry + '，进公众号点菜单。';
+  if (S.carrier === 'web') return entry + '，用浏览器打开。';
+  if (S.carrier === 'app') return entry + '，先装一个 App。';
+  return entry + '，点开就能用。';
+}
+function paySentence(){
+  if (S.excludes.indexOf('支付') >= 0) return '不做在线支付，一律到店付。';
+  if (S.pay === '要') return '选好时间先在手机上付钱，到店取货。';
+  return '选好时间先记单，到店付钱。';
+}
+function doneSentence(){
+  return S.done || '你早上看到明天的备货清单，街坊收到一条取货提醒。';
+}
+const LINE_DEFS = [
+  {key:'task', label:'做什么'},
+  {key:'audience', label:'给谁用'},
+  {key:'entry', label:'怎么找到'},
+  {key:'pay', label:'怎么付钱'},
+  {key:'done', label:'什么算成'}
+];
+function lineText(k){
+  if (S.lines[k]) return S.lines[k];
+  if (k === 'task') return taskSentence();
+  if (k === 'audience') return audienceLine() + '。';
+  if (k === 'entry') return entrySentence();
+  if (k === 'pay') return paySentence();
+  return doneSentence();
+}
+function derivedLines(){
+  return LINE_DEFS.map((d, i) => ({...d, n:i + 1, text:lineText(d.key)}));
+}
+function ticketTitle(){
+  return '阿香水果 · ' + clip(lineText('task').replace(/[。，]/g, ' '), 30);
+}
+function currentState(){
+  if (!S.confirmed) return 0;
+  if (S.actions < 4) return 1;
+  if (S.sim >= 3) return 6;
+  if (S.sim === 2) return 5;
+  if (S.sim === 1) return 4;
+  return gatePending().length ? 3 : 2;
+}
+function hl(k){ return S.round === 'confirm' && S.selLine === k ? ' hl' : ''; }
+function HLE(k){ return S.round === 'confirm' && S.selLine === k ? 'hl' : ''; }
+
+/* ================= 手机外壳 ================= */
+function shellHTML(){
+  const sb = '<div class="statusbar"><span>9:41</span><span class="r"><i></i><i></i><i></i><span class="batt"></span></span></div>';
+  if (S.carrier === 'official') {
+    return '<div class="shell">' + sb +
+      '<div class="officialnav"><span class="avatar">香</span><span><b>阿香水果</b><small>公众号 · 文昌路</small></span><span class="follow">关注</span></div></div>';
+  }
+  if (S.carrier === 'web') {
+    return '<div class="shell">' + sb +
+      '<div class="webnav"><span class="bk">' + ic('chev', 10) + '</span><div class="urlbar">' + ic('lock', 9) + '<span>axiang-shuiguo.cn</span></div><span>' + ic('grid', 11) + '</span></div></div>';
+  }
+  if (S.carrier === 'app') {
+    return '<div class="shell">' + sb +
+      '<div class="appnav"><span>' + ic('chev', 11) + '</span><b>阿香水果</b><span>' + ic('grid', 11) + '</span></div></div>';
+  }
+  if (S.carrier === 'miniapp') {
+    return '<div class="shell">' + sb +
+      '<div class="wxnav"><span class="bk">' + ic('chev', 11) + '</span><span class="ttl">阿香水果</span><span class="capsule"><i></i><i></i><i></i><span class="dot"></span></span></div></div>';
+  }
+  return '<div class="shell">' + sb + '</div>';
+}
+function foundIcon(){
+  if (S.found === 'link') return 'link';
+  if (S.found === 'search') return 'search';
+  return 'qr';
+}
+function phoneInfo(){
+  if (!S.action) return '';
+  return '<div class="ph-info"><div class="promo">今天到货：砂糖橘 · 红富士 · 本地草莓</div><div class="row"><span>取货地点</span><b>文昌路 12 号</b></div><div class="row"><span>开门</span><b>明天 7:00</b></div></div>';
+}
+function payRowHTML(){
+  if (!S.pay && !S.lines.pay) return '';
+  const txt = S.lines.pay || (S.pay === '要' ? '先付 12 元' : '到店付');
+  return '<div class="payrow' + hl('pay') + '" data-el="pay"><span class="k">支付</span><span data-el-text="pay">' + esc(txt) + '</span></div>';
+}
+function frontBody(){
+  if (!S.raw) {
+    return '<div class="ph-skel"><span class="skel-ic">' + ic('shop', 18) + '</span><span class="ghost"></span><span class="ghost"></span><span class="ghost"></span><p>先在左边说一句，你想让人在网上做什么。</p></div>';
+  }
+  const title = S.action === '预约' ? '选个时间来取'
+    : S.action === '看价' ? '今天什么价'
+    : S.action === '联系' ? '想买什么，说一声'
+    : S.action === '填表' ? '先留个联系方式'
+    : '先看看今天有什么';
+  const sub = audienceLine();
+  let h = '<div class="hero"><div class="ph-eyebrow">明天 · 周六</div><h3 class="' + HLE('task') + '" data-el="task">' + esc(title) + '</h3><p class="' + HLE('audience') + '" data-el="audience">' + esc(sub) + '</p></div>';
+
+  if (!S.action) {
+    h += '<div class="ph-skel" style="margin:0;padding:6px 0"><span class="ghost"></span><span class="ghost"></span><p>再答一题，这里会变成真的。</p></div>';
+  } else if (S.action === '预约') {
+    h += '<div class="slot sel"><span><b>周六 9:00–10:00</b><small>剩 4 位 · 到店取</small></span><span class="n">' + ic('chev', 9) + '</span></div>';
+    h += '<div class="slot"><span><b>周六 10:00–11:00</b><small>剩 2 位 · 到店取</small></span><span class="n">' + ic('chev', 9) + '</span></div>';
+    h += '<div class="slot"><span><b>周六 16:00–17:00</b><small>剩 6 位 · 到店取</small></span><span class="n">' + ic('chev', 9) + '</span></div>';
+    h += '<div class="ph-cta">选这个时间</div>';
+  } else if (S.action === '看价') {
+    h += '<div class="prow"><span><b>砂糖橘</b><small>本地 · 今天到</small></span><span class="price">8.8<em>元/斤</em></span></div>';
+    h += '<div class="prow"><span><b>红富士</b><small>冷库 · 脆</small></span><span class="price">6.5<em>元/斤</em></span></div>';
+    h += '<div class="prow"><span><b>本地草莓</b><small>只剩 4 盒</small></span><span class="price">18<em>元/盒</em></span></div>';
+    h += '<div class="ph-btnrow"><span class="ph-btn acc">给店里打个电话</span></div>';
+  } else if (S.action === '联系') {
+    h += '<div class="ph-btnrow" style="margin-top:2px"><span class="ph-btn acc">打电话给阿香</span></div>';
+    h += '<div class="ph-btnrow"><span class="ph-btn">发一条消息</span></div>';
+    h += '<div class="ph-formnote">早上 9 点到晚上 7 点，阿香自己接。</div>';
+  } else if (S.action === '填表') {
+    h += '<div class="ph-field">姓名<i></i></div><div class="ph-field">电话<i></i></div><div class="ph-field">想取什么<i></i></div>';
+    h += '<div class="ph-cta">留好了</div>';
+  }
+
+  if (S.existing.indexOf('微信群') >= 0) h += '<div class="integ">' + ic('chat', 9) + '订单也发到街坊群</div>';
+  if (S.existing.indexOf('公众号') >= 0) h += '<div class="integ">' + ic('bell', 9) + '关注公众号，到货提醒</div>';
+  if (S.existing.indexOf('Excel') >= 0) h += '<div class="integ">' + ic('grid', 9) + '每天导出一张 Excel</div>';
+  h += phoneInfo();
+  return h;
+}
+function frontScreen(){
+  const entry = S.found ? lineText('entry') : '';
+  return '<div class="screen">' + shellHTML() +
+    (entry ? '<div class="entry' + hl('entry') + '" data-el="entry"><span class="k">' + ic(foundIcon(), 10) + '</span><span data-el-text="entry">' + esc(entry) + '</span></div>' : '') +
+    '<div class="app-body">' + frontBody() + '</div>' +
+    payRowHTML() +
+    '<div class="ph-foot"><span>阿香水果 · 文昌路 12 号</span><span>示例</span></div>' +
+    '</div>';
+}
+function backBody(){
+  if (!S.raw) {
+    return '<div class="bhead"><b>后台 · 阿香水果</b><span class="t">示例</span></div><div class="bnote">左边答几句，这里才有东西。</div><div class="bghost" style="height:38px"></div><div class="bghost"></div><div class="bghost"></div><div class="bghost"></div><div class="bpay"><span>入口：未定</span><span>状态：草稿</span></div>';
+  }
+  let h = '<div class="bhead"><b>后台 · 阿香水果</b><span class="t">示例</span></div>';
+  h += '<div class="bstats">' +
+    '<div class="bstat"><div class="k">明天订单</div><div class="v">6<em>单</em></div></div>' +
+    '<div class="bstat"><div class="k">要备</div><div class="v">14<em>斤</em></div></div>' +
+    '</div>';
+  if (S.how) h += '<div class="bnote" style="text-align:left;padding:4px 6px">以前：' + esc(S.how) + '。现在单子进这里。</div>';
+  if (S.audience) h += '<div class="bsec"><h5>给谁用</h5><div class="brow"><span class="l"><span class="dot done"></span><b>' + esc(audienceWord()) + '</b></span><span class="r">' + (S.audience === '顾客' ? '不用登录' : '只给内部') + '</span></div></div>';
+
+  if (S.action === '预约') {
+    h += '<div class="bsec"><h5>备货清单</h5>' +
+      '<div class="brow"><span class="l"><span class="dot done"></span><b>砂糖橘</b></span><span class="r">12 斤</span></div>' +
+      '<div class="brow"><span class="l"><span class="dot wait"></span><b>红富士</b></span><span class="r">8 斤</span></div>' +
+      '<div class="brow"><span class="l"><span class="dot"></span><b>本地草莓</b></span><span class="r">4 盒</span></div></div>';
+    h += '<div class="bsec"><h5>明天来取</h5>' +
+      '<div class="brow"><span class="l"><b>王阿姨 · 9:00</b></span><span class="r">2 斤 · 已备</span></div>' +
+      '<div class="brow"><span class="l"><b>老陈 · 10:00</b></span><span class="r">3 斤 · 未备</span></div>' +
+      '<div class="brow"><span class="l"><b>李姐 · 16:00</b></span><span class="r">1 斤 · 未备</span></div></div>';
+  } else if (S.action === '看价') {
+    h += '<div class="bsec"><h5>今天的价</h5>' +
+      '<div class="brow"><span class="l"><b>砂糖橘</b></span><span class="r">8.8 元/斤</span></div>' +
+      '<div class="brow"><span class="l"><b>红富士</b></span><span class="r">6.5 元/斤</span></div>' +
+      '<div class="brow"><span class="l"><b>本地草莓</b></span><span class="r">18 元/盒</span></div></div>';
+    h += '<div class="bsec"><h5>改过的价</h5><div class="brow"><span class="l"><b>砂糖橘</b></span><span class="r">今天 7:40 改</span></div><div class="brow"><span class="l"><b>草莓</b></span><span class="r">昨天 18:20 改</span></div></div>';
+  } else if (S.action === '联系') {
+    h += '<div class="bsec"><h5>新留言</h5>' +
+      '<div class="brow"><span class="l"><b>老陈</b></span><span class="r">问砂糖橘甜不甜</span></div>' +
+      '<div class="brow"><span class="l"><b>王阿姨</b></span><span class="r">留 2 斤，明早来</span></div>' +
+      '<div class="brow"><span class="l"><b>陌生号</b></span><span class="r">问送货费</span></div></div>';
+    h += '<div class="bsec"><h5>回过的人</h5><div class="brow"><span class="l"><b>老陈</b></span><span class="r">已回</span></div></div>';
+  } else if (S.action === '填表') {
+    h += '<div class="bsec"><h5>留过信息</h5>' +
+      '<div class="brow"><span class="l"><b>王阿姨</b></span><span class="r">138****2210</span></div>' +
+      '<div class="brow"><span class="l"><b>老陈</b></span><span class="r">139****7742</span></div>' +
+      '<div class="brow"><span class="l"><b>李姐</b></span><span class="r">135****8801</span></div></div>';
+    h += '<div class="bsec"><h5>下一步</h5><div class="bnote">导出给微信，或者直接看</div></div>';
+  } else {
+    h += '<div class="bsec"><h5>还缺</h5><div class="bnote">第一件事还没定，先不生成清单。</div></div>';
+  }
+
+  if (S.excludesDone) {
+    const tags = (S.excludes.length ? S.excludes : ['登录','支付','会员']).map(x => '<span class="btag">不做' + esc(x) + '</span>').join('');
+    h += '<div class="btags">' + tags + '</div>';
+  }
+  if (S.done || S.round === 'confirm') h += '<div class="bdone' + hl('done') + '" data-el="done"><span data-el-text="done">' + esc(lineText('done')) + '</span></div>';
+  h += '<div class="bpay"><span>入口：' + esc(S.found ? FOUND[S.found].label : '未定') + '</span><span>' + esc(S.existingDone ? (S.existing.length ? '接上 ' + S.existing.join(' / ') : '不接旧系统') : '旧系统未问') + '</span></div>';
+  return h;
+}
+function backScreen(){
+  return '<div class="screen" style="background:#fdfaf2"><div class="back-body">' + backBody() + '</div></div>';
+}
+function phonesA(){
+  return '<div class="legend"><span class="f"><i></i>01 顾客看到</span><span class="b"><i></i>02 你的后台</span></div>' +
+    '<div class="phones"><div class="stack">' +
+    '<div class="phone back">' + backScreen() + '</div>' +
+    '<div class="phone front">' + frontScreen() + '</div>' +
+    '</div></div>';
+}
+function compareStrip(){
+  const now = [
+    S.how === 'Excel' ? 'Excel 里一行行敲，改一次错一次' : S.how === '打电话' ? '电话一个接一个，记在纸上' : S.how === '记本子' ? '本子上记，字迹认不出' : S.how === '没做过' ? '现在还没开始做' : '微信群接龙，刷上去就看不见',
+    '你一个个回「还有」「几点来」',
+    S.pay === '要' ? '收钱走一个码，对账另记' : '收现金，晚上自己对账'
+  ];
+  const next = [
+    S.action === '看价' ? '街坊在手机上看到今天的价' : S.action === '联系' ? '街坊点一下就能找到你' : S.action === '填表' ? '街坊自己把信息填进来' : '街坊在手机上挑一个取货时间',
+    S.action === '看价' ? '你早上把价改一遍' : S.action === '联系' ? '留言都在一个地方' : S.action === '填表' ? '名单自动排好' : '你早上看到备货清单',
+    S.pay === '要' ? '先在手机上付，到店取' : '到店付，单子自己记上'
+  ];
+  return '<div class="cstrip"><div class="cstrip-head"><span class="eyebrow">今天 <span style="color:var(--faint)">／</span> 以后</span><span class="n">常驻对照 · 第 3 题后弹过一次</span></div>' +
+    now.map((a, i) => '<div class="crow"><span class="a">' + esc(a) + '</span><span class="arw">' + ic('arrow', 11) + '</span><span class="b"><b>第 ' + (i + 1) + ' 步</b> ' + esc(next[i]) + '</span></div>').join('') +
+    '<div class="foot">左边是现在的做法，右边是街坊以后看到的。</div></div>';
+}
+function phonesB(){
+  return '<div class="legend solo-legend"><span class="f"><i></i>01 顾客看到</span></div>' +
+    '<div class="phones"><div class="solo"><div class="phone front">' + frontScreen() + '</div>' + compareStrip() + '</div></div>';
+}
+function phonesHTML(){ return S.variant === 'B' ? phonesB() : phonesA(); }
+
+/* ================= 已定 / 待定 ================= */
+function ledgerHTML(){
+  const done = [];
+  const pending = [];
+  if (S.audience) done.push(['给谁用', S.audience]);
+  if (S.action) done.push(['第一件事', S.action]);
+  if (S.how) done.push(['现在', S.how]);
+  if (S.excludesDone) done.push(['不做', S.excludes.length ? S.excludes.join(' / ') : '按最小做']);
+  if (S.carrier) done.push(['载体', CARRIERS[S.carrier].name]);
+  if (S.found) done.push(['入口', FOUND[S.found].label]);
+  if (S.pay) done.push(['付钱', S.pay === '要' ? '在线付' : S.pay === '不要' ? '到店付' : '还没定']);
+  if (S.existingDone) done.push(['要接上', S.existing.length ? S.existing.join(' / ') : '没有']);
+  if (S.experience) done.push(['做过的', EXP[S.experience]]);
+  ['data','account','budget'].forEach(k => {
+    if (S.tech[k]) done.push([TECH[k].title, TECH_LABEL[k][S.tech[k]]]);
+    else if (S.delegated[k]) pending.push([TECH[k].title, '等你定']);
+  });
+  if (!S.carrier) pending.push(['载体', '']);
+  if (S.carrier && !S.found) pending.push(['入口', '']);
+  if (S.found && !S.pay) pending.push(['付钱', '']);
+  if (S.pay && !S.existingDone) pending.push(['要接什么', '']);
+  if ((S.round === 3 || S.round === 'confirm' || S.experience) && !S.delegated.data && !S.delegated.account && !S.delegated.budget) {
+    techPendingList().forEach(k => { if (!pending.some(p => p[0] === TECH[k].title)) pending.push([TECH[k].title, '']); });
+  }
+
+  const li = (row, kind) => '<li><span class="k">' + ic(kind === 'done' ? 'check' : 'clock', 9) + '</span><span>' + esc(row[0]) + (row[1] ? '：' + esc(row[1]) : '') + (row[1] === '等你定' ? '<em>开工前你点头</em>' : '') + '</span></li>';
+  const left = done.length ? done.map(r => li(r, 'done')).join('') : '<li class="empty">还没有。答一句就长一条。</li>';
+  const right = pending.length ? pending.map(r => li(r, 'wait')).join('') : '<li class="empty">' + (S.confirmed ? '没有悬着的，已经进队列。' : '没有悬着的。') + '</li>';
+  return '<div class="ledger">' +
+    '<div><h4>已定 <span class="c">' + done.length + '</span></h4><ul>' + left + '</ul></div>' +
+    '<div class="pending"><h4>待定 <span class="c">' + pending.length + '</span></h4><ul>' + right + '</ul></div>' +
+    '</div>';
+}
+
+/* ================= 第 1 段 ================= */
+function openingHTML(){
+  return '<div class="opening">' +
+    '<h2 class="display">你这店，想让人在网上做什么？</h2>' +
+    '<p class="lede">一句话就行，不用管格式。说完了我再问跟生意有关的事。</p>' +
+    '<div class="composer"><textarea id="rawInput" placeholder="比如：街坊想订明天上午的砂糖橘，我提前备好，他们来拿……" aria-label="你想让人在网上做什么">' + esc(S.rawDraft) + '</textarea>' +
+    '<div class="composer-foot"><span class="helper">不知道怎么说？从这些开始</span><button class="btn btn-primary btn-sm" data-act="submit-raw">说完了</button></div></div>' +
+    '<div class="samples">' + SAMPLES.map((t, i) => '<button class="sample" data-act="fill" data-target="raw" data-text="' + esc(t) + '"><span class="q">' + (i + 1) + '</span>' + esc(t) + '</button>').join('') + '</div>' +
+    '<div class="industries"><span class="lab">或者只点一个词</span>' + INDUSTRIES.map(w => '<button class="chip" data-act="fill" data-target="raw" data-text="' + esc(INDUSTRY_SENTENCE[w]) + '" data-ind="' + w + '">' + w + '</button>').join('') + '</div>' +
+    '</div>';
+}
+function optsHTML(key, list, cols){
+  return '<div class="opts' + (cols === 3 ? ' trio' : '') + '">' + list.map(item => {
+    const v = item[0], label = item[1] || item[0], sub = item[2];
+    return '<button class="opt" data-act="answer" data-q="' + key + '" data-v="' + esc(v) + '"><span>' + esc(label) + (sub ? '<span class="osub">' + esc(sub) + '</span>' : '') + '</span></button>';
+  }).join('') + '</div>';
+}
+function answeredQ(num, title, key, value, multi){
+  const val = multi ? '<span class="val multi">' + value.map(v => '<span>' + esc(v) + '</span>').join('') + '</span>' : '<span class="val">' + esc(value) + '</span>';
+  return '<div class="q"><div class="q-head"><span class="q-num">Q' + num + '</span><h3>' + title + '</h3></div><div class="answered">' + val + '<button class="lnk" data-act="revise" data-q="' + key + '">改</button></div></div>';
+}
+function openQ(num, title, hint, body){
+  return '<div class="q current"><div class="q-head"><span class="q-num">Q' + num + '</span><h3>' + title + '</h3></div>' + (hint ? '<p class="hint">' + hint + '</p>' : '') + body + '</div>';
+}
+function r1HTML(){
+  let h = '';
+  if (!S.raw) return openingHTML();
+
+  h += '<div class="said"><span class="lab">你说</span>' + esc(S.raw) + '</div>';
+  h += '<div class="say"><span class="who">网页 agent</span><p>我复述一遍：' + esc(echoSentence()) + '先问几句跟生意有关的事，不碰技术。</p></div>';
+
+  h += S.audience
+    ? answeredQ(1, '主要给谁用？', 'audience', S.audience)
+    : openQ(1, '主要给谁用？', '不用想技术，想人。', optsHTML('audience', [['顾客'],['员工'],['自己'],['还说不清']]));
+  if (S.audience) {
+    h += S.action
+      ? answeredQ(2, '他们进来，第一件事做什么？', 'action', S.action)
+      : openQ(2, '他们进来，第一件事做什么？', '先做一件最要紧的，别都放上去。', optsHTML('action', [['预约'],['看价'],['联系'],['填表']]));
+  }
+  if (S.action) {
+    h += S.how
+      ? answeredQ(3, '现在没有它，这件事怎么做？', 'how', S.how)
+      : openQ(3, '现在没有它，这件事怎么做？', '说现在，不用想以后。', optsHTML('how', [['微信接龙'],['打电话'],['Excel'],['记本子'],['没做过']]));
+  }
+  if (S.how) {
+    if (S.done) {
+      h += answeredQ(4, '做完看到什么，你会说「对了」？', 'done', clip(S.done, 26));
+    } else {
+      h += openQ(4, '做完看到什么，你会说「对了」？', '写一件看得见的事。',
+        '<div class="freefield"><textarea id="doneInput" placeholder="比如：后台能看到明天要备多少斤……" aria-label="什么算做对了">' + esc(S.doneDraft) + '</textarea></div>' +
+        '<div class="examples">' + ['后台能看到明天要备多少斤。','街坊收到提醒，不用我挨个发。','卖完的能标一下，不卖空头。'].map(t => '<button class="ex" data-act="fill" data-target="done" data-text="' + esc(t) + '">' + esc(t) + '</button>').join('') + '</div>' +
+        '<button class="btn btn-primary btn-wide" data-act="submit-done">写好了</button>');
+    }
+  }
+  if (S.done) {
+    if (S.excludesDone) {
+      h += answeredQ(5, '有没有明确不要的？', 'excludes', S.excludes.length ? S.excludes : ['都没有'], true);
+    } else {
+      const d = S.excludeDraft;
+      h += openQ(5, '有没有明确不要的？', '可以都不选。这一项会写进「不做」清单。',
+        '<div class="opts">' + ['登录','支付','会员','后台','多语言','都没有'].map(v =>
+          '<button class="opt' + (d.indexOf(v) >= 0 ? ' on' : '') + '" data-act="toggle-exclude" data-v="' + v + '"><span>' + v + '</span>' + (d.indexOf(v) >= 0 ? '<span class="ok">' + ic('check', 12) + '</span>' : '') + '</button>'
+        ).join('') + '</div>' +
+        '<button class="btn btn-primary btn-wide" data-act="submit-excludes">就这些，继续</button>');
+    }
+  }
+  if (S.excludesDone) h += summaryHTML();
+  return h;
+}
+function summaryHTML(){
+  return '<div class="summary"><div class="eyebrow">第 1 段 · 说完了</div><h3>我听到的是这样</h3><ol class="three">' +
+    '<li><span class="i">1</span><span>' + esc(audienceWord()) + '在手机上看，' + (S.audience === '顾客' ? '不用登录。' : '只给他们看。') + '</span></li>' +
+    '<li><span class="i">2</span><span>他们进来第一件事：' + esc(S.action) + '。</span></li>' +
+    '<li><span class="i">3</span><span>现在用' + esc(S.how) + '。做完：' + esc(doneSentence()) + '</span></li>' +
+    '</ol><p class="note">说错一句，回上面点「改」。下一段只问载体和走向。</p>' +
+    '<button class="btn btn-primary btn-wide" data-act="round" data-r="2">接着说载体和走向 ' + ic('arrow', 14) + '</button></div>';
+}
+function roundHead(kicker, title){
+  return '<div class="roundhead"><span>' + kicker + '</span><span class="bar"></span><b>' + title + '</b></div>';
+}
+function recap1HTML(){
+  return '<div class="recap"><div class="recap-top"><span class="eyebrow">第 1 段 · 需求</span><button class="lnk" data-act="jump" data-r="1">回看 / 改</button></div>' +
+    '<p><b>给谁：</b>' + esc(audienceWord()) + '。<b>第一件事：</b>' + esc(S.action || '还没定') + '。</p>' +
+    '<p class="rnote">现在：' + esc(S.how || '还没说') + '。做完：' + esc(clip(doneSentence(), 40)) + '</p></div>';
+}
+function recap2HTML(){
+  return '<div class="recap"><div class="recap-top"><span class="eyebrow">第 2 段 · 载体</span><button class="lnk" data-act="jump" data-r="2">回看 / 改</button></div>' +
+    '<p><b>载体：</b>' + esc(S.carrier ? CARRIERS[S.carrier].name : '还没选') + '。<b>入口：</b>' + esc(S.found ? FOUND[S.found].label : '还没定') + '。<b>付钱：</b>' + esc(S.pay ? (S.pay === '要' ? '在线付' : S.pay === '不要' ? '到店付' : '说不清') : '还没定') + '。</p>' +
+    '<p class="rnote">要接上：' + esc(S.existingDone ? (S.existing.length ? S.existing.join(' / ') : '没有') : '还没问') + '</p></div>';
+}
+
+/* ================= 第 2 段 ================= */
+function r2HTML(){
+  let h = roundHead('第二段', '载体和走向');
+  if (!S.carrier) {
+    h += openQ('2.1', '你想让街坊在哪用它？', '四种都行。先看麻烦，再看时间。',
+      '<div class="carriers">' + Object.keys(CARRIERS).map(k => {
+        const c = CARRIERS[k];
+        return '<button class="carrier" data-act="carrier" data-v="' + k + '"><span class="carrier-top"><span class="mini"><span class="mh"><i></i><i></i></span><span class="mb acc"></span><span class="mb w2"></span><span class="mb w1"></span><span class="mb w2"></span></span><span class="cname">' + c.name + '</span><span class="t">' + c.time + '</span></span>' +
+          '<span class="cgo"><span class="k">' + ic('check', 9) + '</span><span>' + c.good + '</span></span>' +
+          '<span class="cbad"><span class="k">' + ic('alert', 9) + '</span><span>' + c.bad + '</span></span></button>';
+      }).join('') + '</div>');
+  } else {
+    const c = CARRIERS[S.carrier];
+    h += answeredQ('2.1', '你想让街坊在哪用它？', 'carrier', c.name);
+    h += '<div class="carrier-detail"><b>已选 ' + c.name + '。</b>' + c.more + ' 手机外壳已经跟着换了。</div>';
+  }
+  if (S.carrier) {
+    h += S.found
+      ? answeredQ('2.2', '顾客怎么找到你？', 'found', FOUND[S.found].label)
+      : openQ('2.2', '顾客怎么找到你？', '选一个你现在就能做到的。',
+        optsHTML('found', [['qr', '扫码', '门口贴个码，来店里的人顺手扫'], ['link', '发链接', '你发到街坊群，点开就能用'], ['search', '搜得到', '微信里搜「阿香水果」，能找到']]));
+  }
+  if (S.found) {
+    h += S.pay
+      ? answeredQ('2.3', '要不要在线付钱？', 'pay', PAY_LABEL[S.pay])
+      : openQ('2.3', '要不要在线付钱？', '不说术语。看两张小图就知道。',
+        optsHTML('pay', [['要','要，先在手机上付'],['不要','不要，到店再付'],['说不清','说不清，给我看图']]) +
+        (S.payUnsure ? '<p class="hint" style="margin:8px 0 0">两种都常见。点一张图，手机上就按它变。</p>' + payScenarios() : ''));
+  }
+  if (S.pay) {
+    h += S.existingDone
+      ? answeredQ('2.4', '有没有现成东西要接？', 'existing', S.existing.length ? S.existing : ['没有'], true)
+      : openQ('2.4', '有没有现成东西要接？', '有就点，没有就点「没有」。',
+        '<div class="opts">' + EXISTING.map(v =>
+          '<button class="opt' + (S.existingDraft.indexOf(v) >= 0 ? ' on' : '') + '" data-act="toggle-existing" data-v="' + v + '"><span>' + v + '</span>' + (S.existingDraft.indexOf(v) >= 0 ? '<span class="ok">' + ic('check', 12) + '</span>' : '') + '</button>'
+        ).join('') + '</div>' +
+        '<button class="btn btn-primary btn-wide" data-act="submit-existing">就这些，继续</button>');
+  }
+  if (r2done()) {
+    h += '<button class="btn btn-primary btn-wide" data-act="round" data-r="3">去第 3 段：技术细节 ' + ic('arrow', 14) + '</button>';
+  }
+  return h;
+}
+function payScenarios(){
+  const artA = '<svg viewBox="0 0 120 40" width="100%" height="40" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M6 35h108"/><path d="M14 35V20h30v15M19 20v-4h20v4"/><circle cx="26" cy="29" r="4"/><path d="M88 15h20v20H88zM93 21h10M93 26h6"/><path d="M59 22h10v8H59z"/><path d="M62 25h4"/></svg>';
+  const artB = '<svg viewBox="0 0 120 40" width="100%" height="40" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><rect x="42" y="4" width="20" height="32" rx="3"/><path d="M47 9h10M49 30h6"/><circle cx="52" cy="21" r="4"/><path d="M50.5 21l1.2 1.2 2-2.2"/><path d="M78 12h14v12H78zM82 16h6"/><path d="M76 28h18"/></svg>';
+  return '<div class="scenarios">' +
+    '<button class="scenario' + (S.pay === '不要' ? ' on' : '') + '" data-act="answer" data-q="pay" data-v="不要"><span class="art">' + artA + '</span><b>到店再付</b><span>货拿到手再给钱。改时间也方便。</span></button>' +
+    '<button class="scenario' + (S.pay === '要' ? ' on' : '') + '" data-act="answer" data-q="pay" data-v="要"><span class="art">' + artB + '</span><b>先在手机上付</b><span>先付钱，临时不来也不白留货。</span></button>' +
+    '</div>';
+}
+function r2done(){ return !!(S.carrier && S.found && S.pay && S.existingDone); }
+
+/* ================= 第 3 段 ================= */
+function r3HTML(){
+  let h = roundHead('第三段', '技术细节');
+  h += S.experience
+    ? answeredQ('3.1', '你之前自己做过网站或小程序吗？', 'experience', EXP[S.experience])
+    : openQ('3.1', '你之前自己做过网站或小程序吗？', '没有也不影响。我按你的经验换说法。',
+      optsHTML('experience', [['none','没做过'],['tools','用过现成工具'],['dev','有技术同事']], 3));
+  if (!S.experience) return h;
+
+  h += '<div class="say" style="margin-top:10px"><span class="who">网页 agent</span><p>' + expHint() + '</p></div>';
+
+  ['data','account','budget'].forEach((k, i) => { h += techCardHTML(k, i + 1); });
+
+  if (S.experience && !techPendingList().length) {
+    h += '<button class="btn btn-primary btn-wide" data-act="round" data-r="4">去确认单 ' + ic('arrow', 14) + '</button>';
+  }
+  return h;
+}
+function expHint(){
+  if (S.experience === 'none') return '下面的词你不用懂。每张卡左边是好处，右边是麻烦。看不懂就点最下面那个大按钮，交给我。';
+  if (S.experience === 'tools') return '你用过表单或建站工具。这些选择对你眼熟，按习惯来就行。';
+  return '你有技术同事。你可以自己定，也可以交给我，开工前他还能改。';
+}
+function techCardHTML(k, n){
+  const t = TECH[k];
+  const delegated = S.delegated[k];
+  const chosen = S.tech[k];
+  let body = '';
+  if (delegated) {
+    body = '<div class="delegated-note"><b>已交给运营者。</b><br>我会带 3 个选项和推荐，开工前你点一下就行。</div>';
+  } else {
+    body = t.opts.map(o =>
+      '<button class="trow' + (chosen === o.v ? ' on' : '') + '" data-act="tech" data-k="' + k + '" data-v="' + o.v + '">' +
+      '<span class="tname">' + o.name + (o.rec ? '<span class="rec">推荐</span>' : '') + '<span class="note">' + o.note + '</span></span>' +
+      '<span class="tcell"><span class="k">' + ic('check', 9) + '</span><span>' + o.pro + '</span></span>' +
+      '<span class="tcell bad"><span class="k">' + ic('alert', 9) + '</span><span>' + o.con + '</span></span></button>'
+    ).join('');
+  }
+  return '<div class="tech' + (delegated ? ' delegated' : '') + '">' +
+    '<div class="tech-head"><span class="n">0' + n + '</span><h4>' + t.title + '</h4><span class="st">' + (delegated ? '等你定' : chosen ? '已选' : '选一个') + '</span></div>' +
+    '<div class="tech-hint" style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:4px">' + t.hint + '</div>' +
+    body +
+    '<div class="actions">' +
+    (delegated
+      ? '<button class="btn-delegate" disabled>已交给运营者</button><button class="lnk undo" data-act="undelegate" data-k="' + k + '">我自己选</button>'
+      : '<button class="btn-delegate" data-act="delegate" data-k="' + k + '">你帮我定，交给运营者</button>') +
+    '</div>' +
+    (chosen ? '<p class="fine" style="font-size:9px;color:var(--faint);margin-top:5px">开工前运营者会再确认一次。</p>' : '') +
+    '</div>';
+}
+
+/* ================= 确认单 ================= */
+function lineRow(l, i){
+  const sel = S.selLine === l.key;
+  const editing = S.editing === l.key;
+  return '<li class="cline' + (sel ? ' sel' : '') + '" data-act="sel-line" data-k="' + l.key + '">' +
+    '<div class="cline-top"><span class="n">0' + (i + 1) + '</span><span class="lab">' + l.label + '</span>' +
+    '<button class="lnk edit" data-act="edit-line" data-k="' + l.key + '">' + (editing ? '正在改' : '改') + '</button></div>' +
+    (editing
+      ? '<div class="editbox"><input data-line-input data-k="' + l.key + '" value="' + esc(l.text) + '" aria-label="改' + l.label + '"><button class="btn btn-sm" data-act="save-line" data-k="' + l.key + '">存</button></div>'
+      : '<div class="txt">' + esc(l.text) + '</div>') +
+    '</li>';
+}
+function noListHTML(){
+  if (S.excludes.length) {
+    return '<div class="nolist"><div class="lab">不做</div><div class="chips">' + S.excludes.map(x => '<span class="no">不做' + esc(x) + '</span>').join('') + '</div></div>';
+  }
+  return '<div class="nolist"><div class="lab">不做</div><span class="none">客户没提。按最小做：不登录、不支付、不做会员。</span></div>';
+}
+function confirmActionsHTML(){
+  const acts = [
+    ['建工单', '#127 · ' + clip(lineText('task').replace(/[。，]/g, ' '), 18)],
+    ['建仓库', 'axiang-fruit · 私有'],
+    ['写需求', '需求.md · 5 行确认单'],
+    ['推微信', '已进队列']
+  ];
+  let h = '<div class="acts">';
+  for (let i = 0; i < S.actions; i++) {
+    h += '<div class="act done"><span class="ic">' + ic('check', 13) + '</span><span>' + acts[i][0] + '</span><span class="t">' + esc(acts[i][1]) + '</span></div>';
+  }
+  h += '</div>';
+  if (S.actions >= 4) {
+    h += '<div class="goto"><p>四件事做完了。工单在队列里，机器都在工厂视角。</p><button class="btn btn-primary btn-wide" style="margin-top:0" data-act="to-factory">切到工厂视角，看机器接手 ' + ic('arrow', 14) + '</button></div>';
+  }
+  return h;
+}
+function confirmPanelHTML(){
+  const lines = derivedLines();
+  return '<div class="confirm">' +
+    '<div class="eyebrow">第 4 步 · 确认单</div>' +
+    '<h2>' + (!S.confirmed ? '就按这个来？' : S.actions >= 4 ? '已经进队列' : '正在建单') + '</h2>' +
+    '<p class="lede">' + (!S.confirmed ? '点一行，右边手机上对应的块会亮。每行都能改。' : S.actions >= 4 ? '下面四件事已经发生。切到工厂视角，看机器接着做什么。' : '四件事正在依次发生，马上就好。') + '</p>' +
+    '<ol class="clines">' + lines.map(lineRow).join('') + '</ol>' +
+    noListHTML() +
+    (S.confirmed
+      ? confirmActionsHTML()
+      : '<div class="confirm-actions"><button class="btn btn-primary btn-wide" data-act="confirm">就按这个来</button><p class="fine">点了会建工单、建仓库、写需求、推微信。工单跟着这 5 行走。</p></div>') +
+    '</div>';
+}
+
+/* ================= 工厂视角 ================= */
+function skChip(name, type){ return '<span class="sk" data-t="' + type + '">' + esc(name) + '</span>'; }
+function pipeHTML(){
+  return '<div class="pipe">' + FLOW.map((st, i) =>
+    '<button class="pstep' + (S.detail.kind === 'step' && S.detail.i === i ? ' on' : '') + '" data-act="step" data-i="' + i + '">' +
+    '<span class="n">0' + (i + 1) + '</span><span class="pname">' + st.name + '</span>' +
+    '<span class="out">' + esc(st.out) + '</span>' +
+    '<span class="who">' + esc(st.who) + '</span>' +
+    '<span class="skrow">' + st.skills.map(x => skChip(x[0], x[1])).join('') + '</span>' +
+    '</button>'
+  ).join('') + '</div>';
+}
+function blocksHTML(){
+  const gateDone = GATES.length - gatePending().length;
+  return '<article class="block"><div class="block-head"><span class="n">01</span><h3>一次性装好</h3><span class="note">新仓库开一次</span></div>' +
+    '<div class="once">' + skChip('/setup-matt-pocock-skills', 'direct') + skChip('gh label create', 'direct') + '</div>' +
+    '<p class="desc">装技能，建五个固定标签。以后每张单都复用，不重装。</p></article>' +
+    '<article class="block"><div class="block-head"><span class="n">02</span><h3>条件触发</h3><span class="note">遇到才用</span></div>' +
+    '<div class="cond"><span>' + skChip('/wayfinder', 'cond') + '</span><span class="why">需求太大，一屏拆不动。先拆成几期再进工厂。</span></div>' +
+    '<div class="cond"><span>' + skChip('/domain-modeling', 'cond') + '</span><span class="why">术语摇摆，或者一个决定以后很难改。留一份词汇表或 ADR。</span></div>' +
+    '<div class="cond"><span>' + skChip('/retro', 'cond') + '</span><span class="why">合并后抽样，改工厂自己的指令，不动这张单。</span></div></article>' +
+    '<article class="block" id="gateBlock"><div class="block-head"><span class="n">03</span><h3>技术闸门</h3><span class="note">' + gateDone + ' / 5 已定 · 你不回就停着</span></div>' +
+    '<p class="desc">客户第三段的意思只当推荐值。每一条都要你点一下，才算开工。</p>' +
+    GATES.map((g, i) => {
+      const picked = S.gate[g.id];
+      const hint = g.from && (S.tech[g.from] || S.delegated[g.from]) ? '<span class="from">客户意思：' + esc(techHint(g.from)) + '</span>' : '';
+      return '<div class="gate"><div class="gate-q"><span class="n">0' + (i + 1) + '</span><b>' + g.q + '</b>' + hint +
+        '<span class="count">' + (picked === undefined ? '待定' : '已定') + '</span></div>' +
+        '<div class="gopts">' + g.opts.map((o, j) =>
+          '<button class="gopt' + (picked === j ? ' on' : '') + '" data-act="gate" data-g="' + g.id + '" data-v="' + j + '">' + esc(o[0]) + (o[1] ? '<em>推荐</em>' : '') + '</button>'
+        ).join('') + '</div>' +
+        '</div>';
+    }).join('') + '<div class="remind">没回就停着 · 每 24 小时提醒一次 · 客户看不到这一页</div></article>';
+}
+function techHint(k){
+  if (k === 'data') return S.tech.data ? TECH_LABEL.data[S.tech.data] : '交给你定';
+  if (k === 'account') return S.tech.account ? TECH_LABEL.account[S.tech.account] : '交给你定';
+  if (k === 'budget') return S.tech.budget ? TECH_LABEL.budget[S.tech.budget] : '交给你定';
+  return '交给你定';
+}
+function confirmLinesBlock(){
+  return '<div class="dsec"><h4>' + (S.confirmed ? '这张单的确认单' : '草稿 · 客户还没确认') + '</h4><ol class="dlines">' + derivedLines().map(l =>
+    '<li><span class="dlab">' + l.label + '</span><span>' + esc(l.text) + '</span></li>'
+  ).join('') + '</ol><p class="dno">不做：' + esc(S.excludes.length ? S.excludes.join(' / ') : '按最小做：不登录、不支付、不做会员') + '</p></div>';
+}
+function detailStepHTML(i){
+  const st = FLOW[i];
+  const here = i === 0;
+  return '<aside class="detail dpulse"><div class="detail-top"><span class="eyebrow">第 ' + (i + 1) + ' 步 / 7</span><span class="tagnote" style="font-size:9px;color:var(--faint)">' + esc(st.who) + '</span></div>' +
+    '<h2>' + st.name + '</h2><p class="sub">' + esc(st.note) + '</p>' +
+    '<div class="skrow">' + st.skills.map(x => skChip(x[0], x[1])).join('') + '</div>' +
+    '<div class="dsec"><h4>输入</h4><p>' + esc(st.input) + '</p></div>' +
+    '<div class="dsec"><h4>产出</h4><p>' + esc(st.output) + '</p></div>' +
+    '<div class="dsec"><h4>谁负责</h4><div class="dwho"><span class="av">' + (st.who === '你' ? ic('user', 11) : st.who.indexOf('客户') >= 0 ? ic('user', 11) : ic('factory', 11)) + '</span>' + esc(st.who) + '</div></div>' +
+    (here ? confirmLinesBlock() : '') +
+    (here ? '<div class="dnote">' + (S.confirmed ? '客户已经确认，这一步的产出就是下面那条工单。' : '客户现在在这里。' + stageMeta() + '。') + '</div>' : '') +
+    '</aside>';
+}
+function detailStateHTML(i){
+  const st = STATES[i];
+  const cur = currentState();
+  const badge = i === cur ? '当前' : i < cur ? '已过' : '未到';
+  const badgeCls = i === cur ? (i === 3 ? 'wait' : '') : i < cur ? 'done' : 'draft';
+  let extra = '';
+  if (i === 3) {
+    const left = gatePending().length;
+    extra = '<div class="dnote">还有 ' + left + ' 条技术问题没回。' + (left ? '流程停在这里，24 小时提醒一次。' : '都点完了，可以开工。') + '</div>' +
+      (left ? '<button class="btn btn-sm" data-act="jump-gate" style="margin-top:8px">去技术闸门</button>' : '');
+  }
+  if (i > cur && !S.confirmed) extra = '<div class="dnote">客户还没点确认，这个状态还没到。</div>';
+  return '<aside class="detail dpulse"><div class="detail-top"><span class="eyebrow">状态 ' + (i + 1) + ' / 7</span><span class="tstatus ' + badgeCls + '">' + badge + '</span></div>' +
+    '<h2>' + st.name + '</h2><p class="sub">' + esc(st.sub) + '</p>' +
+    '<div class="skrow">' + st.skills.map(x => skChip(x[0], x[1])).join('') + '</div>' +
+    '<div class="dsec"><h4>输入</h4><p>' + esc(st.input) + '</p></div>' +
+    '<div class="dsec"><h4>产出</h4><p>' + esc(st.output) + '</p></div>' +
+    '<div class="dsec"><h4>谁负责</h4><div class="dwho"><span class="av">' + (st.who.indexOf('客户') >= 0 || st.who === '你' || st.who.indexOf('你') >= 0 ? ic('user', 11) : ic('factory', 11)) + '</span>' + esc(st.who) + '</div></div>' +
+    (i === currentState() ? '<div class="dsec"><h4>这张单</h4><p>' + esc(ticketTitle()) + '</p></div>' : '') +
+    extra + '</aside>';
+}
+function detailHTML(){
+  if (S.detail.kind === 'state') return detailStateHTML(S.detail.i);
+  return detailStepHTML(S.detail.i || 0);
+}
+function statusBandHTML(){
+  const cur = currentState();
+  return '<section class="statusband" id="statusBand"><div class="sb-head"><div class="l"><h3>状态带</h3><span class="note">' + (S.confirmed ? '点任一状态，看这一步的输入、产出、谁负责。' : '客户还没点确认，现在停在草稿。') + '</span></div>' +
+    '<div class="sim">' + (S.confirmed && S.actions >= 4 && S.sim < 3 ? '<button class="btn btn-sm" data-act="sim">演示：推进状态 ' + ic('arrow', 12) + '</button>' : '') + '</div></div>' +
+    '<div class="states">' + STATES.map((s, i) =>
+      '<button class="state' + (i === cur ? ' on' : '') + (i < cur ? ' done' : '') + (S.detail.kind === 'state' && S.detail.i === i ? ' sel' : '') + '" data-act="state" data-i="' + i + '"><span class="i">0' + (i + 1) + '</span><span class="nm">' + s.name + '</span></button>'
+    ).join('') + '</div>' +
+    '<div class="sb-foot"><span class="dot"></span>等你定时，流程停住。24 小时没回，提醒一次。</div></section>';
+}
+function factoryView(){
+  const cur = currentState();
+  return '<main class="factory">' +
+    '<div class="ticketbar"><span class="id">ISSUE #127</span><b>' + esc(ticketTitle()) + '</b><span class="client">客户：阿香水果店 · 文昌路</span><span class="grow"></span>' +
+    '<button class="tstatus ' + (cur === 0 ? 'draft' : cur === 3 ? 'wait' : '') + '" data-act="jump-status" title="看状态带" aria-label="查看状态带">' + STATES[cur].name + ' ' + ic('down', 9) + '</button></div>' +
+    '<div class="fhead"><div class="l"><h2>一条单怎么走</h2><span class="note">六步流水线加验收。点一步，右边看输入和产出。</span></div>' +
+    '<div class="legend-sk"><span class="sk" data-t="remix">改造后用</span><span class="sk" data-t="direct">直接调</span><span class="sk" data-t="cond">条件触发</span></div></div>' +
+    pipeHTML() +
+    '<div class="fgrid"><div class="blocks">' + blocksHTML() + '</div>' + detailHTML() + '</div>' +
+    statusBandHTML() +
+    '</main>';
+}
+
+/* ================= 页头 ================= */
+function stageNavHTML(){
+  const cur = stageNum();
+  const items = [['需求'],['载体'],['技术'],['确认']];
+  return '<nav class="stages" aria-label="阶段跳转">' + items.map((x, i) => {
+    const n = i + 1;
+    return '<button class="stg' + (cur === n ? ' on' : '') + (cur > n ? ' done' : '') + '" data-act="jump" data-r="' + n + '"><span class="n">0' + n + '</span>' + x[0] + '</button>';
+  }).join('') + '</nav>';
+}
+function topHTML(){
+  return '<header class="top"><div class="brand"><div class="mark">' + ic('mark', 19) + '</div>' +
+    '<div class="title"><h1>说清楚，再开工</h1><p>客户需求 → 自动软件工厂 · 可点原型 <span class="proto">PROTOTYPE</span></p></div></div>' +
+    '<div class="top-right"><div class="top-row"><div class="seg" role="group" aria-label="视角切换">' +
+    '<button class="' + (S.view === 'customer' ? 'on' : '') + '" data-act="view" data-v="customer">客户视角</button>' +
+    '<button class="' + (S.view === 'factory' ? 'on' : '') + '" data-act="view" data-v="factory">工厂视角</button></div>' +
+    '<button class="btn btn-ghost btn-sm" data-act="replay">' + ic('replay', 12) + '重播</button></div>' +
+    stageNavHTML() +
+    '</div></header>';
+}
+function customerView(){
+  const isConfirm = S.round === 'confirm';
+  const body = isConfirm ? confirmPanelHTML()
+    : S.round === 2 ? recap1HTML() + r2HTML()
+    : S.round === 3 ? recap1HTML() + recap2HTML() + r3HTML()
+    : r1HTML();
+  return '<main class="customer' + (isConfirm ? ' confirm' : '') + '">' +
+    '<section class="talk" aria-label="对话"><div class="talk-head"><span class="live"></span><b>' + (isConfirm ? '确认单' : '和网页 agent 说') + '</b><span class="meta">' + (isConfirm ? '5 行 · 点一行看手机' : stageMeta()) + '</span></div>' +
+    '<div class="talk-scroll" id="talkScroll" aria-live="polite">' + body + '</div></section>' +
+    '<section class="visual"><div class="visual-head"><div class="r"><span class="tag">' + (isConfirm ? '成品预览 · 点手机上的块试试' : '成品预览 · 每答一题变一次') + '</span></div>' +
+    '<div class="visual-note">' + (S.variant === 'A' ? 'A · 双手机斜叠' : 'B · 单手机 + 对照条') + '</div></div>' +
+    phonesHTML() + ledgerHTML() + '</section></main>';
+}
+function modalHTML(){
+  if (!S.compareOpen) return '';
+  const now = [
+    S.how === 'Excel' ? 'Excel 一行行敲，改一次错一次。' : S.how === '打电话' ? '电话一个接一个，记在纸上。' : S.how === '记本子' ? '本子上记，字迹认不出。' : S.how === '没做过' ? '现在还没开始做。' : '微信群接龙，刷上去就看不见。',
+    '你一个个回「还有」「几点来」。',
+    S.pay === '要' ? '收钱走一个码，对账另记。' : '收现金，晚上自己对账。'
+  ];
+  const next = [
+    '街坊点开手机，挑一个时间。',
+    '你早上看到备货清单。',
+    S.pay === '要' ? '他先付钱，到店取货。' : '他到店拿货，到店付钱。'
+  ];
+  return '<div class="modal" data-act="modal-bg"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">' +
+    '<div class="sheet-top"><div><div class="eyebrow">第 3 问答完 · 看一眼</div><h2 id="cmpTitle">今天，和以后</h2></div><button class="close" data-act="close-compare" aria-label="关闭">' + ic('x', 14) + '</button></div>' +
+    '<div class="cmp"><div class="cmp-col now"><span class="cmp-tag">今天</span><div class="cmp-title">' + esc(S.how || '现在') + '：你在中间转</div><ol>' + now.map(x => '<li><span class="n">·</span><span>' + esc(x) + '</span></li>').join('') + '</ol></div>' +
+    '<div class="cmp-col next"><span class="cmp-tag">以后</span><div class="cmp-title">三步，你只看早上那一眼</div><ol>' + next.map((x, i) => '<li><span class="n">' + (i + 1) + '</span><span>' + esc(x) + '</span></li>').join('') + '</ol></div></div>' +
+    '<div class="sheet-foot"><span class="fine">右边的手机，就是这三步的成品。接着答，它会一件件长出来。</span><button class="btn btn-primary" data-act="close-compare">看完了，接着问 ' + ic('arrow', 14) + '</button></div>' +
+    '</div></div>';
+}
+
+/* ================= 渲染 ================= */
+function render(){
+  const prev = $('#talkScroll');
+  const keep = prev ? prev.scrollTop : 0;
+  const app = $('#app');
+  app.innerHTML = topHTML() + (S.view === 'factory' ? factoryView() : customerView()) + modalHTML();
+  document.body.classList.toggle('is-factory', S.view === 'factory');
+  paintVariantBar();
+  const ts = $('#talkScroll');
+  if (ts) {
+    if (S.scrollBottom) ts.scrollTop = ts.scrollHeight;
+    else if (S.talkTop) ts.scrollTop = 0;
+    else ts.scrollTop = keep;
+  }
+  S.scrollBottom = false;
+  S.talkTop = false;
+  if (S.round === 'confirm' && S.editing) {
+    const inp = $('[data-line-input]');
+    if (inp) { inp.focus(); const n = inp.value.length; try { inp.setSelectionRange(n, n); } catch (e) {} }
+  }
+}
+function paintVariantBar(){
+  const key = $('#variantKey');
+  if (key) key.textContent = S.variant + ' · ' + (S.variant === 'A' ? '双手机斜叠' : '单手机 + 对照条');
+}
+
+/* ================= 动作 ================= */
+function toast(msg){
+  const t = $('#toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2800);
+}
+function clearTimers(){ if (actionTimer) { clearInterval(actionTimer); actionTimer = null; } }
+function submitRaw(){
+  const ta = $('#rawInput');
+  const v = ((ta ? ta.value : '') || S.rawDraft || '').trim();
+  if (v.length < 4) { toast('再多写一句，哪怕只有五个字。'); if (ta) ta.focus(); return; }
+  S.raw = v; S.rawDraft = v;
+  S.industry = S.industryHint || guessIndustry(v);
+  S.scrollBottom = true;
+  render();
+}
+function answer(key, v){
+  if (key === 'pay' && v === '说不清') {
+    S.payUnsure = true; S.pay = null; S.scrollBottom = true; render(); return;
+  }
+  S[key] = v;
+  if (key === 'how' && !S.compareSeen) { S.compareOpen = true; S.compareSeen = true; }
+  if (key === 'pay') {
+    S.payUnsure = false;
+    if (v === '要' && S.excludes.indexOf('支付') >= 0) {
+      S.excludes = S.excludes.filter(x => x !== '支付');
+      toast('已从「不做」里拿掉支付。');
+    }
+    if (v !== '说不清' && S.pay !== '说不清') { /* keep */ }
+  }
+  S.scrollBottom = true;
+  render();
+}
+function revise(key){
+  if (key === 'carrier') { S.carrier = null; S.scrollBottom = false; render(); return; }
+  if (key === 'found') { S.found = null; S.scrollBottom = false; render(); return; }
+  if (key === 'pay') { S.pay = null; S.payUnsure = false; S.scrollBottom = false; render(); return; }
+  if (key === 'existing') { S.existingDone = false; S.existingDraft = S.existing.slice(); S.scrollBottom = false; render(); return; }
+  if (key === 'experience') { S.experience = null; S.scrollBottom = false; render(); return; }
+  const order = ['audience','action','how','done','excludes'];
+  const i = order.indexOf(key);
+  if (i < 0) return;
+  for (let j = i; j < order.length; j++) {
+    if (order[j] === 'done') { S.done = null; S.doneDraft = ''; }
+    else if (order[j] === 'excludes') { S.excludes = []; S.excludeDraft = []; S.excludesDone = false; }
+    else S[order[j]] = null;
+  }
+  S.scrollBottom = false;
+  render();
+  toast('这一题重答。后面的会跟着清掉。');
+}
+function toggleExclude(v){
+  let d = S.excludeDraft.slice();
+  if (v === '都没有') {
+    d = d.indexOf('都没有') >= 0 ? [] : ['都没有'];
+  } else {
+    d = d.filter(x => x !== '都没有');
+    d = d.indexOf(v) >= 0 ? d.filter(x => x !== v) : d.concat([v]);
+  }
+  S.excludeDraft = d;
+  render();
+}
+function toggleExisting(v){
+  let d = S.existingDraft.slice();
+  if (v === '没有') {
+    d = d.indexOf('没有') >= 0 ? [] : ['没有'];
+  } else {
+    d = d.filter(x => x !== '没有');
+    d = d.indexOf(v) >= 0 ? d.filter(x => x !== v) : d.concat([v]);
+  }
+  S.existingDraft = d;
+  render();
+}
+function submitExcludes(){
+  S.excludes = S.excludeDraft.filter(x => x !== '都没有');
+  S.excludesDone = true;
+  S.scrollBottom = true;
+  render();
+}
+function submitExisting(){
+  S.existing = S.existingDraft.filter(x => x !== '没有');
+  S.existingDone = true;
+  S.scrollBottom = true;
+  render();
+}
+function submitDone(){
+  const ta = $('#doneInput');
+  const v = ((ta ? ta.value : '') || S.doneDraft || '').trim();
+  if (v.length < 2) { toast('写一句看得见的完成，比如「后台能看到备货清单」。'); if (ta) ta.focus(); return; }
+  S.done = v; S.doneDraft = v;
+  S.scrollBottom = true;
+  render();
+}
+function goRound(r){
+  if (r === 2) {
+    if (!S.excludesDone) return;
+    S.round = 2;
+  } else if (r === 3) {
+    if (!r2done()) return;
+    S.round = 3;
+  } else if (r === 4) {
+    if (!S.experience || techPendingList().length) return;
+    S.round = 'confirm';
+  }
+  S.selLine = null; S.editing = null; S.scrollBottom = false; S.talkTop = true;
+  render();
+  window.scrollTo({top:0, behavior:'auto'});
+}
+function ensureRound1(){
+  if (!S.raw) { S.raw = SAMPLES[0]; S.rawDraft = S.raw; S.industry = '预约'; }
+  if (!S.audience) S.audience = '顾客';
+  if (!S.action) S.action = '预约';
+  if (!S.how) S.how = '微信接龙';
+  if (!S.done) S.done = '后台能看到明天要备多少斤，街坊收到一条提醒。';
+  if (!S.excludesDone) { S.excludes = ['登录','会员']; S.excludesDone = true; }
+}
+function ensureRound2(){
+  if (!S.carrier) S.carrier = 'miniapp';
+  if (!S.found) S.found = 'qr';
+  if (!S.pay) { S.pay = '不要'; S.payUnsure = false; }
+  if (!S.existingDone) { S.existing = ['微信群']; S.existingDone = true; }
+}
+function ensureRound3(){
+  if (!S.experience) S.experience = 'none';
+  ['data','account','budget'].forEach(k => { if (!techResolved(k)) S.delegated[k] = true; });
+}
+function jumpTo(r){
+  const wasConfirmed = S.confirmed;
+  clearTimers();
+  S.view = 'customer';
+  S.compareOpen = false;
+  if (r < 4) { S.confirmed = false; S.actions = 0; S.sim = 0; }
+  S.editing = null; S.selLine = null;
+  S.detail = {kind:'step', i:0};
+  if (r >= 2) ensureRound1();
+  if (r >= 3) ensureRound2();
+  if (r >= 4) ensureRound3();
+  S.round = r >= 4 ? 'confirm' : r;
+  S.scrollBottom = false; S.talkTop = true;
+  render();
+  window.scrollTo({top:0, behavior:'auto'});
+  if (r === 1) toast('从头看。左边可以直接写。');
+  else toast(wasConfirmed && r === 4 ? '这张单已经确认过，工单在队列里。' : '为了看后面的屏，前面的答案补了默认值。');
+}
+function replay(){
+  clearTimers();
+  const variant = S.variant;
+  S = blank();
+  S.variant = variant;
+  S.talkTop = true;
+  document.body.style.overflow = '';
+  render();
+  window.scrollTo({top:0, behavior:'auto'});
+  toast('回到第 1 步了。所有答案清空。');
+}
+function setVariant(v){
+  S.variant = v;
+  writeVariant(v);
+  paintVariantBar();
+  if (S.view === 'customer') render();
+  else toast('A/B 只影响客户视角的右侧。现在看的是工厂。');
+}
+function confirmPlan(){
+  if (S.confirmed) return;
+  S.confirmed = true; S.actions = 0; S.selLine = null; S.editing = null;
+  S.scrollBottom = false; S.talkTop = true;
+  render();
+  clearTimers();
+  let n = 0;
+  actionTimer = setInterval(() => {
+    n += 1;
+    S.actions = n;
+    S.scrollBottom = true;
+    if (S.view === 'customer') render();
+    if (n >= 4) { clearTimers(); }
+  }, 560);
+}
+function fillGates(){
+  GATES.forEach(g => {
+    if (S.gate[g.id] === undefined) {
+      let idx = g.opts.findIndex(o => o[1]);
+      if (idx < 0) idx = 0;
+      S.gate[g.id] = idx;
+    }
+  });
+}
+function simAdvance(){
+  if (!S.confirmed) { toast('先让客户点「就按这个来」。'); return; }
+  if (S.actions < 4) { toast('四件事还没跑完，等一下。'); return; }
+  if (S.sim >= 3) { toast('已经到完成了。重播可以再走一遍。'); return; }
+  S.sim += 1;
+  if (S.sim === 1) {
+    fillGates();
+    toast('按推荐点完技术闸门，机器开工（模拟）。');
+  } else if (S.sim === 2) {
+    toast('PR 和四样证据到了，等你验收（模拟）。');
+  } else {
+    toast('验收通过，合进主干（模拟）。');
+  }
+  S.detail = {kind:'state', i:currentState()};
+  render();
+}
+function saveLine(){
+  S.editing = null;
+  render();
+}
+function applyLineInput(inp){
+  const k = inp.dataset.k;
+  const v = inp.value;
+  if (v.trim()) S.lines[k] = v; else delete S.lines[k];
+  $$('[data-el-text="' + k + '"]').forEach(n => { n.textContent = v.trim() ? v : ''; });
+}
+function collectLineText(){
+  const inp = $('[data-line-input]');
+  if (inp) {
+    if (inp.value.trim()) S.lines[inp.dataset.k] = inp.value; else delete S.lines[inp.dataset.k];
+  }
+}
+
+/* ================= 事件 ================= */
+document.addEventListener('click', function(e){
+  const actEl = e.target.closest('[data-act]');
+  if (actEl) {
+    const a = actEl.dataset.act;
+    if (a === 'modal-bg' && e.target !== actEl) return;
+    if (a === 'sel-line') {
+      if (e.target.closest('[data-act="edit-line"]') || e.target.closest('[data-act="save-line"]')) return;
+      if (e.target.tagName === 'INPUT') return;
+      if (S.round === 'confirm') { S.selLine = actEl.dataset.k; S.editing = null; render(); }
+      return;
+    }
+    if (a === 'edit-line') {
+      collectLineText();
+      S.editing = actEl.dataset.k; S.selLine = actEl.dataset.k;
+      render();
+      return;
+    }
+    if (a === 'save-line') { collectLineText(); S.editing = null; render(); return; }
+    if (a === 'fill') {
+      const target = actEl.dataset.target;
+      const text = actEl.dataset.text || '';
+      if (target === 'raw') {
+        S.rawDraft = text;
+        if (actEl.dataset.ind) S.industryHint = actEl.dataset.ind;
+        const ta = $('#rawInput');
+        if (ta) { ta.value = text; ta.focus(); }
+      } else if (target === 'done') {
+        S.doneDraft = text;
+        const ta = $('#doneInput');
+        if (ta) { ta.value = text; ta.focus(); }
+      }
+      return;
+    }
+    switch (a) {
+      case 'submit-raw': submitRaw(); return;
+      case 'answer': answer(actEl.dataset.q, actEl.dataset.v); return;
+      case 'revise': revise(actEl.dataset.q); return;
+      case 'toggle-exclude': toggleExclude(actEl.dataset.v); return;
+      case 'toggle-existing': toggleExisting(actEl.dataset.v); return;
+      case 'submit-excludes': submitExcludes(); return;
+      case 'submit-existing': submitExisting(); return;
+      case 'submit-done': submitDone(); return;
+      case 'round': goRound(parseInt(actEl.dataset.r, 10)); return;
+      case 'carrier':
+        S.carrier = actEl.dataset.v;
+        S.scrollBottom = false;
+        render();
+        return;
+      case 'experience':
+        S.experience = actEl.dataset.v;
+        S.scrollBottom = true;
+        render();
+        return;
+      case 'tech': {
+        const k = actEl.dataset.k;
+        S.tech[k] = actEl.dataset.v;
+        S.delegated[k] = false;
+        S.scrollBottom = false;
+        render();
+        return;
+      }
+      case 'delegate': {
+        const k = actEl.dataset.k;
+        S.delegated[k] = true;
+        S.tech[k] = null;
+        S.scrollBottom = false;
+        render();
+        toast('已交给运营者。我会带 3 个选项和推荐。');
+        return;
+      }
+      case 'undelegate': {
+        const k = actEl.dataset.k;
+        S.delegated[k] = false;
+        render();
+        return;
+      }
+      case 'confirm': collectLineText(); confirmPlan(); return;
+      case 'to-factory':
+        S.view = 'factory'; S.detail = {kind:'state', i:currentState()};
+        render(); window.scrollTo({top:0, behavior:'auto'});
+        toast('工厂视角。点流水线，或点右上角状态看状态带。');
+        return;
+      case 'close-compare':
+        S.compareOpen = false; S.compareSeen = true; S.scrollBottom = true; render();
+        return;
+      case 'jump':
+        jumpTo(parseInt(actEl.dataset.r, 10));
+        return;
+      case 'view':
+        S.view = actEl.dataset.v;
+        if (S.view === 'factory') S.detail = {kind:'state', i:currentState()};
+        render(); window.scrollTo({top:0, behavior:'auto'});
+        return;
+      case 'replay': replay(); return;
+      case 'variant-prev': setVariant(S.variant === 'A' ? 'B' : 'A'); return;
+      case 'variant-next': setVariant(S.variant === 'A' ? 'B' : 'A'); return;
+      case 'step':
+        S.detail = {kind:'step', i:parseInt(actEl.dataset.i, 10)};
+        render();
+        return;
+      case 'state':
+        S.detail = {kind:'state', i:parseInt(actEl.dataset.i, 10)};
+        render();
+        return;
+      case 'gate':
+        S.gate[actEl.dataset.g] = parseInt(actEl.dataset.v, 10);
+        render();
+        return;
+      case 'sim': simAdvance(); return;
+      case 'jump-status': {
+        const sb = $('#statusBand');
+        if (sb) sb.scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+      }
+      case 'jump-gate': {
+        const g = $('#gateBlock');
+        if (g) g.scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+      }
+      case 'help-send': sendHelp(); return;
+      default: return;
+    }
+  }
+
+  const el = e.target.closest('[data-el]');
+  if (el && S.round === 'confirm') {
+    const k = el.dataset.el;
+    if (k) { S.selLine = k; S.editing = null; render(); }
+  }
+});
+
+document.addEventListener('input', function(e){
+  const t = e.target;
+  if (t.id === 'rawInput') S.rawDraft = t.value;
+  else if (t.id === 'doneInput') S.doneDraft = t.value;
+  else if (t.matches('[data-line-input]')) applyLineInput(t);
+});
+
+document.addEventListener('keydown', function(e){
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  if (e.key === 'Escape') {
+    if (S.compareOpen) { S.compareOpen = false; S.compareSeen = true; render(); return; }
+    closeHelp();
+    return;
+  }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && t) {
+    if (t.id === 'rawInput') { e.preventDefault(); submitRaw(); return; }
+    if (t.id === 'doneInput') { e.preventDefault(); submitDone(); return; }
+  }
+  if (e.key === 'Enter' && t && t.matches('[data-line-input]')) {
+    e.preventDefault(); collectLineText(); S.editing = null; render(); return;
+  }
+  if (typing) return;
+  if (S.compareOpen) return;
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    setVariant(S.variant === 'A' ? 'B' : 'A');
+  }
+});
+
+/* ================= 找人 ================= */
+const helpBtn = $('#helpBtn');
+const helpPanel = $('#helpPanel');
+function closeHelp(){
+  if (!helpPanel || helpPanel.hidden) return;
+  helpPanel.hidden = true;
+  if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+}
+function sendHelp(){
+  const ta = $('#helpText');
+  if (!ta) return;
+  if (!ta.value.trim()) { toast('写一句再发。'); ta.focus(); return; }
+  const text = ta.value.trim();
+  ta.value = '';
+  closeHelp();
+  toast('记下了：' + clip(text, 18).replace(/[。！？!?，,]+$/, '') + '。运营者手机响了一下（模拟）。');
+}
+if (helpBtn && helpPanel) {
+  helpBtn.addEventListener('click', function(){
+    const open = helpPanel.hidden;
+    helpPanel.hidden = !open;
+    helpBtn.setAttribute('aria-expanded', String(open));
+    if (open) { const t = $('#helpText'); if (t) t.focus(); }
+  });
+}
+document.addEventListener('click', function(e){
+  if (!helpPanel || helpPanel.hidden) return;
+  if (helpPanel.contains(e.target) || (helpBtn && helpBtn.contains(e.target))) return;
+  closeHelp();
+});
+
+/* ================= 启动 ================= */
+render();
+})();
+</script>
+</body>
+</html>
