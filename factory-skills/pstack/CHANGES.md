@@ -1,6 +1,8 @@
 # 改写记录
 
-结论：9 个文件改过，10 个原样复制。`roles.md`、`README.md`、`NOTICE.md` 和本文件是新写的。`LICENSE` 原样保留。合并规则以 `docs/流程 v4.md` 为准。
+> 2026-11-03 注：下文写的「v4 第八节」「v4 第十节」等，指的是 `docs/archive/流程 v4.md` 的章节号。v4 已并入 `docs/工厂流程.md`，章节号不同：v4 第八节对应正稿第十七节，v4 第十节对应正稿第十八节。
+
+结论：9 个文件改过，10 个原样复制。`roles.md`、`README.md`、`NOTICE.md` 和本文件是新写的。`LICENSE` 原样保留。合并规则以 `docs/工厂流程.md` 为准。
 
 来源：github.com/cursor/plugins 的 `pstack/`，提交 ae5650f，版本 0.15.36。本机副本在 /tmp/pstack-cursor-1103/pstack。
 
@@ -130,7 +132,7 @@
 每节写源路径、行数、结论、diff、条目、与 v4 冲突和没验。条目里的原句和新句逐字引用，所以这一部分会出现 Cursor 相关的词。
 
 ### roles.md
-- 源：无，新写。依据 `docs/流程 v4.md` 第八节。
+- 源：无，新写。依据 `docs/工厂流程.md` 第十七节。
 - 结论：新增。
 - 内容：第八节的 10 个角色全部在表里，agent 和模型都写「待定」。没有写任何模型名。
 - 行名：`owner`、`reviewer`、`interrogate reviewers`、`swarm workers`、`merger` 是技能读的行。其余 5 个角色这七项不读，行名留空，用一个短横线占位。
