@@ -1,0 +1,14 @@
+# 本地私密信息：服务器地址、域名、密钥位置、账号标识。不得提交。
+/private/
+
+# 密钥与凭据
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+
+# 系统文件
+.DS_Store
