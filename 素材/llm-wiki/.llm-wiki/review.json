@@ -1,0 +1,449 @@
+[
+  {
+    "type": "confirm",
+    "title": "[missing-page] Cursor 在多个页面中作为 pstack 的分发平台、GrokBot 的产品归属以及 Grok 4.6 的发布与评测背景出现，",
+    "description": "[missing-page] Cursor 在多个页面中作为 pstack 的分发平台、GrokBot 的产品归属以及 Grok 4.6 的发布与评测背景出现，但 Wiki 中没有独立页面解释其产品边界和版本背景；建议补充，以免读者只能从上下文拼凑。",
+    "affectedPages": [
+      "entities/pstack.md",
+      "entities/GrokBot.md",
+      "concepts/成本与模型.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:Cursor"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-31591762",
+    "resolved": false,
+    "createdAt": 1793638663823
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-查明-sandcastle-这类沙箱编排工具在自动接单之外从自动领取开发任务到直接-2026-11-02-162625-research-2.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-查明-sandcastle-这类沙箱编排工具在自动接单之外从自动领取开发任务到直接-2026-11-02-162625-research-2.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-查明-sandcastle-这类沙箱编排工具在自动接单之外从自动领取开发任务到直接-2026-11-02-162625-research-2.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-aad84b0b",
+    "resolved": true,
+    "createdAt": 1793639643069,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-查明-sandcastle-这类沙箱编排工具在-2026-11-02-171425-research-1.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-查清-pstack-与-matt-pocock-skills-中-spectick-2026-11-02-162630-research-1.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-查清-pstack-与-matt-pocock-skills-中-spectick-2026-11-02-162630-research-1.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-查清-pstack-与-matt-pocock-skills-中-spectick-2026-11-02-162630-research-1.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-6e1666e1",
+    "resolved": true,
+    "createdAt": 1793639652968,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-171544-research-2.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-研究口播素材中验证与自证在-agent-工作流里的定义可操作证据测试lint类型检-2026-11-02-162434-research-3.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-研究口播素材中验证与自证在-agent-工作流里的定义可操作证据测试lint类型检-2026-11-02-162434-research-3.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-研究口播素材中验证与自证在-agent-工作流里的定义可操作证据测试lint类型检-2026-11-02-162434-research-3.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-5709319d",
+    "resolved": true,
+    "createdAt": 1793639652968,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-研究口播素材中验证与自证在-agent-工作流-2026-11-02-171447-research-3.md"
+  },
+  {
+    "type": "confirm",
+    "title": "[missing-page] Lauren Tan（poteto）是 pstack 的作者，并在信任阶梯、评审与验收、验证与自证、成本与模型等页面反复出现，但没",
+    "description": "[missing-page] Lauren Tan（poteto）是 pstack 的作者，并在信任阶梯、评审与验收、验证与自证、成本与模型等页面反复出现，但没有独立实体页；建议补充其身份、与 Cursor/pstack 的关系等基础信息，减少人物信息散落。",
+    "affectedPages": [
+      "entities/pstack.md",
+      "concepts/信任阶梯.md",
+      "concepts/评审与验收.md",
+      "concepts/验证与自证.md",
+      "concepts/成本与模型.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:Lauren Tan"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-a2086fe5",
+    "resolved": false,
+    "createdAt": 1793639652968
+  },
+  {
+    "type": "confirm",
+    "title": "[suggestion] GrokBot、Sandcastle、matt-pocock-skills、pstack 四个实体页的 sources 字段为空，但正",
+    "description": "[suggestion] GrokBot、Sandcastle、matt-pocock-skills、pstack 四个实体页的 sources 字段为空，但正文分别引用了 S1、S2、S3、S4、S5、S7 等来源编号；建议补上对应的来源页链接，保证“来源观点”部分可追溯。",
+    "affectedPages": [
+      "entities/GrokBot.md",
+      "entities/Sandcastle.md",
+      "entities/matt-pocock-skills.md",
+      "entities/pstack.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:实体页的来源引用"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-3a294029",
+    "resolved": false,
+    "createdAt": 1793639652968
+  },
+  {
+    "type": "confirm",
+    "title": "[suggestion] 该页 evidence_status 为 unknown，却包含「Cursor 和 SpaceX 联合发布 Grok 4.6」、Fab",
+    "description": "[suggestion] 该页 evidence_status 为 unknown，却包含「Cursor 和 SpaceX 联合发布 Grok 4.6」、Fable、Sol、CursorBench 3.2 等具体专名和发布关系；这些信息很可能受 ASR 影响，建议补充原始出处或逐项核对，尤其确认发布方是否应为 xAI 等主体。",
+    "affectedPages": [
+      "concepts/成本与模型.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:成本与模型页的专名与发布信息"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-cba7c037",
+    "resolved": false,
+    "createdAt": 1793639652968
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-为-queriesresearch-查明-sandcastle-这类沙箱编排工具在-2026-11-02-171425-research-1.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-为-queriesresearch-查明-sandcastle-这类沙箱编排工具在-2026-11-02-171425-research-1.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-为-queriesresearch-查明-sandcastle-这类沙箱编排工具在-2026-11-02-171425-research-1.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-6ff3442c",
+    "resolved": true,
+    "createdAt": 1793644584115,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-为-queriesresearch-查明-sa-2026-11-02-183657-research-7.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-171544-research-2.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-171544-research-2.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-171544-research-2.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-1b9646d3",
+    "resolved": true,
+    "createdAt": 1793644584115,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-为-queriesresearch-查清-ps-2026-11-02-183655-research-8.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-为-queriesresearch-研究口播素材中验证与自证在-agent-工作流-2026-11-02-171447-research-3.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-为-queriesresearch-研究口播素材中验证与自证在-agent-工作流-2026-11-02-171447-research-3.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-为-queriesresearch-研究口播素材中验证与自证在-agent-工作流-2026-11-02-171447-research-3.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-f861d859",
+    "resolved": true,
+    "createdAt": 1793644584115,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-为-queriesresearch-研究口播素-2026-11-02-183711-research-9.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-厘清-sandcastle-这类沙箱编排工具从自动接单扩展到直接接收客户需求时缺少-2026-11-02-172030-research-4.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-厘清-sandcastle-这类沙箱编排工具从自动接单扩展到直接接收客户需求时缺少-2026-11-02-172030-research-4.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-厘清-sandcastle-这类沙箱编排工具从自动接单扩展到直接接收客户需求时缺少-2026-11-02-172030-research-4.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-7a1ff305",
+    "resolved": true,
+    "createdAt": 1793644584115,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-厘清-sandcastle-这类沙箱编排工具从-2026-11-02-183730-research-10.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-查清-pstack-与-matt-pocock-skills-如何把-specti-2026-11-02-172049-research-5.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-查清-pstack-与-matt-pocock-skills-如何把-specti-2026-11-02-172049-research-5.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-查清-pstack-与-matt-pocock-skills-如何把-specti-2026-11-02-172049-research-5.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-02f34272",
+    "resolved": true,
+    "createdAt": 1793644584116,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-183715-research-11.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-梳理-agent-工作流中任务拆分与上下文如何把-specticket-与-tok-2026-11-02-171245-research-5.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-梳理-agent-工作流中任务拆分与上下文如何把-specticket-与-tok-2026-11-02-171245-research-5.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-梳理-agent-工作流中任务拆分与上下文如何把-specticket-与-tok-2026-11-02-171245-research-5.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-deb8a18a",
+    "resolved": true,
+    "createdAt": 1793644584116,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-梳理-agent-工作流中任务拆分与上下文如何-2026-11-02-183738-research-12.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 queries/research-研究-sandcastle-类沙箱编排工具从隔离执行自动领取任务到直接接收客户需求-2026-11-02-170228-research-4.md 添加交叉引用",
+    "description": "No other pages link to this page.",
+    "affectedPages": [
+      "queries/research-研究-sandcastle-类沙箱编排工具从隔离执行自动领取任务到直接接收客户需求-2026-11-02-170228-research-4.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:queries/research-研究-sandcastle-类沙箱编排工具从隔离执行自动领取任务到直接接收客户需求-2026-11-02-170228-research-4.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-fbb62a79",
+    "resolved": true,
+    "createdAt": 1793644584116,
+    "resolvedAction": "Research saved: wiki/queries/research-为-queriesresearch-研究-sandcastle-类沙箱编排工具从隔-2026-11-02-183851-research-13.md"
+  },
+  {
+    "type": "suggestion",
+    "title": "为 synthesis/pstack新视频对流程的启示.md 添加交叉引用",
+    "description": "此页面没有出站 [[wikilinks]]。建议添加与相关实体和概念的交叉引用。",
+    "affectedPages": [
+      "synthesis/pstack新视频对流程的启示.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:synthesis/pstack新视频对流程的启示.md"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-0add3659",
+    "resolved": true,
+    "createdAt": 1793644584116,
+    "resolvedAction": "Research saved: wiki/queries/research-为-synthesispstack新视频对流程的启示md-添加交叉引用-2026-11-02-183804-research-14.md"
+  },
+  {
+    "type": "confirm",
+    "title": "[contradiction] `sources/pstack-作者-每月2500个PR.md` 标题称 Lauren 的团队每月 2500 个 PR，`sou",
+    "description": "[contradiction] `sources/pstack-作者-每月2500个PR.md` 标题称 Lauren 的团队每月 2500 个 PR，`sources/一个月上线2000个PR.md` 标题称一个月上线 2000 个 PR；两页都指向同一 AI 团队，却没有说明统计时间或口径，读者无法判断哪个数字当前有效。",
+    "affectedPages": [
+      "sources/pstack-作者-每月2500个PR.md",
+      "sources/一个月上线2000个PR.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:月 PR 数量 2500 与 2000 不一致"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-717bafeb",
+    "resolved": false,
+    "createdAt": 1793644584116
+  },
+  {
+    "type": "confirm",
+    "title": "[stale] `entities/matt-pocock-skills.md` 称仓库在 2026 年 10 月发布 v1.3，而 `concepts/gri",
+    "description": "[stale] `entities/matt-pocock-skills.md` 称仓库在 2026 年 10 月发布 v1.3，而 `concepts/grilling-提问规则.md` 在 2026-11-03 读取到的版本是 1.3.1；实体页未说明 v1.3.1 已发布，版本信息显得滞后。",
+    "affectedPages": [
+      "entities/matt-pocock-skills.md",
+      "concepts/grilling-提问规则.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:Matt Pocock Skills 版本仍写 v1.3"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-439d4c0f",
+    "resolved": false,
+    "createdAt": 1793644584116
+  },
+  {
+    "type": "confirm",
+    "title": "[missing-page] `wayfinder` 在 grilling 的提问规则和接单流程冲突页中被当作具体问法的依据，但 wiki 没有专页解释它与 g",
+    "description": "[missing-page] `wayfinder` 在 grilling 的提问规则和接单流程冲突页中被当作具体问法的依据，但 wiki 没有专页解释它与 grilling、frontier 的关系。",
+    "affectedPages": [
+      "concepts/grilling-提问规则.md",
+      "queries/接单流程与口播的冲突.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:wayfinder"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-977e5465",
+    "resolved": false,
+    "createdAt": 1793644584116
+  },
+  {
+    "type": "confirm",
+    "title": "[missing-page] `spectick` 在两篇 research 页标题中作为核心概念出现，但 wiki 没有对应实体或概念页，也未说明它是否为 s",
+    "description": "[missing-page] `spectick` 在两篇 research 页标题中作为核心概念出现，但 wiki 没有对应实体或概念页，也未说明它是否为 spec/ticket 的合称；现有 `任务拆分与上下文` 只解释 spec 与 ticket，不解释该术语本身。",
+    "affectedPages": [
+      "queries/research-查清-pstack-与-matt-pocock-skills-中-spectick-2026-11-02-162630-research-1.md",
+      "queries/research-为-queriesresearch-查清-pstack-与-matt-pocock-2026-11-02-171544-research-2.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:spectick"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-ef0c5e42",
+    "resolved": false,
+    "createdAt": 1793644584116
+  },
+  {
+    "type": "confirm",
+    "title": "[suggestion] `GrokBot`、`Sandcastle`、`matt-pocock-skills`、`pstack` 四个实体页的正文分别引用 S",
+    "description": "[suggestion] `GrokBot`、`Sandcastle`、`matt-pocock-skills`、`pstack` 四个实体页的正文分别引用 S1/S2/S3/S4/S5/S7，但 frontmatter 的 `sources` 均为空；建议补上对应来源页，便于核验。",
+    "affectedPages": [
+      "entities/GrokBot.md",
+      "entities/Sandcastle.md",
+      "entities/matt-pocock-skills.md",
+      "entities/pstack.md"
+    ],
+    "options": [
+      {
+        "label": "打开编辑",
+        "action": "open:实体页 sources 字段为空"
+      },
+      {
+        "label": "跳过",
+        "action": "Skip"
+      }
+    ],
+    "id": "review-9fac421f",
+    "resolved": false,
+    "createdAt": 1793644584116
+  }
+]
