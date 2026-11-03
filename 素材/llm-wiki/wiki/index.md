@@ -23,6 +23,7 @@
 - [[concepts/技能与流程|技能与流程]]
 - [[concepts/成本与模型|成本与模型]]
 - [[concepts/术语表|术语表]]
+- [[concepts/grilling-提问规则|grilling 的提问规则]]
 
 ## Entities
 
@@ -39,10 +40,12 @@
 ## Queries
 
 - [[queries/待确认与冲突|待确认与冲突]]
+- [[queries/接单流程与口播的冲突|接单流程与口播的冲突]]
 
 ## Synthesis
 
 - [[synthesis/口播素材综览|口播素材综览：验证、约束、拆分、验收]]
+- [[synthesis/pstack新视频对流程的启示|pstack 新视频对接单流程的启示]]
 
 ## Decisions
 
