@@ -15,3 +15,6 @@ id_rsa*
 
 # 构建输出
 output/
+
+# 客户技能包生成物
+customer-kit/dist/

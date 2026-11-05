@@ -1,0 +1,16 @@
+你好。现在帮我装好需求澄清技能包。你按下面一步一步做，每做完一步用一句日常中文告诉我结果。不要跳步。
+
+1. 在我打开的这个文件夹里找安装包，文件名是 `grilling-skills-v1.zip`。找不到就停下，让我把 zip 拖进这个文件夹，然后回复“好了”。
+2. 把 zip 解压到一个临时文件夹。解压后里面应该有一个 `grilling-skills-v1` 文件夹，里面有 `skills`、`AGENTS-TEMPLATE.md`、`README.txt`。找不到这些就停下，把看到的文件名告诉我。
+3. 把 `skills` 里的八个技能文件夹复制到 `.dsh/skills/`。`.dsh/skills/` 不存在就新建。复制完检查这八个名字都在，每个里面都有 `SKILL.md`：grilling、domain-modeling、wayfinder、prototype、research、setup-matt-pocock-skills、wait-what、ask-matt。
+4. 如果工作文件夹根目录没有 `AGENTS.md`，把 `AGENTS-TEMPLATE.md` 复制成根目录的 `AGENTS.md`。已经有 `AGENTS.md` 就跳过，不要覆盖，告诉我一声。
+5. 在工作文件夹里建 `.scratch/` 文件夹。
+6. 写追踪器配置。先试着调用 `setup-matt-pocock-skills` 技能，按它的“客户工作区模式”做。调不到就手动做：建 `docs/agents/`，把 `.dsh/skills/setup-matt-pocock-skills/issue-tracker-local.md` 复制成 `docs/agents/issue-tracker.md`，把 `.dsh/skills/setup-matt-pocock-skills/domain.md` 复制成 `docs/agents/domain.md`。如果复制出来的文件里还有 `## Answer`，改成 `## 结论`；还有 `## Comments`，改成 `## 评论`。
+7. 自检下面五项，逐条告诉我“在”或“不在”：
+   - `.dsh/skills/` 下八个技能目录，每个都有 `SKILL.md`
+   - 根目录的 `AGENTS.md`
+   - `docs/agents/issue-tracker.md`
+   - `docs/agents/domain.md`
+   - `.scratch/` 目录
+8. 五项都齐了，告诉我：关掉 dsh，再打开，重新打开同一个文件夹，然后粘贴下一条提示词。这个会话里不要开始问需求。
+9. 有任何一步没成，就停下。告诉我卡在第几步、报错原文是什么、需要我截图哪一处。不要反复重试，不要删已经装好的东西。
