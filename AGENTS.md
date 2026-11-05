@@ -41,6 +41,10 @@
 
 采用单一上下文：根目录 `GLOSSARY.md` 记领域词汇，重大决定写进 `docs/adr/`。详见 `docs/agents/domain.md`。
 
+### 地图变动
+
+关票、开票、写 spec 之前，先读 `docs/agents/issue-tracker.md` 的「地图上的变动怎么留痕」。会话结束前跑 `/wrap-up`，`to-spec` 之前跑 `/map-gate`。
+
 ## 冲突处理
 
 本文与代码、配置或实际情况冲突时，以代码和实际情况为准，并按实际情况改本文。
