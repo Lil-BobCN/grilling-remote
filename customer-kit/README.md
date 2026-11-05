@@ -12,6 +12,7 @@
 | `package/README.txt` | zip 里的客户说明 |
 | `package/NOTICE.md` | 上游来源和改动 |
 | `prompts/01-装配提示词.txt` | 提示词①，官网原文，直接复制给客户 |
+| `prompts/02-启动提示词.txt` | 提示词②，首次“开始需求澄清”，续做“继续” |
 | `安装步骤.md` | 客服带装清单，含每步的失败信号 |
 | `测试记录.md` | 2026-11-05 的实测结果、没测到的项 |
 | `build.sh` | 打 `dist/grilling-skills-v1.zip` |
@@ -35,15 +36,14 @@ zip 根目录是 `grilling-skills-v1/`，和提示词①里的路径一致。改
 - `AGENTS.md` 写进根目录。重开新会话能读到；重跑提示词①不会覆盖。
 - `docs/agents/issue-tracker.md` 和 `domain.md` 写好。
 - `.scratch/` 建好。
-- 模型目录里有 7 个技能；`wait-what` 按设计只给人用。
+- 模型目录里有 7 个技能；官网包的 `wait-what` 允许模型自动调用，本机自用副本不动。
 
 细节和没测到的项见 `测试记录.md`。Windows 没机器，未验证。`workspace-write` 沙箱没测到，测试时这台机器的沙箱后端坏了，用了 `danger-full-access`。Linux 不支持。
 
 ## 还没定的
 
-- `AGENTS-TEMPLATE.md` 是草稿。正文归 #25，定稿后替换再重打包。
-- 提示词②归 #25，不在这个包。
-- 客户侧独立子代理查漏，读文件还是读对话，归 #25。
+- `AGENTS-TEMPLATE.md` 和提示词②由 #25 定稿（2026-11-05），改完要重打包，发布归 #35。
+- 客户侧查漏用 `subagent_fork`，读对话和文件。客户机上起不起得来、效果怎么样，归 #26。
 - `ask-matt` 的调用方式本版定了：删掉 `disable-model-invocation`，模型可以自动路由，客户也可以输入 `/ask-matt`。运营者要改回人工输入，就加回那一行。
 - 教程页、截图、两条提示词怎么放，归 #31。
 
