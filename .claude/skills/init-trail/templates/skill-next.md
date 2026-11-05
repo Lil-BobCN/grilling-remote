@@ -1,6 +1,6 @@
 ---
 name: next
-description: "下一步做哪张票：关闭地图子票之后，或运营者问接下来做什么时，读阻塞关系，给一句结论。用法：/next <地图编号>"
+description: "下一步做哪张票：关闭地图子票并跑完 wrap-up 之后，或运营者问接下来做什么时，读阻塞关系，给一句结论。用法：/next <地图编号>"
 disable-model-invocation: false
 ---
 
