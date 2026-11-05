@@ -2,6 +2,8 @@
 
 Matt Pocock Skills 用五种固定处理状态。本仓库直接用同名标签，不做映射。
 
+缺标签时先创建：`gh label create <名称>`。
+
 | 标准状态 | 当前仓库标签 | 含义 |
 | --- | --- | --- |
 | `needs-triage` | `needs-triage` | 需要维护者判断怎么处理 |
