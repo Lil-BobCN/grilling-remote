@@ -44,7 +44,7 @@ zip 根目录是 `grilling-skills-v1/`，和提示词①里的路径一致。改
 
 - `AGENTS-TEMPLATE.md` 和提示词②由 #25 定稿（2026-11-05），改完要重打包，发布归 #35。
 - 客户侧查漏用 `subagent_fork`，读对话和文件。客户机上起不起得来、效果怎么样，归 #26。
-- `ask-matt` 的调用方式本版定了：删掉 `disable-model-invocation`，模型可以自动路由，客户也可以输入 `/ask-matt`。运营者要改回人工输入，就加回那一行。
+- `ask-matt` 的调用方式本版定了：删掉 `disable-model-invocation`，模型可以自动路由，客户也可以输入 `/ask-matt`。运营者要改回人工输入，就加回那一行。注：客户版 `ask-matt` 没有 `/to-spec`，只有运营者本机版有。回传后能不能 `to-spec`，由运营者在本机问。
 - 教程页、截图、两条提示词怎么放，归 #31。
 
 ## 上游更新

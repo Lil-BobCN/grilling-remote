@@ -18,3 +18,7 @@ output/
 
 # 客户技能包生成物
 customer-kit/dist/
+
+# 客户数据：本仓库公开，不放客户数据
+inbox/
+customers.json

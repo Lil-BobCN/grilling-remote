@@ -1,7 +1,7 @@
 # 任务管理：GitHub Issues
 
 本仓库的任务和产品规格统一放在 GitHub Issues 中，使用 `gh` CLI 操作。
-仓库为私有仓库 `Lil-BobCN/grilling-remote`，在仓库目录内运行时 `gh` 会自动识别。
+仓库为公开仓库 `Lil-BobCN/grilling-remote`，不放客户数据。在仓库目录内运行时 `gh` 会自动识别。
 
 ## 常用操作
 
