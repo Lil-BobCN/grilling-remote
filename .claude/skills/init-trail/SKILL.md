@@ -1,10 +1,10 @@
 ---
 name: init-trail
-description: "新项目跑完 setup-matt-pocock-skills 之后跑：装上地图变动留痕的规则、术语和三个技能。用法：/init-trail"
+description: "新项目跑完 setup-matt-pocock-skills 之后跑：装上地图变动留痕的规则、术语和四个技能。用法：/init-trail"
 disable-model-invocation: true
 ---
 
-给当前项目装上「地图变动留痕」：规则、术语、规则文件里的指针，和 `map-gate`、`wrap-up`、`next` 三个技能。内容来自本技能目录下的 `templates/`，和 grilling-remote 仓库里的同名内容一致。
+给当前项目装上「地图变动留痕」：规则、术语、规则文件里的指针，和 `map-gate`、`wrap-up`、`next`、`spec-check` 四个技能。内容来自本技能目录下的 `templates/`，和 grilling-remote 仓库里的同名内容一致。
 
 本技能不改上游模板，也不重跑 setup。每一步先查再写：已有的不重复写，已有的文件不覆盖。
 
@@ -23,7 +23,7 @@ disable-model-invocation: true
 
 4. **指针。** 把 `templates/agents-pointer.md` 放进第 1 步选定的规则文件：有 `## Agent skills` 就放在这一节末尾、下一个 `##` 标题之前，没有就追加到文件末尾。已有「### 地图变动」就跳过。完成条件：该标题恰好出现一次，其他段落没动。
 
-5. **技能。** 对 `map-gate`、`wrap-up`、`next` 各做一次：把 `templates/skill-<名>.md` 复制到 `.claude/skills/<名>/SKILL.md`。目标已存在时不覆盖：和模板比较，相同就跳过，不同就把差异列给运营者选。完成条件：三个目标文件都在，内容和模板一致，或差异已由运营者选定。
+5. **技能。** 对 `map-gate`、`wrap-up`、`next`、`spec-check` 各做一次：把 `templates/skill-<名>.md` 复制到 `.claude/skills/<名>/SKILL.md`。目标已存在时不覆盖：和模板比较，相同就跳过，不同就把差异列给运营者选。完成条件：四个目标文件都在，内容和模板一致，或差异已由运营者选定。
 
 6. **报告。** 列出新建、追加、跳过各是什么，再给 `git status --short`。说明没有提交。技能有没有被加载，开新会话输入 `/next` 看是否识别。
 
