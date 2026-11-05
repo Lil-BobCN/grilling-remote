@@ -1,7 +1,7 @@
 ---
 name: next
 description: "下一步做哪张票：关闭地图子票并跑完 wrap-up 之后，或运营者问接下来做什么时，读阻塞关系，给一句结论。用法：/next <地图编号>"
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 读地图 $ARGUMENTS 下的子票，告诉运营者下一步做哪张。没给编号时，用会话里正在处理的那张地图。
