@@ -15,6 +15,6 @@
 - `research`：加客户模式，固定写到 `.scratch/{简称}/research/`；没有子代理工具时自己查。
 - `setup-matt-pocock-skills`：改成模型可调用、人不可见；加“客户工作区模式”，只写本地追踪器和领域文档，不写 `AGENTS.md`，不装 triage 标签。
 - `wait-what`：正文改成日常简体中文。
-- `ask-matt`：重写成客户版，只路由本包八个技能。
+- `ask-matt`：重写成客户版，只路由本包八个技能。客户版没有 `/to-spec`，运营者本机版有。
 
 `AGENTS-TEMPLATE.md`、`README.txt` 是本项目新写的，不来自上游。`安装步骤.md` 和装配提示词在包外，供客服和官网使用。
