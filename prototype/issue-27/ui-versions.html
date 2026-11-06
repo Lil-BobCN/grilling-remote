@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 · 取货确认页三个版本</title>
+<style>
+  :root{--ink:#1f2328;--muted:#6b7280;--line:#e5e7eb;--bg:#f3f4f6;--accent:#0f766e;--card:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:96px}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 40px}
+  .badge{display:inline-block;background:#ccfbf1;color:#115e59;border:1px solid #99f6e4;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+  h1{font-size:24px;line-height:1.35;margin:12px 0 8px}
+  .q{background:#f0fdfa;border-left:3px solid var(--accent);padding:10px 14px;color:#134e4a;margin:0 0 10px;font-size:14px}
+  .hint{font-size:13px;color:var(--muted);margin:0 0 22px}
+  .foot{font-size:12px;color:var(--muted);margin-top:26px}
+  button{font:inherit;cursor:pointer}
+  .link{display:block;text-align:center;margin-top:10px;font-size:13px;color:var(--muted)}
+
+  /* A：单列清单 */
+  .vA{max-width:560px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px}
+  .vA .top{display:flex;justify-content:space-between;align-items:baseline;color:var(--muted);font-size:12px}
+  .vA h2{font-size:30px;margin:8px 0 2px}
+  .vA .sub{color:var(--muted);margin:0 0 18px}
+  .vA ul{list-style:none;padding:0;margin:0;border-top:1px solid var(--line)}
+  .vA li{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line)}
+  .vA .total{display:flex;justify-content:space-between;font-size:20px;font-weight:700;margin:16px 0}
+  .vA .note{background:#f0fdfa;border:1px solid #ccfbf1;border-radius:8px;padding:9px 12px;font-size:13px;color:#134e4a}
+  .vA .cta{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;border-radius:9px;padding:12px;font-size:16px;font-weight:600}
+
+  /* B：左右分栏 */
+  .vB{max-width:1040px;margin:0 auto;display:grid;grid-template-columns:1.45fr .8fr;gap:20px;align-items:start}
+  .vB .main,.vB .side{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+  .vB .side{position:sticky;top:20px}
+  .vB .eyebrow{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  .vB h2{font-size:26px;margin:6px 0 18px}
+  .vB table{width:100%;border-collapse:collapse;font-size:14px}
+  .vB th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:0 0 8px;border-bottom:1px solid var(--line)}
+  .vB td{padding:9px 0;border-bottom:1px solid var(--line)}
+  .vB td:last-child,.vB th:last-child{text-align:right}
+  .vB .big{font-size:34px;font-weight:700;margin:6px 0}
+  .vB .note{background:#f9fafb;border-radius:8px;padding:10px 12px;font-size:13px;color:#374151;margin-top:14px}
+  .vB .total{display:flex;justify-content:space-between;font-size:18px;font-weight:700;padding:14px 0;border-bottom:1px solid var(--line)}
+  .vB .cta{width:100%;margin-top:18px;background:var(--accent);color:#fff;border:0;border-radius:9px;padding:12px;font-weight:600}
+
+  /* C：小票式 */
+  .vC{max-width:440px;margin:0 auto;background:#fffdf6;border:1px solid #e7dcc3;border-radius:4px;padding:26px 24px;box-shadow:0 12px 30px rgba(60,40,10,.08);font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;color:#292524}
+  .vC .brand{font-size:11px;letter-spacing:.3em;color:#a8a29e}
+  .vC .rno{font-size:50px;font-weight:700;letter-spacing:.03em;line-height:1;margin:10px 0 4px}
+  .vC .pick{font-size:17px;font-weight:700;margin:0}
+  .vC .dash{border-top:1px dashed #c9b892;margin:16px 0}
+  .vC .tl{display:flex;justify-content:space-between;font-size:10px;color:#78716c;text-align:center}
+  .vC .tl b{display:block;width:9px;height:9px;border-radius:50%;background:#d6d3d1;margin:0 auto 5px}
+  .vC .tl .on b{background:#292524}
+  .vC table{width:100%;border-collapse:collapse;font-size:12px}
+  .vC td{padding:5px 0}
+  .vC td:last-child{text-align:right}
+  .vC .total{display:flex;justify-content:space-between;font-size:18px;font-weight:700;margin-top:10px}
+  .vC .note{font-size:11px;color:#78716c;margin-top:12px}
+  .vC .code{display:flex;gap:12px;align-items:center;margin-top:16px}
+  .vC .barcode{flex:1;height:38px;background:repeating-linear-gradient(90deg,#292524 0 2px,transparent 2px 5px,#292524 5px 6px,transparent 6px 11px)}
+  .vC .qr{width:64px;height:64px;background:repeating-conic-gradient(#292524 0 25%,#fff 0 50%) 0 0/8px 8px;border:4px solid #fff;outline:1px solid #d6d3d1}
+  .vC .tiny{font-size:10px;color:#a8a29e;margin-top:10px;text-align:center}
+
+  /* 底部浮动切换栏 */
+  .switch{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#111827;color:#fff;border-radius:999px;padding:7px 9px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9}
+  .switch button{width:30px;height:30px;border-radius:50%;border:0;background:#374151;color:#fff;font-size:18px;line-height:1;padding:0}
+  .switch button:hover{background:#4b5563}
+  .switch .label{font-size:13px;min-width:128px;text-align:center;white-space:nowrap}
+  @media(max-width:760px){.vB{grid-template-columns:1fr}.vB .side{position:static}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">原型 · 不是成品</span>
+  <h1>取货确认页：三种版面，哪种一眼看懂</h1>
+  <p class="q">要回答的问题：三个版面结构不同的版本放进一个 HTML，用底部浮动条切换，客户能不能一眼看出差别、说出更喜欢哪版？</p>
+  <p class="hint">同一张订单、同一批假数据，只换版面。按 ← → 或点底部箭头切换。</p>
+  <div id="stage"></div>
+  <p class="foot">示例数据，不连后台。确认按钮不会真的提交，只用来判断版面。</p>
+</div>
+
+<div class="switch" role="group" aria-label="切换版本">
+  <button id="prev" aria-label="上一版">‹</button>
+  <span class="label" id="label">A · 单列清单</span>
+  <button id="next" aria-label="下一版">›</button>
+</div>
+
+<script>
+const ORDER = {
+  no: 'A-037',
+  pickup: '今天 17:00',
+  address: '梧桐路 12 号 · 一楼取货架',
+  note: '贝果请切半，可颂不要糖霜。',
+  items: [
+    {name:'原味贝果', qty:6, price:8},
+    {name:'海盐可颂', qty:2, price:12},
+    {name:'冰美式', qty:2, price:15}
+  ]
+};
+const total = ORDER.items.reduce((n,i) => n + i.qty * i.price, 0);
+const money = n => '¥' + n;
+
+function variantA(){
+  return `<section class="vA" data-variant="A">
+    <div class="top"><span>取货确认</span><span>单号 ${ORDER.no}</span></div>
+    <h2>${ORDER.pickup} 来拿</h2>
+    <p class="sub">${ORDER.address}</p>
+    <ul>${ORDER.items.map(i => `<li><span>${i.name} × ${i.qty}</span><span>${money(i.qty*i.price)}</span></li>`).join('')}</ul>
+    <div class="total"><span>合计</span><span>${money(total)}</span></div>
+    <div class="note">备注：${ORDER.note}</div>
+    <button class="cta">确认，就这些</button>
+    <span class="link">要改一单？告诉店主</span>
+  </section>`;
+}
+
+function variantB(){
+  return `<section class="vB" data-variant="B">
+    <div class="main">
+      <div class="eyebrow">取货单 · ${ORDER.no}</div>
+      <h2>今天下午来拿，东西已经备好</h2>
+      <table><thead><tr><th>商品</th><th>数量</th><th>小计</th></tr></thead><tbody>
+        ${ORDER.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${money(i.qty*i.price)}</td></tr>`).join('')}
+      </tbody></table>
+      <div class="note">备注：${ORDER.note}</div>
+    </div>
+    <aside class="side">
+      <div class="eyebrow">取货时间</div>
+      <div class="big">${ORDER.pickup}</div>
+      <div class="note">${ORDER.address}</div>
+      <div class="total"><span>合计</span><span>${money(total)}</span></div>
+      <button class="cta">确认取货</button>
+      <span class="link">改时间或改单</span>
+    </aside>
+  </section>`;
+}
+
+function variantC(){
+  return `<section class="vC" data-variant="C">
+    <div class="brand">WUTONG BAKERY · 取货单</div>
+    <div class="rno">${ORDER.no}</div>
+    <p class="pick">${ORDER.pickup} · ${ORDER.address}</p>
+    <div class="dash"></div>
+    <div class="tl"><div class="on"><b></b>已下单</div><div class="on"><b></b>备货中</div><div class="on"><b></b>可取货</div></div>
+    <div class="dash"></div>
+    <table>${ORDER.items.map(i => `<tr><td>${i.name} × ${i.qty}</td><td>${money(i.qty*i.price)}</td></tr>`).join('')}</table>
+    <div class="total"><span>合计</span><span>${money(total)}</span></div>
+    <p class="note">备注：${ORDER.note}</p>
+    <div class="code"><div class="barcode"></div><div class="qr"></div></div>
+    <div class="tiny">凭此单取货 · 原型示例</div>
+  </section>`;
+}
+
+const VARIANTS = [
+  {key:'A', name:'单列清单', html: variantA},
+  {key:'B', name:'左右分栏', html: variantB},
+  {key:'C', name:'小票式', html: variantC}
+];
+const stage = document.getElementById('stage');
+const label = document.getElementById('label');
+let current = 0;
+
+function show(i){
+  current = (i + VARIANTS.length) % VARIANTS.length;
+  const v = VARIANTS[current];
+  stage.innerHTML = v.html();
+  label.textContent = v.key + ' · ' + v.name;
+  document.body.dataset.variant = v.key;
+  try { history.replaceState(null, '', '?variant=' + v.key); } catch(e) {}
+}
+
+function read(){
+  const q = new URLSearchParams(location.search).get('variant');
+  const h = location.hash.replace('#','');
+  const key = (q || h || 'A').toUpperCase();
+  const i = VARIANTS.findIndex(v => v.key === key);
+  return i < 0 ? 0 : i;
+}
+
+document.getElementById('prev').addEventListener('click', () => show(current - 1));
+document.getElementById('next').addEventListener('click', () => show(current + 1));
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); show(current - 1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); show(current + 1); }
+});
+show(read());
+</script>
+</body>
+</html>

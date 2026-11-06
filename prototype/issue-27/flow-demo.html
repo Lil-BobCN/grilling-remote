@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型 · 烘焙店取货订单流程</title>
+<style>
+  :root{--ink:#1f2328;--muted:#6b7280;--line:#e5e7eb;--bg:#f6f7f9;--card:#fff;--accent:#b45309;--ok:#166534;--bad:#b91c1c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 20px 60px}
+  .badge{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+  h1{font-size:24px;line-height:1.35;margin:12px 0 8px}
+  .q{background:#fff7ed;border-left:3px solid var(--accent);padding:10px 14px;color:#7c2d12;margin:0 0 22px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+  h2{font-size:14px;letter-spacing:.02em;color:var(--muted);margin:0 0 12px;font-weight:600}
+  .state{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .state .full{grid-column:1/-1}
+  .k{font-size:12px;color:var(--muted)}
+  .v{font-weight:600;font-size:15px}
+  .status{font-size:22px;color:var(--accent)}
+  .msg{grid-column:1/-1;border-radius:8px;padding:9px 12px;background:#f9fafb;font-size:14px}
+  .msg.blocked{background:#fef2f2;color:var(--bad)}
+  .msg.ok{background:#f0fdf4;color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px}
+  .chip{background:#f3f4f6;border-radius:999px;padding:2px 10px;font-size:12px;color:#374151}
+  .buttons{display:flex;flex-wrap:wrap;gap:8px}
+  button{font:inherit;cursor:pointer;border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:8px 13px;color:var(--ink)}
+  button:hover{border-color:#9ca3af;background:#f9fafb}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#92400e}
+  button.is-legal{border-color:#f3c98b;background:#fffbeb;color:#92400e}
+  button:disabled{cursor:not-allowed;opacity:.55}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .tab{font-size:13px;padding:6px 11px;border-radius:999px}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .steps{display:flex;flex-direction:column;gap:8px}
+  .step{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;padding:9px 10px;border:1px dashed var(--line);border-radius:8px}
+  .step.done{border-style:solid;background:#f9fafb;opacity:.72}
+  .step.now{border-color:var(--accent);background:#fffbeb}
+  .step .no{flex:0 0 22px;height:22px;border-radius:50%;background:#e5e7eb;font-size:12px;display:grid;place-items:center;font-weight:700}
+  .step.now .no{background:var(--accent);color:#fff}
+  .step .txt{flex:1}
+  .step .why{font-size:12px;color:var(--muted)}
+  .step button{padding:5px 10px;font-size:13px;white-space:nowrap}
+  .hint{font-size:12px;color:var(--muted);margin:6px 0 0}
+  .hint.blocked{color:var(--bad);font-weight:600}
+  .hint.ok{color:var(--ok)}
+  .foot{font-size:12px;color:var(--muted);margin-top:26px}
+  @media(max-width:720px){.state{grid-template-columns:repeat(2,1fr)}h1{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">原型 · 不是成品</span>
+  <h1>烘焙店取货订单：一张状态图讲清哪些操作会出事</h1>
+  <p class="q">要回答的问题：把状态逻辑写成不碰页面的纯脚本，不懂技术的店主能不能自己点一遍，看懂订单从哪来、到哪去，并发现「备货中还能不能取消」这类容易出错的地方？</p>
+
+  <section class="card">
+    <h2>现在这一单</h2>
+    <div class="state" id="state"></div>
+    <div class="chips" id="legal"></div>
+  </section>
+
+  <section class="card">
+    <h2>自由点：每个动作都能试，做不了会告诉你为什么</h2>
+    <div class="buttons" id="free"></div>
+    <p class="hint">被挡住的操作不会改状态，只记一句原因。可以反复点。点自由按钮会退出下面的场景。</p>
+  </section>
+
+  <section class="card">
+    <h2>跟着走：三个场景，第二个最容易出错</h2>
+    <div class="tabs" id="tabs"></div>
+    <p class="hint" id="scenarioDesc"></p>
+    <div class="steps" id="steps"></div>
+    <p class="hint" id="stepResult"></p>
+    <div class="buttons" style="margin-top:12px"><button id="reset">从头开始</button></div>
+  </section>
+
+  <p class="foot">示例数据：6 个贝果、今天 17:00 取货。原型只存在内存里，刷新就清空。</p>
+</div>
+
+<script>
+/* ---------- 纯逻辑：不碰页面，可以整段搬进真代码 ---------- */
+const OrderFlow = (() => {
+  const ACTIONS = [
+    {id:'place', label:'客户下单'},
+    {id:'accept', label:'店主接单'},
+    {id:'startPrep', label:'开始备货'},
+    {id:'ready', label:'备好了'},
+    {id:'pickup', label:'客户取走'},
+    {id:'cancel', label:'客户取消'},
+    {id:'approveCancel', label:'店主同意取消'},
+    {id:'changeQty', label:'客户改数量'},
+    {id:'approveQty', label:'店主同意改量'},
+    {id:'pay', label:'客户付款'}
+  ];
+  const LABEL = {none:'还没下单',pending:'待确认',accepted:'已确认',preparing:'备货中',ready:'可取货',done:'已完成',cancelled:'已取消'};
+  const SCENARIOS = [
+    {name:'顺利的一单', desc:'从下单到取走，看每一步状态怎么往前推。',
+     steps:[{a:'place',w:'新单进来，先停在「待确认」'},{a:'accept',w:'店主接单，状态变成「已确认」'},{a:'startPrep',w:'材料用上了，进入「备货中」'},{a:'ready',w:'放到取货架，变成「可取货」'},{a:'pickup',w:'客户拿走，这单结束'}]},
+    {name:'备货中要取消（容易出错）', desc:'客户以为随时能取消。注意第 4 步：点了会怎样，状态变没变。',
+     steps:[{a:'place',w:'先建一单'},{a:'accept',w:'接单'},{a:'startPrep',w:'已经开做，材料用掉了'},{a:'cancel',w:'客户点取消：会被挡住，状态仍是「备货中」'},{a:'approveCancel',w:'店主同意取消：这单结束，记一次损耗'}]},
+    {name:'开工后改数量', desc:'没开工可以直接改；开工后要店主确认材料够不够。',
+     steps:[{a:'place',w:'建单'},{a:'accept',w:'接单'},{a:'changeQty',w:'还没开工，数量直接改'},{a:'startPrep',w:'开始备货'},{a:'changeQty',w:'再改：会被挡住，要等店主确认'},{a:'approveQty',w:'店主确认材料够，数量才改'}]}
+  ];
+  function initial(){
+    return {status:'none', qty:0, pickup:'今天 17:00', paid:false, waste:0, last:{text:'还没下单。点「客户下单」开始。', kind:''}};
+  }
+  function reduce(state, action){
+    const s = {...state, last:{...state.last}};
+    const ok = text => { s.last = {text, kind:'ok'}; return s; };
+    const blocked = text => { s.last = {text, kind:'blocked'}; return s; };
+    const active = ['pending','accepted','preparing','ready'].includes(state.status);
+    switch(action){
+      case 'place':
+        if(active) return blocked('手上还有一单没结束，先把它走完或取消。');
+        s.status='pending'; s.qty=6; s.paid=false; s.waste=0;
+        return ok('新单进来了：6 个贝果，今天 17:00 取，等店主接单。');
+      case 'accept':
+        if(state.status!=='pending') return blocked('只有「待确认」的单能接。');
+        s.status='accepted';
+        return ok('店主接单了，接下来可以开始备货。');
+      case 'startPrep':
+        if(state.status!=='accepted') return blocked('只有「已确认」的单能开始备货。');
+        s.status='preparing';
+        return ok('开始备货，材料已经用上。从现在起，取消和改数量都要店主点头。');
+      case 'ready':
+        if(state.status!=='preparing') return blocked('还没开始备货，不能直接标「备好了」。');
+        s.status='ready';
+        return ok('放到取货架了，等客户来拿。');
+      case 'pickup':
+        if(state.status!=='ready') return blocked('只有「可取货」的单能交给客户。');
+        s.status='done';
+        return ok(state.paid ? '客户取走了，这单完成。' : '客户取走了，这单完成。钱还没收，记得补。');
+      case 'cancel':
+        if(state.status==='pending'||state.status==='accepted'){ s.status='cancelled'; return ok('还没开工，直接取消，没有损耗。'); }
+        if(state.status==='preparing'||state.status==='ready') return blocked('已经开做，直接取消会浪费材料。要店主点「店主同意取消」。');
+        return blocked('现在没有能取消的单。');
+      case 'approveCancel':
+        if(state.status!=='preparing'&&state.status!=='ready') return blocked('只有已经开做的单，才需要店主同意取消。');
+        s.status='cancelled'; s.waste += 1;
+        return ok('店主同意取消，这单结束。记一次材料损耗。');
+      case 'changeQty':
+        if(state.status==='pending'||state.status==='accepted'){
+          const old = s.qty; s.qty += 2;
+          return ok('还没开工，数量从 '+old+' 改成 '+s.qty+' 个。');
+        }
+        if(state.status==='preparing'||state.status==='ready') return blocked('已经开做，改数量要先让店主确认材料够不够。');
+        return blocked('现在没有能改数量的单。');
+      case 'approveQty':
+        if(state.status!=='preparing') return blocked('只有「备货中」才需要店主确认改量。');
+        s.qty += 2;
+        return ok('店主确认材料够，数量改成 '+s.qty+' 个。');
+      case 'pay':
+        if(!active&&state.status!=='done') return blocked('现在没有能付款的单。');
+        if(state.paid) return blocked('这单已经付过了。');
+        s.paid = true;
+        return ok('收到款了。付款和订单状态分开记，不影响取货。');
+      default: return blocked('不认识这个动作。');
+    }
+  }
+  function legal(state){
+    const a=[];
+    if(['none','done','cancelled'].includes(state.status)) a.push('place');
+    if(state.status==='pending') a.push('accept','cancel','changeQty','pay');
+    if(state.status==='accepted') a.push('startPrep','cancel','changeQty','pay');
+    if(state.status==='preparing') a.push('ready','approveCancel','approveQty','pay');
+    if(state.status==='ready') a.push('pickup','approveCancel','pay');
+    if(state.status==='done'&&!state.paid) a.push('pay');
+    return a;
+  }
+  return {ACTIONS, LABEL, SCENARIOS, initial, reduce, legal};
+})();
+
+/* ---------- 页面：只负责显示和转交点击 ---------- */
+const stateEl = document.getElementById('state');
+const legalEl = document.getElementById('legal');
+const freeEl = document.getElementById('free');
+const tabsEl = document.getElementById('tabs');
+const descEl = document.getElementById('scenarioDesc');
+const stepsEl = document.getElementById('steps');
+const stepResultEl = document.getElementById('stepResult');
+let state = OrderFlow.initial();
+let scenario = null;
+let step = 0;
+
+const actionLabel = id => OrderFlow.ACTIONS.find(a => a.id === id).label;
+
+function render(){
+  const L = OrderFlow.LABEL;
+  stateEl.innerHTML = `
+    <div class="full"><div class="k">订单状态</div><div class="v status">${L[state.status]}</div></div>
+    <div><div class="k">数量</div><div class="v">${state.qty ? state.qty+' 个' : '—'}</div></div>
+    <div><div class="k">取货时间</div><div class="v">${state.qty ? state.pickup : '—'}</div></div>
+    <div><div class="k">付款</div><div class="v">${state.paid ? '已付' : '未付'}</div></div>
+    <div><div class="k">损耗</div><div class="v">${state.waste ? state.waste+' 次' : '无'}</div></div>
+    <div class="full msg ${state.last.kind}">${state.last.text}</div>`;
+  const legal = new Set(OrderFlow.legal(state));
+  legalEl.innerHTML = '<span class="k">现在能做：</span>' +
+    (legal.size ? [...legal].map(id => `<span class="chip">${actionLabel(id)}</span>`).join('') : '<span class="chip">没有能做的操作</span>');
+  freeEl.innerHTML = OrderFlow.ACTIONS.map(a =>
+    `<button data-action="${a.id}" class="${legal.has(a.id) ? 'is-legal' : ''}">${a.label}</button>`).join('');
+  tabsEl.innerHTML = OrderFlow.SCENARIOS.map((s,i) =>
+    `<button class="tab ${scenario===i ? 'on' : ''}" data-scenario="${i}">${i+1}. ${s.name}</button>`).join('');
+  stepResultEl.textContent = state.last.kind ? '刚刚：' + state.last.text : '';
+  stepResultEl.className = 'hint ' + state.last.kind;
+  if(scenario===null){
+    descEl.textContent = '选一个场景，按顺序点。每个按钮都会真的改这一单。';
+    stepsEl.innerHTML = '<p class="hint">还没有选场景。也可以先用上面的自由按钮随便试。</p>';
+    return;
+  }
+  const sc = OrderFlow.SCENARIOS[scenario];
+  descEl.textContent = sc.desc + (step >= sc.steps.length ? ' 这个场景走完了。' : ` 当前第 ${step+1} 步，共 ${sc.steps.length} 步。`);
+  stepsEl.innerHTML = sc.steps.map((st,i) => {
+    const cls = i < step ? 'done' : i === step ? 'now' : '';
+    const btn = i === step ? `<button data-step="${i}" class="primary">${actionLabel(st.a)}</button>` : '';
+    return `<div class="step ${cls}"><span class="no">${i+1}</span><div class="txt"><div>${st.w}</div><div class="why">动作：${actionLabel(st.a)}</div></div>${btn}</div>`;
+  }).join('');
+}
+
+freeEl.addEventListener('click', e => {
+  const b = e.target.closest('button[data-action]');
+  if(!b) return;
+  state = OrderFlow.reduce(state, b.dataset.action);
+  scenario = null; step = 0;
+  render();
+});
+tabsEl.addEventListener('click', e => {
+  const b = e.target.closest('button[data-scenario]');
+  if(!b) return;
+  scenario = Number(b.dataset.scenario); step = 0;
+  state = OrderFlow.initial();
+  render();
+});
+stepsEl.addEventListener('click', e => {
+  const b = e.target.closest('button[data-step]');
+  if(!b || scenario===null || Number(b.dataset.step)!==step) return;
+  state = OrderFlow.reduce(state, OrderFlow.SCENARIOS[scenario].steps[step].a);
+  step += 1;
+  render();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  state = OrderFlow.initial(); scenario = null; step = 0; render();
+});
+render();
+</script>
+</body>
+</html>
