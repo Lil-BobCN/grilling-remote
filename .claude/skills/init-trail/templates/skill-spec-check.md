@@ -4,7 +4,7 @@ description: "to-spec 写完之后跑：对照现行决定清单检查 spec，�
 disable-model-invocation: true
 ---
 
-对照地图 $ARGUMENTS 上最新的「现行决定清单」评论，检查刚写完的 spec。本技能只读：不改 spec，不改地图，不发评论。改动等运营者逐条确认后另做。
+对照地图编号上最新的「现行决定清单」评论，检查刚写完的 spec。编号在命令后面。本技能只读：不改 spec，不改地图，不发评论。改动等运营者逐条确认后另做。
 
 核对由没见过前面对话的子代理做。本会话如果跑过 `/to-spec`，已经带着写 spec 时的理解，自己查容易放过。
 
@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 1. **取材。** spec：运营者给了 issue 编号就用它，否则用本会话刚发布的那张，再不然列出最近带 `ready-for-agent` 的开放 issue，请运营者选。清单：地图上最新日期、最大版本号的「现行决定清单」评论，一组多条的全取。再取清单「现行决定」里每张票的正文和最后一条评论。完成条件：spec 全文、清单全文、每张现行票都在手上。缺哪个，写明缺什么，然后停。
 
-2. **起新子代理。** 用 Agent 工具，类型选 general-purpose。提示里放步骤 1 取到的全部内容，不放本会话的任何结论。让它报五项，每条带原文一句和位置：
+2. **起新子代理。** DSH 用 `subagent`，Claude 用 Agent 工具选 general-purpose。提示里放步骤 1 取到的全部内容，不放本会话的任何结论。让它报五项，每条带原文一句和位置：
    - 覆盖表：每条现行决定落在 spec 的哪一栏（Problem Statement、Solution、User Stories、Implementation Decisions、Testing Decisions、Out of Scope、Further Notes），落不到任何一栏的标「缺」。
    - 写弱：决定里写明的「必须」「不得」、默认值、数字、顺序，在 spec 里变成泛泛一句。两边原文都贴。
    - 没有来源：spec 里的实现决定或用户故事，在现行决定里找不到出处，也不是某条决定的直接推论。
