@@ -219,4 +219,5 @@ open prototype/index.html
 
 - `prototype/index.html`：全部代码，HTML + 内联 CSS + 内联 JS。
 - `prototype/README.md`：本文件。
+- `prototype/issue-27/`：#27 的两个单文件样品，流程演示和三个版本对比。见 [README](issue-27/README.md)。
 - `docs/` 只读，没有改动。
