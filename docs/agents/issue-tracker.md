@@ -17,8 +17,6 @@
 
 只往本仓库建 issue，不要往上游 `mattpocock/skills` 建。每次会话第一次 `gh issue create` 前，先用 `gh repo view --json nameWithOwner` 核对目标；不是 `Lil-BobCN/grilling-remote` 就先问。
 
-本机坑：`git` 或 `gh pr create` 报 `error: missing config key GIT_CONFIG_KEY_0` 时，是环境里残留了 `GIT_CONFIG_COUNT`。前面加 `env -u GIT_CONFIG_COUNT -u GIT_CONFIG_VALUE_0 -u GIT_CONFIG_VALUE_1` 再跑，不是仓库问题。
-
 ## 是否把 Pull Request 纳入分类处理
 
 **否。** 目前只有你自己的提交，没有外部贡献者。以后要纳入时，读 PR 正文和评论要分两次：`gh pr view <编号>`，再 `gh pr view <编号> --comments`（非终端环境下 `--comments` 只打印评论）。
