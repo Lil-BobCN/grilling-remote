@@ -23,3 +23,7 @@ customer-kit/package/技能清单.md
 # 客户数据：本仓库公开，不放客户数据
 inbox/
 customers.json
+
+# 本地工具与 Cloudflare 登录态，含 OAuth 令牌，不进仓库
+.tools/
+.cloudflare/
