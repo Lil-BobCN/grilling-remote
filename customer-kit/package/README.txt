@@ -26,4 +26,3 @@
 - 以点开头的文件夹，Mac 的 Finder 里按 Cmd+Shift+. 可以显示。
 - 全部做完后，agent 会提醒你压缩整个文件夹，到官网上传页上传。文件夹里的所有文件都会上传，请只放本项目的资料。
 - 支持 Windows 64 位、macOS Apple 芯片、macOS Intel。不支持 Linux。
-- Windows 未实机验证。
