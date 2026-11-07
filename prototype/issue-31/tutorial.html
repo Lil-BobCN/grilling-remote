@@ -1074,6 +1074,10 @@ details .cmd{
 .field.marked{outline:0;border-color:var(--mark);box-shadow:inset 0 0 0 1px var(--mark)}
 .field .lab{display:block;color:var(--faint);font-size:9px}
 .field .val{display:block;color:var(--faint);font-size:10.5px}
+.logged-in{grid-column:1/-1;display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#faf6ec;color:var(--ink-2);font-size:10px}
+.logged-in b{font-size:10.5px;font-weight:600}
+.logged-in .mini-avatar{width:16px;height:16px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:8px;font-weight:600;flex:none}
+.logged-in.marked{outline:0;border-color:var(--mark);box-shadow:inset 0 0 0 1px var(--mark)}
 .upload-row{grid-column:1/-1;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
 .upload-row.marked{outline:0;border:1px solid var(--mark);border-radius:5px}
 .checkbox{width:11px;height:11px;border:1px solid var(--line-2);border-radius:2px;background:#fff;flex:none}
@@ -1991,13 +1995,20 @@ details .cmd{
           <li class="substep">
             <span class="sub-num" aria-hidden="true">3</span>
             <div>
-              <h3>拖入 zip，填三样</h3>
-              <p>把压缩包拖进上传框，填客户简称和邮箱，勾上「已问完」。</p>
-              <p class="small">客户简称是签约时给你的名字，不是需求名。拿不准就问客服。</p>
+              <h3>登录</h3>
+              <p>用我们发给你的邮箱和密码登录。账号由我们开通，密码通过微信发给你。</p>
+              <p class="small">忘了密码，找客服重设。</p>
             </div>
           </li>
           <li class="substep">
             <span class="sub-num" aria-hidden="true">4</span>
+            <div>
+              <h3>拖入 zip，勾「已问完」</h3>
+              <p>把压缩包拖进上传框，勾上「已问完」。简称和邮箱由账号带出，不用填。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">5</span>
             <div>
               <h3>提交，等我们联系</h3>
               <p>看到上传成功就结束了。后面由我们处理，不用再操作。</p>
@@ -2017,24 +2028,23 @@ details .cmd{
               <span>上传页</span>
               <span class="pill-placeholder">上传页还没上线</span>
             </div>
-            <div class="mock" role="img" aria-label="示意图：上传页有拖入区域、客户简称、邮箱、已问完勾选和提交按钮。">
+            <div class="mock" role="img" aria-label="示意图：上传页有登录态、拖入区域、已问完勾选和提交按钮。">
               <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">upload.afkfactory.dev</span><span class="mock-tag">示意图</span></div>
               <div class="mock-body">
                 <span class="mock-url">https://upload.afkfactory.dev/</span>
                 <p class="mock-h">传回你的需求澄清</p>
                 <p class="mock-sub">把整个工作区压缩包拖进来。</p>
                 <div class="upload-form">
+                  <div class="logged-in marked"><span class="mini-avatar">王</span><span>已登录</span><b>王秀兰</b><span style="margin-left:auto;color:#a39a89">简称、邮箱由账号带出</span></div>
                   <div class="upload-drop marked"><b>把 zip 拖到这里</b><span>或点这里选择文件</span></div>
-                  <div class="field marked"><span class="lab">客户简称</span><span class="val">签约时给你的名字</span></div>
-                  <div class="field marked"><span class="lab">邮箱</span><span class="val">用来联系你</span></div>
                   <div class="upload-row marked" style="padding:4px 6px"><span class="checkbox"></span><span>已问完</span><span style="margin-left:auto;color:#a39a89">50 MB 以内</span></div>
                   <span class="upload-submit">上传</span>
                 </div>
-                <span class="mark-note">红框：拖入区、客户简称、邮箱、已问完</span>
+                <span class="mark-note">红框：登录态、拖入区、已问完</span>
               </div>
             </div>
           </div>
-          <figcaption><b>图 8 · 上传页。</b><span class="red">红框里是拖入区、客户简称、邮箱和「已问完」。</span>填完提交，等我们联系。</figcaption>
+          <figcaption><b>图 8 · 上传页。</b><span class="red">红框里是登录态、拖入区和「已问完」。</span>登录后简称和邮箱自动带出。填完提交，等我们联系。</figcaption>
         </figure>
 
         <div class="stuck">
