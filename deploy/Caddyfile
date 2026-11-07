@@ -2,7 +2,13 @@
 # 改完在服务器上跑 sudo caddy validate --config /etc/caddy/Caddyfile，再 sudo systemctl reload caddy。
 
 afkfactory.dev {
-	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		# 只接受 Cloudflare 回源时出示的客户端证书，证书由我们的 AOP CA 签发。
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /etc/caddy/certs/aop-ca.pem
+		}
+	}
 
 	root * /data/www
 	file_server
@@ -13,6 +19,11 @@ afkfactory.dev {
 }
 
 upload.afkfactory.dev {
-	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /etc/caddy/certs/aop-ca.pem
+		}
+	}
 	respond "ok"
 }

@@ -19,6 +19,8 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
+Caddyfile 现在要求客户端证书。第一次装之前，先把 AOP CA 证书放到 `/etc/caddy/certs/aop-ca.pem`，再跑 `caddy validate`。CA 和客户端证书怎么生成、怎么换，见 `docs/服务器操作手册.md` 的「源站 mTLS」一节。
+
 `/data/www` 给 `dev`，上传时才不用 sudo。目录默认 755，`caddy` 用户读得到。Caddy 配置改了以后每次都跑 `validate` 和 `reload`，不重启服务。
 
 根路径现在放一个临时的 `ok` 占位页（`/data/www/index.html`），让手册里「站点回 `ok`」的检查继续成立。教程页上线后换掉。
