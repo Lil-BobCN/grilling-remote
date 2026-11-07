@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教程页样品 · 第一次对话会遇到什么（#58）</title>
+<style>
+:root{
+  --bg:#f2eee3;
+  --paper:#fbf8f1;
+  --paper-2:#fffdf8;
+  --ink:#24211b;
+  --ink-2:#4c463b;
+  --muted:#736b5d;
+  --faint:#a39a89;
+  --line:#ddd5c4;
+  --line-2:#cec4b0;
+  --accent:#3b4a9e;
+  --accent-2:#2c3879;
+  --accent-soft:#eef0fb;
+  --accent-line:#cfd5ef;
+  --green:#2f6b4d;
+  --green-soft:#edf5ef;
+  --green-line:#c8ddce;
+  --amber:#8a5a12;
+  --amber-soft:#fbf3e2;
+  --amber-line:#e7d3ab;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --r:12px;
+  --r-sm:8px;
+  --shadow:0 18px 44px -30px rgba(36,33,27,.42),0 1px 2px rgba(36,33,27,.05);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:16px/1.75 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+p{margin:0}
+h1,h2,h3{margin:0}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.sample-note{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:6px 10px;
+  padding:9px 16px;
+  background:var(--ink);
+  color:#efeadd;
+  font-size:12px;
+  line-height:1.5;
+  text-align:center;
+}
+.sample-note .tag{
+  display:inline-block;
+  padding:1px 7px;
+  border:1px solid #6d6658;
+  border-radius:99px;
+  color:#fffdf8;
+  font-weight:600;
+  letter-spacing:.04em;
+}
+.sample-note .sep{color:#8d8575}
+
+.page{
+  max-width:820px;
+  margin:0 auto;
+  padding:34px 20px 72px;
+}
+
+.context{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:12px 14px;
+  background:rgba(251,248,241,.62);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.6;
+}
+.context .ctx-label{
+  margin-right:4px;
+  color:var(--faint);
+  font-weight:600;
+  letter-spacing:.04em;
+}
+.context .ctx-step{
+  padding:3px 9px;
+  border:1px solid transparent;
+  border-radius:99px;
+  white-space:nowrap;
+}
+.context .ctx-step.current{
+  border-color:var(--accent-line);
+  background:var(--accent-soft);
+  color:var(--accent-2);
+  font-weight:600;
+}
+.context .ctx-arrow{color:var(--faint)}
+
+.section{
+  margin-top:16px;
+  padding:44px 48px 40px;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+}
+
+.eyebrow{
+  margin-bottom:8px;
+  color:var(--accent);
+  font:600 12px/1.4 var(--mono);
+  letter-spacing:.06em;
+}
+h1{
+  margin-bottom:14px;
+  font:600 clamp(30px,4.6vw,40px)/1.28 var(--serif);
+  letter-spacing:-.01em;
+}
+.lede{
+  max-width:38em;
+  color:var(--ink-2);
+  font-size:16.5px;
+  line-height:1.8;
+}
+.lede strong{color:var(--ink);font-weight:600}
+
+.check{
+  margin:24px 0 34px;
+  padding:13px 16px;
+  background:var(--amber-soft);
+  border:1px solid var(--amber-line);
+  border-left:3px solid var(--amber);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  color:#5b4318;
+  font-size:14px;
+  line-height:1.7;
+}
+.check strong{color:#4a340f}
+
+.steps{
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.step{
+  position:relative;
+  display:grid;
+  grid-template-columns:44px minmax(0,1fr);
+  gap:18px;
+  padding-bottom:34px;
+}
+.step:last-child{padding-bottom:0}
+.step:not(:last-child)::before{
+  content:"";
+  position:absolute;
+  left:21px;
+  top:48px;
+  bottom:2px;
+  width:1px;
+  background:var(--line);
+}
+.num{
+  position:relative;
+  z-index:1;
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  background:var(--ink);
+  color:var(--paper);
+  font:600 15px/1 var(--mono);
+}
+.step h2{
+  margin:7px 0 8px;
+  font:600 21px/1.45 var(--serif);
+}
+.step p{color:var(--ink-2)}
+
+blockquote{
+  margin:14px 0;
+  padding:11px 15px;
+  background:var(--accent-soft);
+  border-left:3px solid var(--accent);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  color:#2c3260;
+  font-size:14.5px;
+  line-height:1.75;
+}
+blockquote p+p{margin-top:8px}
+
+.do{
+  display:flex;
+  align-items:baseline;
+  gap:9px;
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px dashed var(--line);
+  color:var(--ink) !important;
+  font-size:14.5px;
+}
+.do span{
+  flex:none;
+  padding:2px 8px;
+  background:var(--green-soft);
+  border:1px solid var(--green-line);
+  border-radius:99px;
+  color:var(--green);
+  font-size:12px;
+  font-weight:600;
+  white-space:nowrap;
+}
+
+.mock{
+  margin:16px 0 0;
+  overflow:hidden;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.mock-bar{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:8px 12px;
+  background:#f0ebdf;
+  border-bottom:1px solid var(--line);
+  color:var(--muted);
+  font-size:11px;
+}
+.dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#cfc6b4;
+}
+.mock-title{
+  margin-left:5px;
+  color:var(--ink-2);
+  font-weight:600;
+  letter-spacing:.02em;
+}
+.mock-tag{
+  margin-left:auto;
+  padding:1px 6px;
+  border:1px solid var(--line-2);
+  border-radius:99px;
+  color:var(--faint);
+  font-size:10px;
+}
+.mock-body{padding:16px 16px 14px}
+.bubble{
+  max-width:95%;
+  padding:13px 16px;
+  background:#f1ece1;
+  border-radius:3px 14px 14px 14px;
+  color:#33302a;
+  font-size:14px;
+  line-height:1.75;
+}
+.bubble p+p{margin-top:7px}
+.mock-input{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:14px;
+  padding:10px 12px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:9px;
+  color:var(--faint);
+  font-size:13px;
+}
+.mock-input .send{
+  margin-left:auto;
+  padding:3px 9px;
+  background:var(--ink);
+  border-radius:6px;
+  color:#fffdf8;
+  font-size:11px;
+  white-space:nowrap;
+}
+
+.branch{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin:16px 0 0;
+}
+.branch-card{
+  padding:15px 16px 14px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-top:3px solid var(--line-2);
+  border-radius:var(--r-sm);
+}
+.branch-card.small{border-top-color:var(--green)}
+.branch-card.big{border-top-color:var(--accent)}
+.branch-card h3{
+  margin-bottom:7px;
+  font:600 15px/1.4 var(--sans);
+}
+.branch-card.small h3{color:var(--green)}
+.branch-card.big h3{color:var(--accent-2)}
+.branch-card p{
+  color:var(--ink-2);
+  font-size:14px;
+  line-height:1.7;
+}
+.branch-card .quote{
+  margin-bottom:8px;
+  padding-left:10px;
+  border-left:2px solid var(--line-2);
+  color:#3a352c;
+}
+
+.after{
+  margin-top:42px;
+  padding:24px 26px 22px;
+  background:var(--paper-2);
+  border:1px solid var(--accent-line);
+  border-radius:var(--r);
+}
+.after h2{margin-bottom:8px;font:600 23px/1.4 var(--serif)}
+.after p{color:var(--ink-2);font-size:15px}
+.copyline{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  margin:15px 0 14px;
+}
+.copyline code{
+  display:block;
+  overflow-x:auto;
+  padding:12px 15px;
+  background:#252219;
+  border-radius:var(--r-sm);
+  color:#f7f1e2;
+  font:14px/1.5 var(--mono);
+  white-space:nowrap;
+}
+.copyline .copy-note{
+  color:var(--faint);
+  font-size:12px;
+}
+
+.taboos{margin-top:40px}
+.taboos h2{margin-bottom:7px;font:600 23px/1.4 var(--serif)}
+.taboos > p{color:var(--ink-2);font-size:15px}
+.taboos ol{
+  margin:15px 0 0;
+  padding:0;
+  list-style:none;
+  counter-reset:taboo;
+}
+.taboos li{
+  position:relative;
+  padding:12px 0 12px 38px;
+  border-top:1px solid var(--line);
+  color:var(--ink-2);
+  font-size:14.5px;
+  line-height:1.75;
+  counter-increment:taboo;
+}
+.taboos li:last-child{border-bottom:1px solid var(--line)}
+.taboos li::before{
+  content:counter(taboo);
+  position:absolute;
+  left:0;
+  top:14px;
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border:1px solid var(--amber-line);
+  border-radius:50%;
+  background:var(--amber-soft);
+  color:var(--amber);
+  font:600 11px/1 var(--mono);
+}
+.taboos strong{color:var(--ink);font-weight:600}
+
+.progress{
+  margin-top:24px;
+  color:var(--muted);
+  font-size:14px;
+}
+
+.three-things{
+  margin:0 0 34px;
+  padding:16px 18px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+}
+.tt-title{
+  margin-bottom:10px;
+  color:var(--ink);
+  font-size:15px;
+  font-weight:600;
+}
+.tt-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px 10px;
+  color:var(--ink-2);
+  font-size:14px;
+}
+.tt-row b{
+  display:inline-grid;
+  place-items:center;
+  width:19px;
+  height:19px;
+  margin-right:4px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent-2);
+  font:600 11px/1 var(--mono);
+}
+.tt-sep{color:var(--faint)}
+.tt-note{
+  margin-top:9px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+@media (max-width:680px){
+  body{font-size:15px}
+  .page{padding:18px 12px 48px}
+  .section{padding:26px 19px 28px}
+  h1{font-size:29px}
+  .lede{font-size:15.5px}
+  .step{grid-template-columns:36px minmax(0,1fr);gap:13px;padding-bottom:28px}
+  .step:not(:last-child)::before{left:17px;top:40px}
+  .num{width:36px;height:36px;font-size:13px}
+  .step h2{font-size:19px;margin-top:5px}
+  .branch{grid-template-columns:1fr}
+  .tt-row{display:grid;gap:6px}
+  .tt-sep{display:none}
+  .after{padding:20px 18px}
+  .context{font-size:11px}
+  .context .ctx-step{padding:2px 7px}
+}
+
+@media print{
+  body{background:#fff}
+  .sample-note,.context{display:none}
+  .page{max-width:none;padding:0}
+  .section{border:0;box-shadow:none;padding:0}
+}
+</style>
+</head>
+<body>
+
+<div class="sample-note">
+  <span class="tag">样品</span>
+  <span>#58 第一次对话 · 只做这一节，不重做整页</span>
+  <span class="sep">·</span>
+  <span>建议位置：说「开始需求澄清」之后，做完回传之前</span>
+</div>
+
+<main class="page">
+
+  <nav class="context" aria-label="这一节在教程页里的位置">
+    <span class="ctx-label">教程页</span>
+    <span class="ctx-step">下载</span>
+    <span class="ctx-arrow">→</span>
+    <span class="ctx-step">解压</span>
+    <span class="ctx-arrow">→</span>
+    <span class="ctx-step">用 dsh 打开</span>
+    <span class="ctx-arrow">→</span>
+    <span class="ctx-step">说「开始需求澄清」</span>
+    <span class="ctx-arrow">→</span>
+    <span class="ctx-step current">第一次对话</span>
+    <span class="ctx-arrow">→</span>
+    <span class="ctx-step">做完回传</span>
+  </nav>
+
+  <article class="section">
+
+    <p class="eyebrow">说「开始需求澄清」之后</p>
+    <h1>第一次对话会遇到什么</h1>
+    <p class="lede">Agent 会先讲一遍接下来怎么走，再请你说想做什么。事情大，这一次会一直走到拆议题、排顺序。事情小，问完就结束。下面按大需求讲，一共六步；小需求在第 3 步分开。</p>
+
+    <aside class="check">
+      <strong>先留意一句话。</strong>第一次打开时，Agent 会先检查工作区文件。如果它说「文件没放对，按官网第 2 步重放」，说明工作区文件没放对。截这句话和文件列表，找客服，不要自己重装。
+    </aside>
+
+    <div class="three-things">
+      <p class="tt-title">大需求的六步里，你实际只做三件事</p>
+      <div class="tt-row">
+        <span><b>1</b>说你想做什么</span>
+        <span class="tt-sep">→</span>
+        <span><b>2</b>回答 Agent 的问题</span>
+        <span class="tt-sep">→</span>
+        <span><b>3</b>看清单，定先做哪张</span>
+      </div>
+      <p class="tt-note">之后每次新对话，只多一件事：把 Agent 给的那一行原样复制过去。</p>
+    </div>
+
+    <ol class="steps">
+
+      <li class="step">
+        <div class="num">1</div>
+        <div class="body">
+          <h2>Agent 先讲一遍接下来怎么走</h2>
+          <p>它会告诉你：先说想做什么，它来判断大小；小的当场问清楚，大的拆成几次做。听完你直接说想法就行。</p>
+
+          <figure class="mock">
+            <div class="mock-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="mock-title">需求澄清 · dsh</span>
+              <span class="mock-tag">示意图</span>
+            </div>
+            <div class="mock-body">
+              <div class="bubble">
+                <p>我先说说这件事接下来会怎么走。</p>
+                <p>你先说你想做什么。我会判断这件事是大还是小。小的当场问清楚就完事了，之后会交给开发者；任务量大就需要拆分了，拆分成几个小任务，分几次做。</p>
+                <p>你可以开始跟我说你模糊的想法了。</p>
+              </div>
+              <div class="mock-input">
+                <span>用你自己的话说，想做什么…</span>
+                <span class="send">发送</span>
+              </div>
+            </div>
+          </figure>
+
+          <p class="do"><span>你要做</span>听它讲完，直接说想法。</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="num">2</div>
+        <div class="body">
+          <h2>你说想做什么</h2>
+          <p>用日常的话说，不用想术语，也不用一次说全。Agent 会从这段话判断事情大还是小。</p>
+          <p class="do"><span>你要做</span>说一段你想做的东西。</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="num">3</div>
+        <div class="body">
+          <h2>Agent 判断大小</h2>
+          <p>它自己判断，不用你选。听完你的想法，它会说走哪条路。</p>
+
+          <div class="branch">
+            <div class="branch-card small">
+              <h3>事情小</h3>
+              <p class="quote">「这件事不大，今天就能问清楚。问完我整理成一份需求草稿，交给开发去做。」</p>
+              <p>接下来它问几轮，你回答。问完这次对话就结束，没有议题清单。</p>
+            </div>
+            <div class="branch-card big">
+              <h3>事情大</h3>
+              <p class="quote">「已经确定需要拆分。」</p>
+              <p>接着往下走，把终点定成一句话，再拆成议题。继续看第 4 步。</p>
+            </div>
+          </div>
+
+          <p class="do"><span>你要做</span>听它说走哪条，接着答。</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="num">4</div>
+        <div class="body">
+          <h2>把终点定成一句话</h2>
+          <p>Agent 一轮列几个问题，每个都带推荐答案。你按自己的情况答。它把这些答案收成一句话，就是终点。</p>
+          <blockquote>
+            <p>拆的话，第一步是我跟你把它最后要做成什么样定下来。这就是终点。终点是一句话，比如「顾客在微信上看今天的水果、下单、选到店取还是送货，你在后台改价格和库存」。</p>
+          </blockquote>
+          <blockquote>
+            <p>我问的问题请你自己答，一定要重视，因为问题和问题之间是有逻辑联系的，一步错，后面全跟着错。</p>
+          </blockquote>
+          <p class="do"><span>你要做</span>自己答。一轮答不完就分几轮。</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="num">5</div>
+        <div class="body">
+          <h2>拆成一张一张议题</h2>
+          <p>终点定下来，Agent 会先说「终点定了」，再把整件事拆成一张一张议题。一张议题就是一次对话，只定这一件事。</p>
+          <blockquote>
+            <p>接下来我把它拆成一张一张的议题，一张议题代表一个任务。这些任务都做完，你要的东西就做成了。</p>
+          </blockquote>
+          <p class="do"><span>你要做</span>等它拆完。文件你不用打开，也不用管。</p>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="num">6</div>
+        <div class="body">
+          <h2>看清单，定先做哪张</h2>
+          <p>拆完它把清单给你看：一共几张、每张做什么。顺序由你定。你说哪张先做，它就按你说的排。</p>
+          <blockquote>
+            <p>拆完我把清单给你看：一共几张、每张做什么、按什么顺序做。哪张要先做，你说，我按你说的排。</p>
+          </blockquote>
+          <p>每张开头还会写一句，这次是聊、看个样子、动手做，还是我去查。</p>
+          <p class="do"><span>你要做</span>看清单，说一句先做哪张。</p>
+        </div>
+      </li>
+
+    </ol>
+
+    <div class="after">
+      <p class="eyebrow">第一次对话结束</p>
+      <h2>之后每次新对话，只复制一行</h2>
+      <p>定完顺序，Agent 会说一句「议题拆好了，顺序按你定的」，再请你新开一次对话。它给你一行字，原样复制过去，不要改。</p>
+      <div class="copyline">
+        <code>继续：tanxin-yuyue 01 空档怎么放</code>
+        <span class="copy-note">举例。Agent 给你的那一行，原样复制。</span>
+      </div>
+      <p>Agent 会自己接上，不用你重新讲一遍。它会先说三句：这件事最后要做成什么、现在走到哪；已经定了几条；下一步做哪张。然后开始。</p>
+    </div>
+
+    <div class="taboos">
+      <h2>这个做法最怕的三件事</h2>
+      <p>Agent 在拆议题前会提前说。记住这三句，后面会顺很多。</p>
+      <ol>
+        <li><strong>在一张议题里聊另一张的事。</strong>想到了就先说一声，我记到那张去，这张先做完。</li>
+        <li><strong>说着说着拐到别处。</strong>拐了就拐了，你照说，我记下来，再拉回来。</li>
+        <li><strong>在后面的议题里改前面定过的事。</strong>要改就说，我去改当初那一张，在地图上记一笔，不在新议题里悄悄改。</li>
+      </ol>
+    </div>
+
+    <p class="progress">「进度我写在这个文件夹里，你不用打开，也不用改。想改什么直接跟我说。」</p>
+
+  </article>
+
+</main>
+
+</body>
+</html>
