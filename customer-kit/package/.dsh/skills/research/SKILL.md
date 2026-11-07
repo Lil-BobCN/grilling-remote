@@ -9,6 +9,8 @@ description: Investigate a question against high-trust primary sources and captu
 
 没有子代理工具时，自己查，不要假装派了代理。
 
+结论如果回答了 `.scratch/{需求名}/问题树.md` 里的某个题，补登同一份文件：改那一行的 `当前结论` 和 `状态`。
+
 ---
 
 Spin up a **background agent** to do the research, so you keep working while it reads. Start it with a fresh context window.
