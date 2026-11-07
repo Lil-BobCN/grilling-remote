@@ -5,7 +5,7 @@ description: Investigate a question against high-trust primary sources and captu
 
 ## 客户模式
 
-在客户工作区，结论写到 `.scratch/{简称}/research/<name>.md`。文件开头写清要回答的问题和日期，每条结论后面写出处链接。
+在客户工作区，结论写到 `.scratch/{需求名}/research/<name>.md`。文件开头写清要回答的问题和日期，每条结论后面写出处链接。
 
 没有子代理工具时，自己查，不要假装派了代理。
 
@@ -17,4 +17,4 @@ Its job:
 
 1. Investigate the question against **primary sources** (official docs, source code, specs, first-party APIs), not a secondary write-up of them. Follow every claim back to the source that owns it.
 2. Write the findings to a single Markdown file, citing each claim's source.
-3. In the customer workspace, save it to `.scratch/{简称}/research/<name>.md`. Do not create a branch, push, or open a PR.
+3. In the customer workspace, save it to `.scratch/{需求名}/research/<name>.md`. Do not create a branch, push, or open a PR.

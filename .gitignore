@@ -18,6 +18,7 @@ output/
 
 # 客户技能包生成物
 customer-kit/dist/
+customer-kit/package/技能清单.md
 
 # 客户数据：本仓库公开，不放客户数据
 inbox/

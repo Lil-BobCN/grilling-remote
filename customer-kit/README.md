@@ -1,34 +1,47 @@
-# 客户技能包（#23）
+2026-11-07：按 docs/客户工作区方案.md 更新，改了标题和简介、目录表、打包、没测到的项、还没定的、相关票。装配提示词流程换成工作区 zip。`package/` 已换成新摆法，`setup` 和 `ask-matt` 已删。构建脚本和 `manifest.json` 已改，在本机构建并解压核对过。
 
-一句话：给非技术客户用的 DeepSeek Harness 技能包，解压到工作文件夹的 `.dsh/skills/`，配一份 `AGENTS.md` 和本地 Markdown 追踪器。
+# 客户工作区包（#23）
+
+一句话：给非技术客户用的 DeepSeek Harness 工作区 zip。解压后根目录就是工作区，客户用 dsh 打开，说「开始需求澄清」就开始。技能在 `.dsh/skills/`。`AGENTS.md` 是成品。本地 Markdown 追踪器的两份文件在 `docs/agents/`，已预生成。没有装配提示词。
 
 ## 目录
 
+`package/` 已在 2026-11-07 换成新摆法，下表按现状写。`build.sh`、`manifest.json` 和包内 `技能清单.md` 已在 2026-11-07 按方案第五节改完。
+
 | 路径 | 是什么 |
 | --- | --- |
-| `package/` | 打进 zip 的内容，原样复制 |
-| `package/skills/` | 八个技能 |
-| `package/AGENTS-TEMPLATE.md` | 提示词①复制成客户根目录的 `AGENTS.md` |
-| `package/README.txt` | zip 里的客户说明 |
-| `package/NOTICE.md` | 上游来源和改动 |
-| `prompts/01-装配提示词.txt` | 提示词①，官网原文，直接复制给客户 |
-| `prompts/02-启动提示词.txt` | 提示词②，首次“开始需求澄清”，续做“继续” |
+| `package/` | 打进 zip 的内容，和 zip 根目录一模一样，原样打包 |
+| `package/.dsh/skills/` | 九个技能：`grilling`、`domain-modeling`、`wayfinder`、`prototype`、`research`、`wait-what`、`next`、`map-gate`、`wrap-up` |
+| `package/AGENTS.md` | 成品，标题下有一行 `工作区版本：v1（构建日期）` |
+| `package/docs/agents/` | `issue-tracker.md` 和 `domain.md`，预生成，构建时不跑 `setup` |
+| `package/README.txt` | zip 里的客户说明，写解压和打开三步 |
+| `package/技能清单.md` | 由 `build.sh` 从 `manifest.json` 生成，每次构建重写 |
+| `package/NOTICE.md`、`package/LICENSE` | 上游来源和改动，许可证 |
+| `manifest.json` | 技能清单数据源，生成包内 `技能清单.md` 和官网清单。放在 `customer-kit/` 根目录（2026-11-07 定） |
+| `prompts/01-装配提示词.txt` | 提示词①，已作废。文件留在仓库，不进包 |
+| `prompts/02-启动提示词.txt` | 提示词②，只剩两句：第一次说「开始需求澄清」，之后复制收尾给的一行，形如「继续：tanxin-yuyue 01 空档怎么放」。已在 2026-11-07 改成这两句 |
 | `安装步骤.md` | 客服带装清单，含每步的失败信号 |
 | `测试记录.md` | 2026-11-05 的实测结果、没测到的项 |
-| `build.sh` | 打 `dist/grilling-skills-v1.zip` |
+| `build.sh` | 打 `dist/客户工作区-v1.zip`，包名从 `manifest.json` 的版本号读，直接打 `package/`，不套层 |
 | `dist/` | 生成物，不进 git |
 
 ## 打包
+
+下面是 2026-11-07 改完后的做法，依据方案第五节。
 
 ```bash
 bash customer-kit/build.sh
 ```
 
-产物：`customer-kit/dist/grilling-skills-v1.zip`，同目录还有 `.sha256` 校验文件。发布时两个一起上传。
+产物：`customer-kit/dist/客户工作区-v1.zip`，同目录还有 `.sha256` 校验文件。发布时两个一起上传。包名从版本号读。
 
-zip 根目录是 `grilling-skills-v1/`，和提示词①里的路径一致。改 `package/` 后必须重打。重新构建会生成新的校验值。
+zip 直接打 `package/`，不套外层文件夹，解压后根目录就是工作区。要带上隐藏目录 `.dsh`，排除 `.DS_Store`。包内 `技能清单.md` 和官网清单，都由 `manifest.json` 生成。改 `package/` 后必须重打。重新构建会生成新的校验值。
+
+2026-11-07 已改：`build.sh` 用 `jq` 读 `manifest.json` 的版本号，包名 `客户工作区-v1`，zip 不套层。构建时重写 `package/技能清单.md`。本机构建一次，解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
 
 ## 这版测过什么
+
+以下是旧流程（提示词①装配）的实测，属于历史。新流程的验收项见方案第十节。
 
 2026-11-05，macOS Apple 芯片，空文件夹，本机 dsh 0.2.1-rc.5，按提示词①从头走了一遍：
 
@@ -40,12 +53,20 @@ zip 根目录是 `grilling-skills-v1/`，和提示词①里的路径一致。改
 
 细节和没测到的项见 `测试记录.md`。Windows 没机器，未验证。`workspace-write` 沙箱没测到，测试时这台机器的沙箱后端坏了，用了 `danger-full-access`。Linux 不支持。
 
+新流程没测到的项（方案第十二节）：
+
+- Mac 和 Windows 右键压缩是否带上隐藏的 `.scratch/` 和 `.dsh`：未验证，归 #36。
+- Windows 解压、中文路径、`.dsh` 被隐藏时 dsh 是否正常：未验证，归 #36。
+- 客户机的 dsh 是否有 `subagent` 和 `subagent_fork`：归 `安装步骤.md` 的首单实测。
+- 新会话只发「继续：需求名 编号 票名」能否接上：未验证。
+
 ## 还没定的
 
-- `AGENTS-TEMPLATE.md` 和提示词②由 #25 定稿（2026-11-05），改完要重打包，发布归 #35。
-- 客户侧查漏用 `subagent_fork`，读对话和文件。客户机上起不起得来、效果怎么样，归 #26。
-- `ask-matt` 的调用方式本版定了：删掉 `disable-model-invocation`，模型可以自动路由，客户也可以输入 `/ask-matt`。运营者要改回人工输入，就加回那一行。注：客户版 `ask-matt` 没有 `/to-spec`，只有运营者本机版有。回传后能不能 `to-spec`，由运营者在本机问。
-- 教程页、截图、两条提示词怎么放，归 #31。
+- `AGENTS.md`（成品，原 `AGENTS-TEMPLATE.md`）和提示词②由 #25 定稿（2026-11-05）。之后提示词②只剩两句。`AGENTS.md` 已在 2026-11-07 照 #44 第 5 条和方案改完，2026-11-07 已在本机打过一次包，发布归 #35。
+- 客户侧查漏由 `map-gate` 和 `wrap-up` 起子代理做，起不来就自己重读文件。客户机上起不起得来，归 `安装步骤.md` 的首单实测。效果怎么样，归 #26。
+- `setup` 和 `ask-matt` 不进客户包。两个技能已直接删除，不留备份，git 历史里能找回（方案第十三节第 1 项）。`AGENTS.md` 里提到 `ask-matt` 的两处，已改成运营者自己处理，你不做（第 5 项）。回传后能不能 `to-spec`，由运营者在本机问。
+- 两个需求合成一个软件的规则，待定（第 2 项）。整包大小上限先写 50 MB（第 4 项，运营者 2026-11-07 定，是估计值，没有依据）。对话记录 v1 不回（第 3 项）。
+- 教程页、截图、提示词②两句怎么放，归 #31。「第一次对话会遇到什么」一节归 #58。
 
 ## 上游更新
 
@@ -58,3 +79,7 @@ zip 根目录是 `grilling-skills-v1/`，和提示词①里的路径一致。改
 - #26 实测提示词
 - #31 教程页
 - #24 进度回传
+- #35 官网发布
+- #36 安装实测
+- #44 客户包收尾
+- #58 第一次对话
