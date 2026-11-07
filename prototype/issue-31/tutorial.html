@@ -1,0 +1,2207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>需求澄清 · 客户使用教程（#31 样品）</title>
+<meta name="description" content="从下载 DeepSeek Harness 和工作区，到第一次对话，再到传回整个文件夹。">
+<style>
+:root{
+  --bg:#f2eee3;
+  --paper:#fbf8f1;
+  --paper-2:#fffdf8;
+  --ink:#24211b;
+  --ink-2:#4c463b;
+  --muted:#736b5d;
+  --faint:#a39a89;
+  --line:#ddd5c4;
+  --line-2:#cec4b0;
+  --accent:#3b4a9e;
+  --accent-2:#2c3879;
+  --accent-soft:#eef0fb;
+  --accent-line:#cfd5ef;
+  --green:#2f6b4d;
+  --green-soft:#edf5ef;
+  --green-line:#c8ddce;
+  --amber:#8a5a12;
+  --amber-soft:#fbf3e2;
+  --amber-line:#e7d3ab;
+  --mark:#b23b2e;
+  --mark-soft:#fbeeea;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --r:14px;
+  --r-sm:9px;
+  --shadow:0 22px 54px -38px rgba(36,33,27,.5),0 1px 2px rgba(36,33,27,.05);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0;
+  background:
+    radial-gradient(circle at 8% 4%,rgba(59,74,158,.05),transparent 30rem),
+    radial-gradient(circle at 94% 0%,rgba(138,90,18,.05),transparent 24rem),
+    var(--bg);
+  color:var(--ink);
+  font:16px/1.75 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+p{margin:0}
+h1,h2,h3,h4{margin:0}
+a{color:var(--accent);text-underline-offset:3px}
+code{font-family:var(--mono);font-size:.92em}
+img{max-width:100%;height:auto;display:block}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+::selection{background:var(--accent-soft)}
+
+.skip-link{
+  position:fixed;
+  left:12px;
+  top:-60px;
+  z-index:200;
+  padding:9px 14px;
+  background:var(--ink);
+  border-radius:6px;
+  color:var(--paper);
+  font-size:14px;
+  text-decoration:none;
+}
+.skip-link:focus{top:12px}
+
+.scroll-progress{
+  position:fixed;
+  left:0;
+  top:0;
+  z-index:120;
+  width:100%;
+  height:3px;
+  background:var(--accent);
+  transform:scaleX(0);
+  transform-origin:0 50%;
+  pointer-events:none;
+}
+
+.sample-note{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:5px 10px;
+  padding:8px 16px;
+  background:var(--ink);
+  color:#efeadd;
+  font-size:12px;
+  line-height:1.5;
+  text-align:center;
+}
+.sample-note .tag{
+  display:inline-block;
+  padding:1px 7px;
+  border:1px solid #6d6658;
+  border-radius:99px;
+  color:#fffdf8;
+  font-weight:600;
+  letter-spacing:.04em;
+}
+.sample-note .sep{color:#8d8575}
+
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:100;
+  background:rgba(242,238,227,.9);
+  border-bottom:1px solid rgba(206,196,176,.75);
+  backdrop-filter:saturate(140%) blur(10px);
+  -webkit-backdrop-filter:saturate(140%) blur(10px);
+}
+.topbar-inner{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  max-width:1180px;
+  margin:0 auto;
+  padding:12px 24px;
+}
+.brand{
+  display:flex;
+  align-items:baseline;
+  gap:9px;
+  color:var(--ink);
+  text-decoration:none;
+  white-space:nowrap;
+}
+.brand-mark{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border-radius:7px;
+  background:var(--ink);
+  color:var(--paper);
+  font:600 12px/1 var(--mono);
+  letter-spacing:.02em;
+  transform:translateY(4px);
+}
+.brand-text{font:600 15px/1.3 var(--sans)}
+.brand-sub{color:var(--faint);font-size:11px;letter-spacing:.08em}
+.topnav{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  margin-left:auto;
+}
+.topnav a{
+  padding:6px 10px;
+  border-radius:7px;
+  color:var(--ink-2);
+  font-size:13.5px;
+  text-decoration:none;
+  white-space:nowrap;
+}
+.topnav a:hover{background:rgba(255,253,248,.8);color:var(--ink)}
+.topnav a.topnav-support{
+  border:1px solid var(--line-2);
+  background:var(--paper-2);
+  font-weight:600;
+}
+
+.page{
+  max-width:1180px;
+  margin:0 auto;
+  padding:30px 24px 76px;
+}
+.layout{
+  display:grid;
+  grid-template-columns:196px minmax(0,1fr);
+  gap:46px;
+  align-items:start;
+}
+.rail{position:sticky;top:82px}
+.rail-title{
+  margin-bottom:12px;
+  color:var(--faint);
+  font:600 11px/1.4 var(--mono);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.rail-list{display:flex;flex-direction:column;gap:1px;margin:0;padding:0;list-style:none}
+.rail-list a{
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr);
+  gap:2px;
+  padding:8px 8px 8px 12px;
+  border-left:2px solid transparent;
+  border-radius:0 7px 7px 0;
+  color:var(--ink-2);
+  font-size:13.5px;
+  line-height:1.5;
+  text-decoration:none;
+}
+.rail-list a:hover{background:rgba(255,253,248,.7);color:var(--ink)}
+.rail-list a .n{color:var(--faint);font:600 11px/1.9 var(--mono)}
+.rail-list a.active{
+  border-left-color:var(--accent);
+  background:rgba(255,253,248,.9);
+  color:var(--accent-2);
+  font-weight:600;
+}
+.rail-list a.active .n{color:var(--accent)}
+.rail-card{
+  margin-top:22px;
+  padding:14px 15px;
+  background:var(--amber-soft);
+  border:1px solid var(--amber-line);
+  border-radius:var(--r-sm);
+  font-size:12.5px;
+  line-height:1.65;
+  color:#5b4318;
+}
+.rail-card b{display:block;margin-bottom:3px;color:#4a340f;font-size:13px}
+.rail-card a{color:#6b4a14}
+
+.mobile-toc{
+  display:none;
+  position:sticky;
+  top:53px;
+  z-index:90;
+  margin:0 -24px 18px;
+  padding:8px 16px;
+  overflow-x:auto;
+  background:rgba(242,238,227,.94);
+  border-bottom:1px solid var(--line);
+  white-space:nowrap;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.mobile-toc::-webkit-scrollbar{display:none}
+.mobile-toc a{
+  display:inline-block;
+  margin-right:6px;
+  padding:4px 10px;
+  border:1px solid var(--line);
+  border-radius:99px;
+  background:var(--paper-2);
+  color:var(--ink-2);
+  font-size:12.5px;
+  text-decoration:none;
+}
+.mobile-toc a.active{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+
+.main{display:flex;flex-direction:column;gap:22px;min-width:0}
+
+.card{
+  padding:38px 44px 36px;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+}
+.card + .card{margin-top:0}
+
+.eyebrow{
+  margin-bottom:8px;
+  color:var(--accent);
+  font:600 11.5px/1.4 var(--mono);
+  letter-spacing:.1em;
+}
+h1{
+  margin-bottom:16px;
+  font:600 clamp(33px,4.8vw,50px)/1.22 var(--serif);
+  letter-spacing:-.012em;
+}
+h1 .soft{color:var(--muted);font-weight:400}
+.lede{
+  max-width:40em;
+  color:var(--ink-2);
+  font-size:16.5px;
+  line-height:1.8;
+}
+.lede strong{color:var(--ink);font-weight:600}
+
+.hero{position:relative;overflow:hidden}
+.hero::before{
+  content:"";
+  position:absolute;
+  right:-70px;
+  top:-90px;
+  width:300px;
+  height:300px;
+  border:1px solid rgba(59,74,158,.12);
+  border-radius:50%;
+  pointer-events:none;
+}
+.hero::after{
+  content:"";
+  position:absolute;
+  right:34px;
+  top:-36px;
+  width:150px;
+  height:150px;
+  border:1px solid rgba(59,74,158,.1);
+  border-radius:50%;
+  pointer-events:none;
+}
+.hero-grid{
+  position:relative;
+  z-index:1;
+  display:block;
+}
+.hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:26px}
+.hero-meta{margin-top:13px;color:var(--muted);font-size:13px;line-height:1.7}
+
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:11px 17px;
+  border:1px solid transparent;
+  border-radius:9px;
+  font:600 14.5px/1.2 var(--sans);
+  text-decoration:none;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,transform .15s ease;
+}
+.btn:hover{transform:translateY(-1px)}
+@media (prefers-reduced-motion:reduce){.btn{transition:none}.btn:hover{transform:none}}
+.btn-primary{background:var(--accent);color:#fffdf8;box-shadow:0 8px 18px -12px rgba(59,74,158,.7)}
+.btn-primary:hover{background:var(--accent-2)}
+.btn-secondary{background:var(--paper-2);border-color:var(--line-2);color:var(--ink)}
+.btn-secondary:hover{border-color:var(--faint);background:#fff}
+.btn .sub{font-weight:400;font-size:12.5px;opacity:.8}
+
+.hero-card{
+  margin-top:28px;
+  padding:17px 20px 16px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:12px;
+}
+.hero-card-title{
+  margin-bottom:10px;
+  color:var(--faint);
+  font:600 11px/1.4 var(--mono);
+  letter-spacing:.1em;
+}
+.need-list{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0 20px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.need-list li{
+  display:grid;
+  grid-template-columns:24px minmax(0,1fr);
+  gap:9px;
+  padding:0 0 0 14px;
+  border-top:0;
+  border-left:1px solid var(--line);
+}
+.need-list li:first-child{border-left:0;padding-left:0}
+.need-num{
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent-2);
+  font:600 11px/1 var(--mono);
+  transform:translateY(2px);
+}
+.need-name{display:block;color:var(--ink);font-size:14px;font-weight:600;line-height:1.45}
+.need-note{display:block;color:var(--muted);font-size:12.5px;line-height:1.55}
+.hero-card-foot{
+  margin-top:15px;
+  padding-top:12px;
+  border-top:1px dashed var(--line);
+  color:var(--muted);
+  font-size:12.5px;
+  line-height:1.65;
+}
+
+.route{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:18px;
+}
+.route-card{
+  padding:15px 16px 14px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-top:3px solid var(--line-2);
+  border-radius:var(--r-sm);
+}
+.route-card.default{border-top-color:var(--green)}
+.route-card .route-tag{
+  display:inline-block;
+  margin-bottom:6px;
+  padding:1px 7px;
+  border-radius:99px;
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.03em;
+}
+.route-card.default .route-tag{background:var(--green-soft);border:1px solid var(--green-line);color:var(--green)}
+.route-card.other .route-tag{background:#f3eee2;border:1px solid var(--line-2);color:var(--muted)}
+.route-card h3{font-size:15px;line-height:1.45}
+.route-card p{margin-top:5px;color:var(--ink-2);font-size:13.5px;line-height:1.7}
+.route-title{font-size:23px;margin-bottom:4px}
+.route-card a{font-weight:600}
+.route-note{margin-top:10px;color:var(--muted);font-size:12.5px}
+
+.section-card{
+  position:relative;
+  overflow:hidden;
+  padding:40px 44px 36px;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  scroll-margin-top:84px;
+}
+.section-card::after{
+  content:attr(data-num);
+  position:absolute;
+  right:26px;
+  top:2px;
+  color:rgba(36,33,27,.045);
+  font:700 118px/1 var(--serif);
+  letter-spacing:-.04em;
+  pointer-events:none;
+}
+.step-head{
+  position:relative;
+  z-index:1;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 12px;
+  margin-bottom:8px;
+}
+.step-kicker{
+  color:var(--accent);
+  font:600 11.5px/1.4 var(--mono);
+  letter-spacing:.1em;
+}
+.step-chip{
+  padding:1px 8px;
+  border:1px solid var(--line);
+  border-radius:99px;
+  color:var(--muted);
+  font-size:11px;
+}
+h2{
+  position:relative;
+  z-index:1;
+  margin-bottom:12px;
+  font:600 clamp(25px,3.2vw,32px)/1.35 var(--serif);
+  letter-spacing:-.008em;
+}
+h3{font:600 17px/1.5 var(--sans)}
+h4{font:600 14px/1.5 var(--sans)}
+.section-lead{
+  position:relative;
+  z-index:1;
+  max-width:40em;
+  color:var(--ink-2);
+  font-size:15.5px;
+  line-height:1.8;
+}
+.section-lead + *{margin-top:18px}
+
+.substeps{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  margin:22px 0 0;
+  padding:0;
+  list-style:none;
+}
+.substep{
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr);
+  gap:13px;
+  padding:14px 0;
+  border-top:1px solid var(--line);
+}
+.substep:first-child{border-top:0;padding-top:0}
+.sub-num{
+  display:grid;
+  place-items:center;
+  width:26px;
+  height:26px;
+  margin-top:2px;
+  border:1px solid var(--line-2);
+  border-radius:50%;
+  background:var(--paper-2);
+  color:var(--muted);
+  font:600 11px/1 var(--mono);
+}
+.substep h3{margin-bottom:4px;font-size:15.5px}
+.substep p{color:var(--ink-2);font-size:14.5px;line-height:1.75}
+.substep p + p{margin-top:6px}
+.substep .small{color:var(--muted);font-size:13px}
+
+.dl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+.dl-card{
+  display:flex;
+  flex-direction:column;
+  padding:20px 19px 18px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:11px;
+}
+.dl-tag{
+  align-self:flex-start;
+  margin-bottom:8px;
+  padding:1px 8px;
+  border-radius:99px;
+  background:var(--accent-soft);
+  border:1px solid var(--accent-line);
+  color:var(--accent-2);
+  font:600 11px/1.7 var(--mono);
+  letter-spacing:.04em;
+}
+.dl-card h3{font-size:17px;line-height:1.4}
+.dl-card > p{margin-top:6px;color:var(--ink-2);font-size:13.5px;line-height:1.7}
+.dl-actions{margin-top:16px}
+.dl-meta{margin-top:9px;color:var(--muted);font-size:12px;line-height:1.6}
+.dl-meta code{font-size:11.5px}
+.file-table{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:5px 12px;
+  margin:13px 0 0;
+  padding:11px 12px;
+  background:rgba(242,238,227,.55);
+  border:1px solid var(--line);
+  border-radius:8px;
+  font-size:12px;
+  line-height:1.55;
+}
+.file-table dt{color:var(--muted);white-space:nowrap}
+.file-table dd{margin:0;color:var(--ink-2);font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
+.dl-note{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.65}
+
+details{
+  margin-top:13px;
+  border-top:1px solid var(--line);
+  padding-top:11px;
+}
+summary{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:var(--ink-2);
+  font-size:13px;
+  font-weight:600;
+  line-height:1.5;
+  cursor:pointer;
+  list-style:none;
+}
+summary::-webkit-details-marker{display:none}
+summary::before{
+  content:"+";
+  display:grid;
+  place-items:center;
+  width:17px;
+  height:17px;
+  border:1px solid var(--line-2);
+  border-radius:50%;
+  color:var(--muted);
+  font:600 12px/1 var(--mono);
+  flex:none;
+}
+details[open] summary::before{content:"−"}
+details .details-body{margin-top:9px;color:var(--muted);font-size:12.5px;line-height:1.7}
+details .details-body p + p{margin-top:7px}
+.hash{
+  display:block;
+  margin:7px 0;
+  padding:8px 10px;
+  overflow-wrap:anywhere;
+  background:#252219;
+  border-radius:6px;
+  color:#f7f1e2;
+  font:11.5px/1.6 var(--mono);
+}
+details .cmd{
+  display:block;
+  margin:5px 0 8px;
+  padding:7px 9px;
+  overflow-x:auto;
+  background:rgba(36,33,27,.05);
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--ink-2);
+  font:11.5px/1.6 var(--mono);
+  white-space:nowrap;
+}
+
+.note{
+  margin-top:18px;
+  padding:14px 16px;
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  font-size:14px;
+  line-height:1.75;
+}
+.note strong{font-weight:600}
+.note-amber{background:var(--amber-soft);border:1px solid var(--amber-line);border-left:3px solid var(--amber);color:#5b4318}
+.note-amber strong{color:#4a340f}
+.note-green{background:var(--green-soft);border:1px solid var(--green-line);border-left:3px solid var(--green);color:#274b39}
+.note-green strong{color:#1f3c2e}
+.note-blue{background:var(--accent-soft);border:1px solid var(--accent-line);border-left:3px solid var(--accent);color:#2c3260}
+.note-blue strong{color:#242a55}
+
+.check-block{
+  margin-top:20px;
+  padding:17px 18px 15px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.check-title{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14.5px;font-weight:600}
+.check-title .dot-ok{
+  display:grid;
+  place-items:center;
+  width:19px;
+  height:19px;
+  border-radius:50%;
+  background:var(--green-soft);
+  border:1px solid var(--green-line);
+  color:var(--green);
+  font:700 11px/1 var(--mono);
+}
+.tree{
+  margin:0;
+  padding:14px 16px;
+  overflow-x:auto;
+  background:#252219;
+  border-radius:8px;
+  color:#e9e2d2;
+  font:12.5px/1.85 var(--mono);
+  white-space:pre;
+  tab-size:2;
+}
+.tree .hit{color:#b8e6c8;font-weight:700}
+.tree .dim{color:#928b7d}
+.tree .arrow{color:#e0b26b}
+.tree-caption{margin-top:9px;color:var(--muted);font-size:12.5px;line-height:1.65}
+
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+.compare-card{padding:14px 15px 13px;border-radius:9px;border:1px solid var(--line);background:var(--paper-2)}
+.compare-card h4{margin-bottom:7px;font-size:13.5px}
+.compare-card.wrong{border-color:var(--amber-line);background:var(--amber-soft)}
+.compare-card.right{border-color:var(--green-line);background:var(--green-soft)}
+.compare-card p{color:var(--ink-2);font-size:13px;line-height:1.7}
+.compare-card .mini-tree{
+  margin:8px 0 0;
+  padding:9px 10px;
+  background:rgba(255,253,248,.7);
+  border:1px dashed var(--line-2);
+  border-radius:6px;
+  color:var(--ink-2);
+  font:11.5px/1.7 var(--mono);
+  white-space:pre;
+  overflow-x:auto;
+}
+
+.copybox{
+  display:flex;
+  align-items:stretch;
+  gap:8px;
+  margin:13px 0 0;
+  padding:8px 8px 8px 14px;
+  background:#252219;
+  border-radius:10px;
+}
+.copybox code{
+  flex:1;
+  align-self:center;
+  overflow-x:auto;
+  color:#f7f1e2;
+  font:14.5px/1.6 var(--mono);
+  white-space:nowrap;
+  scrollbar-width:thin;
+}
+.copybox code.long{font-size:13px}
+.example-line{
+  margin:13px 0 0;
+  padding:11px 13px;
+  background:#f6f2e8;
+  border:1px dashed var(--line-2);
+  border-radius:8px;
+  color:var(--ink-2);
+  font:13.5px/1.65 var(--mono);
+  overflow-wrap:anywhere;
+}
+.copy-btn{
+  flex:none;
+  padding:6px 11px;
+  border:1px solid #57503f;
+  border-radius:6px;
+  background:#3a352a;
+  color:#f4eddc;
+  font:600 12px/1.5 var(--sans);
+  cursor:pointer;
+  white-space:nowrap;
+}
+.copy-btn:hover{background:#4a4436}
+.copy-btn.done{border-color:#6f8f74;background:#3c5244;color:#d7f0df}
+.copy-note{margin-top:7px;color:var(--faint);font-size:12px;line-height:1.6}
+.copy-status{
+  position:absolute;
+  width:1px;
+  height:1px;
+  margin:-1px;
+  padding:0;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+  border:0;
+}
+
+.remember-title{
+  margin:26px 0 4px;
+  font:600 17px/1.5 var(--sans);
+}
+.do{
+  display:flex;
+  align-items:baseline;
+  gap:9px;
+  margin-top:13px;
+  padding-top:11px;
+  border-top:1px dashed var(--line);
+  color:var(--ink) !important;
+  font-size:14px;
+}
+.do span{
+  flex:none;
+  padding:2px 8px;
+  background:var(--green-soft);
+  border:1px solid var(--green-line);
+  border-radius:99px;
+  color:var(--green);
+  font-size:11.5px;
+  font-weight:600;
+  white-space:nowrap;
+}
+
+.stuck{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px 16px;
+  align-items:center;
+  margin-top:24px;
+  padding:13px 15px;
+  background:rgba(251,243,226,.55);
+  border:1px solid var(--amber-line);
+  border-radius:9px;
+}
+.stuck-title{color:#5b4318;font-size:13px;font-weight:600}
+.stuck p{color:#6a5427;font-size:13px;line-height:1.65}
+.stuck .script{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+  margin-top:3px;
+  color:#4a340f;
+  font-size:13px;
+}
+.stuck .script span{background:rgba(255,253,248,.8);padding:1px 4px;border-radius:3px}
+.stuck .copy-btn{background:#8a5a12;border-color:#7a4f0f;color:#fff8ea}
+.stuck .copy-btn:hover{background:#744c0e}
+.stuck .copy-btn.done{background:#4d6b52;border-color:#3f5a44;color:#e4f4e8}
+.stuck-go{
+  color:#6b4a14;
+  font-size:12.5px;
+  font-weight:600;
+  white-space:nowrap;
+  text-decoration:underline;
+  text-underline-offset:3px;
+}
+
+/* 截图位 */
+.shot{
+  margin:18px 0 0;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--paper-2);
+  overflow:hidden;
+}
+.shot-frame{padding:13px}
+.shot-head{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 8px;
+  margin-bottom:9px;
+  color:var(--muted);
+  font-size:11.5px;
+  line-height:1.5;
+}
+.shot-head .shot-no{color:var(--ink);font:600 11.5px/1 var(--mono);letter-spacing:.04em}
+.pill-placeholder{
+  margin-left:auto;
+  padding:1px 7px;
+  border:1px dashed var(--line-2);
+  border-radius:99px;
+  color:var(--faint);
+  font-size:10.5px;
+  white-space:nowrap;
+}
+.shot figcaption{
+  padding:10px 14px;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:12.5px;
+  line-height:1.65;
+}
+.shot figcaption b{color:var(--ink);font-weight:600}
+.shot figcaption .red{color:var(--mark);font-weight:600}
+.shot-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.shot-grid .shot{margin-top:0}
+
+/* 示意图里的窗口 */
+.mock{
+  overflow:hidden;
+  background:#fffdf8;
+  border:1px solid var(--line-2);
+  border-radius:7px;
+  font-size:12px;
+  line-height:1.55;
+}
+.mock-bar{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:7px 10px;
+  background:#f0ebdf;
+  border-bottom:1px solid var(--line);
+  color:var(--muted);
+  font-size:10.5px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:#cfc6b4;flex:none}
+.mock-title{margin-left:4px;color:var(--ink-2);font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mock-tag{
+  margin-left:auto;
+  padding:1px 6px;
+  border:1px solid var(--line-2);
+  border-radius:99px;
+  color:var(--faint);
+  font-size:9.5px;
+  white-space:nowrap;
+}
+.mock-body{padding:12px}
+.mock-url{
+  display:block;
+  margin:0 0 10px;
+  padding:4px 9px;
+  background:#f6f2e8;
+  border:1px solid var(--line);
+  border-radius:99px;
+  color:var(--muted);
+  font:10.5px/1.5 var(--mono);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.mock-h{
+  margin-bottom:2px;
+  color:var(--ink);
+  font:600 14px/1.4 var(--serif);
+}
+.mock-sub{margin-bottom:10px;color:var(--muted);font-size:10.5px}
+.dl-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 8px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:#fff;
+}
+.dl-row + .dl-row{margin-top:5px}
+.dl-row .os{flex:1;min-width:0;color:var(--ink-2);font-size:11px}
+.dl-row .os b{display:block;color:var(--ink);font-size:11.5px}
+.dl-row .fake-btn{
+  flex:none;
+  padding:3px 8px;
+  border-radius:4px;
+  background:var(--accent);
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+}
+.marked{outline:2px dashed var(--mark);outline-offset:2px;border-radius:4px}
+.mark-note{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  margin-top:7px;
+  color:var(--mark);
+  font-size:10.5px;
+  font-weight:600;
+}
+.mark-note::before{content:"";width:14px;height:2px;background:var(--mark)}
+
+.shelf{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:9px 10px;
+  background:#f0ebdf;
+  border:1px solid var(--line);
+  border-radius:7px;
+}
+.shelf-icon{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:32px;
+  border:1px solid var(--line-2);
+  border-radius:4px;
+  background:#fffdf8;
+  color:var(--muted);
+  font:700 8px/1 var(--mono);
+}
+.shelf-main{min-width:0;flex:1}
+.shelf-name{display:block;color:var(--ink);font:600 11.5px/1.4 var(--mono);overflow-wrap:anywhere}
+.shelf-meta{display:block;color:var(--muted);font-size:10px}
+.shelf-done{flex:none;color:var(--green);font-size:10.5px;font-weight:600}
+
+.win-path{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:4px 8px;
+  margin-bottom:9px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  background:#f6f2e8;
+  color:var(--muted);
+  font:10.5px/1.5 var(--mono);
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.file-list{display:flex;flex-direction:column;gap:1px}
+.file-row{
+  display:grid;
+  grid-template-columns:17px minmax(0,1fr) auto;
+  gap:7px;
+  align-items:center;
+  padding:5px 7px;
+  border-radius:4px;
+}
+.file-row:nth-child(odd){background:rgba(242,238,227,.45)}
+.file-ico{
+  width:15px;
+  height:15px;
+  border-radius:3px;
+  background:#f0e7d3;
+  border:1px solid #ddd0b4;
+  position:relative;
+}
+.file-ico.folder{background:#e4ebf8;border-color:#c3d0ea}
+.file-ico.folder::before{content:"";position:absolute;left:2px;top:-3px;width:6px;height:4px;border:1px solid #c3d0ea;border-bottom:0;border-radius:2px 2px 0 0;background:#e4ebf8}
+.file-ico.hidden{opacity:.38}
+.file-name{color:var(--ink-2);font:11.5px/1.5 var(--mono);overflow-wrap:anywhere}
+.file-name.hit{color:#1f5136;font-weight:700}
+.file-meta{color:var(--faint);font-size:9.5px;white-space:nowrap}
+.file-row.hit-row{background:var(--green-soft)}
+.file-row.marked-row{outline:2px dashed var(--mark);outline-offset:-2px;border-radius:4px;padding-right:11px}
+.file-tip{
+  margin-top:8px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.5;
+}
+.file-tip code{font-size:10px}
+
+.nest-row{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:6px 7px;
+  border:1px dashed var(--line-2);
+  border-radius:5px;
+  background:#faf6ec;
+  color:var(--ink-2);
+  font:11.5px/1.5 var(--mono);
+}
+.nest-row + .nest-row{margin-top:4px;margin-left:16px}
+.nest-note{margin-top:8px;color:var(--amber);font-size:10.5px;line-height:1.5;font-weight:600}
+
+.dsh-path{
+  padding:5px 8px;
+  margin-bottom:9px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  background:#f6f2e8;
+  color:var(--ink-2);
+  font:10.5px/1.5 var(--mono);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.bubble{
+  max-width:96%;
+  padding:9px 11px;
+  background:#f1ece1;
+  border-radius:3px 11px 11px 11px;
+  color:#33302a;
+  font-size:11px;
+  line-height:1.7;
+}
+.bubble p + p{margin-top:5px}
+.bubble.me{
+  margin-left:auto;
+  margin-top:8px;
+  background:var(--accent-soft);
+  color:#2c3260;
+  border-radius:11px 3px 11px 11px;
+  font-family:var(--mono);
+  font-size:10.5px;
+}
+.mock-input{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:9px;
+  padding:6px 8px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:7px;
+  color:var(--faint);
+  font-size:10px;
+}
+.mock-input .send{margin-left:auto;padding:2px 7px;background:var(--ink);border-radius:4px;color:#fffdf8;font-size:9px;white-space:nowrap}
+.continue-box{
+  margin-top:8px;
+  padding:7px 9px;
+  background:#252219;
+  border-radius:6px;
+  color:#f7f1e2;
+  font:10.5px/1.6 var(--mono);
+  overflow-wrap:anywhere;
+}
+
+.upload-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.upload-drop{
+  grid-column:1/-1;
+  display:grid;
+  place-items:center;
+  gap:3px;
+  min-height:74px;
+  padding:12px;
+  border:1.5px dashed var(--line-2);
+  border-radius:7px;
+  background:#faf6ec;
+  color:var(--muted);
+  text-align:center;
+  font-size:10.5px;
+}
+.upload-drop b{color:var(--ink-2);font-size:11.5px}
+.field{padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff}
+.field.marked{outline:0;border-color:var(--mark);box-shadow:inset 0 0 0 1px var(--mark)}
+.field .lab{display:block;color:var(--faint);font-size:9px}
+.field .val{display:block;color:var(--faint);font-size:10.5px}
+.upload-row{grid-column:1/-1;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
+.upload-row.marked{outline:0;border:1px solid var(--mark);border-radius:5px}
+.checkbox{width:11px;height:11px;border:1px solid var(--line-2);border-radius:2px;background:#fff;flex:none}
+.upload-submit{
+  grid-column:1/-1;
+  justify-self:end;
+  padding:4px 12px;
+  border-radius:5px;
+  background:var(--accent);
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+}
+
+/* 第一次对话的一节 */
+.chat-section{scroll-margin-top:84px}
+.three-things{
+  margin:22px 0 30px;
+  padding:16px 18px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+}
+.tt-title{margin-bottom:9px;color:var(--ink);font-size:14.5px;font-weight:600}
+.tt-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px;color:var(--ink-2);font-size:13.5px}
+.tt-row b{
+  display:inline-grid;
+  place-items:center;
+  width:19px;
+  height:19px;
+  margin-right:4px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent-2);
+  font:600 10.5px/1 var(--mono);
+}
+.tt-sep{color:var(--faint)}
+.tt-note{margin-top:8px;color:var(--muted);font-size:12.5px;line-height:1.65}
+
+.chat-steps{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.chat-step{display:grid;grid-template-columns:36px minmax(0,1fr);gap:14px;padding:19px 0;border-top:1px solid var(--line)}
+.chat-step:first-child{border-top:0;padding-top:0}
+.chat-num{
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:32px;
+  margin-top:2px;
+  border-radius:50%;
+  background:var(--ink);
+  color:var(--paper);
+  font:600 12px/1 var(--mono);
+}
+.chat-step h3{margin:5px 0 6px;font:600 18px/1.45 var(--serif)}
+.chat-step p{color:var(--ink-2);font-size:14.5px;line-height:1.78}
+.chat-step p + p{margin-top:6px}
+.chat-step blockquote{
+  margin:11px 0;
+  padding:10px 14px;
+  background:var(--accent-soft);
+  border-left:3px solid var(--accent);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  color:#2c3260;
+  font-size:13.5px;
+  line-height:1.75;
+}
+.chat-step blockquote p + p{margin-top:6px}
+.branch{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:11px 0 0}
+.branch-card{padding:12px 13px;background:var(--paper-2);border:1px solid var(--line);border-top:3px solid var(--line-2);border-radius:8px}
+.branch-card.small{border-top-color:var(--green)}
+.branch-card.big{border-top-color:var(--accent)}
+.branch-card h4{margin-bottom:5px;font-size:13.5px}
+.branch-card.small h4{color:var(--green)}
+.branch-card.big h4{color:var(--accent-2)}
+.branch-card p{color:var(--ink-2);font-size:12.5px;line-height:1.7}
+.branch-card .quote{margin-bottom:5px;padding-left:8px;border-left:2px solid var(--line-2);color:#3a352c}
+
+.after{
+  margin-top:30px;
+  padding:22px 24px 20px;
+  background:var(--paper-2);
+  border:1px solid var(--accent-line);
+  border-radius:10px;
+}
+.after h3{margin-bottom:7px;font:600 21px/1.4 var(--serif)}
+.after > p{color:var(--ink-2);font-size:14.5px;line-height:1.75}
+.after .copybox{margin-top:13px}
+.after-note{margin-top:11px;color:var(--ink-2);font-size:13.5px;line-height:1.7}
+
+.taboos{margin-top:30px}
+.taboos h3{margin-bottom:6px;font:600 21px/1.4 var(--serif)}
+.taboos > p{color:var(--ink-2);font-size:14px;line-height:1.7}
+.taboos ol{margin:13px 0 0;padding:0;list-style:none;counter-reset:taboo}
+.taboos li{
+  position:relative;
+  padding:11px 0 11px 36px;
+  border-top:1px solid var(--line);
+  color:var(--ink-2);
+  font-size:13.5px;
+  line-height:1.75;
+  counter-increment:taboo;
+}
+.taboos li:last-child{border-bottom:1px solid var(--line)}
+.taboos li::before{
+  content:counter(taboo);
+  position:absolute;
+  left:0;
+  top:13px;
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border:1px solid var(--amber-line);
+  border-radius:50%;
+  background:var(--amber-soft);
+  color:var(--amber);
+  font:600 10.5px/1 var(--mono);
+}
+.taboos strong{color:var(--ink);font-weight:600}
+
+.progress-quote{
+  margin-top:20px;
+  padding-left:14px;
+  border-left:2px solid var(--line-2);
+  color:var(--muted);
+  font-size:13.5px;
+  line-height:1.75;
+}
+
+.support-card{scroll-margin-top:84px}
+.support-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+.support-col h3{margin-bottom:7px;font-size:15px}
+.support-col p{color:var(--ink-2);font-size:13.5px;line-height:1.75}
+.support-col ul{margin:8px 0 0;padding-left:18px;color:var(--ink-2);font-size:13.5px;line-height:1.8}
+.support-col li + li{margin-top:3px}
+.wechat-card{
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  gap:14px;
+  align-items:center;
+  margin-top:22px;
+  padding:16px;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.qr-slot{
+  display:grid;
+  place-items:center;
+  width:96px;
+  height:96px;
+  border:1.5px dashed var(--line-2);
+  border-radius:8px;
+  background:
+    linear-gradient(90deg,rgba(206,196,176,.22) 1px,transparent 1px),
+    linear-gradient(rgba(206,196,176,.22) 1px,transparent 1px);
+  background-size:12px 12px;
+  color:var(--faint);
+  font-size:10.5px;
+  line-height:1.5;
+  text-align:center;
+}
+.wechat-text b{display:block;margin-bottom:3px;font-size:14.5px}
+.wechat-text p{color:var(--ink-2);font-size:13px;line-height:1.7}
+.wechat-text .small{color:var(--muted);font-size:12px}
+.support-warn{
+  margin-top:18px;
+  padding:12px 14px;
+  background:var(--amber-soft);
+  border:1px solid var(--amber-line);
+  border-radius:8px;
+  color:#5b4318;
+  font-size:13px;
+  line-height:1.7;
+}
+.support-warn strong{color:#4a340f}
+
+.footer{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 16px;
+  margin-top:10px;
+  padding:18px 4px 0;
+  border-top:1px solid var(--line);
+  color:var(--muted);
+  font-size:12.5px;
+}
+.footer .foot-links{display:flex;flex-wrap:wrap;gap:14px;margin-left:auto}
+.footer a{color:var(--muted);text-decoration:none}
+.footer a:hover{color:var(--ink);text-decoration:underline}
+.footer .version{font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+
+@media (max-width:1040px){
+  .layout{grid-template-columns:1fr;gap:0}
+  .rail{display:none}
+  .mobile-toc{display:block}
+  .page{padding:20px 20px 64px}
+  .mobile-toc{margin-left:-20px;margin-right:-20px}
+  .hero-card{max-width:none}
+}
+@media (max-width:760px){
+  .topbar-inner{padding:10px 16px;gap:10px}
+  .topnav a{padding:5px 7px;font-size:12.5px}
+  .topnav a:not(.topnav-support){display:none}
+  .brand-sub{display:none}
+  .page{padding:16px 14px 52px}
+  .mobile-toc{margin-left:-14px;margin-right:-14px;padding:7px 14px;top:49px}
+  .card,.section-card{padding:26px 19px 24px}
+  .section-card{scroll-margin-top:74px}
+  .section-card::after{font-size:82px;right:14px;top:8px}
+  h1{font-size:32px}
+  .lede{font-size:15.5px}
+  .hero-actions{flex-direction:column;align-items:stretch}
+  .hero-actions .btn{width:100%}
+  .dl-grid{grid-template-columns:1fr}
+  .route{grid-template-columns:1fr}
+  .need-list{grid-template-columns:1fr;gap:0}
+  .need-list li{border-left:0;border-top:1px solid var(--line);padding:10px 0}
+  .need-list li:first-child{border-top:0;padding-top:0}
+  .shot-grid{grid-template-columns:1fr}
+  .compare{grid-template-columns:1fr}
+  .support-grid{grid-template-columns:1fr}
+  .wechat-card{grid-template-columns:1fr}
+  .stuck{grid-template-columns:1fr}
+  .stuck-go{justify-self:start}
+  .chat-step{grid-template-columns:30px minmax(0,1fr);gap:11px}
+  .chat-num{width:28px;height:28px;font-size:11px}
+  .chat-step h3{font-size:17px}
+  .branch{grid-template-columns:1fr}
+  .footer .foot-links{margin-left:0}
+  .copybox{flex-wrap:wrap}
+  .copybox code{flex-basis:calc(100% - 1px);padding-bottom:4px}
+  .copy-btn{width:100%}
+  .upload-form{grid-template-columns:1fr}
+  .file-table{grid-template-columns:1fr;gap:2px}
+  .file-table dt{margin-top:4px}
+  .shot-frame{padding:9px}
+}
+@media print{
+  body{background:#fff}
+  .sample-note,.topbar,.scroll-progress,.rail,.mobile-toc,.stuck,.copy-btn,.copybox .copy-btn,.skip-link{display:none !important}
+  .page{max-width:none;padding:0}
+  .layout{display:block}
+  .card,.section-card{box-shadow:none;border-color:#ccc;page-break-inside:avoid;margin-bottom:14px}
+  .hero-grid{grid-template-columns:1fr}
+  a{color:#000}
+}
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳到正文</a>
+<div class="scroll-progress" aria-hidden="true"></div>
+
+<div class="sample-note">
+  <span class="tag">样品</span>
+  <span>#31 教程页 · 图是示意图，真图待拍</span>
+  <span class="sep">·</span>
+  <span>客服微信、上传页待补</span>
+  <span class="sep">·</span>
+  <span>上线前删掉这一条</span>
+</div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">AF</span>
+      <span>
+        <span class="brand-text">需求澄清</span>
+        <span class="brand-sub">&nbsp;使用教程</span>
+      </span>
+    </a>
+    <nav class="topnav" aria-label="页面快捷入口">
+      <a href="#step-1">下载</a>
+      <a href="#first-chat">第一次对话</a>
+      <a href="#upload">回传</a>
+      <a class="topnav-support" href="#support">卡住了？</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page" id="top">
+  <div class="layout">
+
+    <aside class="rail" aria-label="教程目录">
+      <p class="rail-title">教程目录</p>
+      <ul class="rail-list">
+        <li><a href="#step-1"><span class="n">01</span><span>下载两样东西</span></a></li>
+        <li><a href="#step-2"><span class="n">02</span><span>解压到空文件夹</span></a></li>
+        <li><a href="#step-3"><span class="n">03</span><span>用 dsh 打开并开口</span></a></li>
+        <li><a href="#first-chat"><span class="n">04</span><span>第一次对话</span></a></li>
+        <li><a href="#upload"><span class="n">05</span><span>压缩并回传</span></a></li>
+        <li><a href="#support"><span class="n">!</span><span>卡住了</span></a></li>
+      </ul>
+      <div class="rail-card">
+        <b>先看这一句</b>
+        不会写代码，走这条路线就对了。三步装好，第 4 节看第一次对话。
+      </div>
+    </aside>
+
+    <nav class="mobile-toc" aria-label="教程目录">
+      <a href="#step-1">01 下载</a>
+      <a href="#step-2">02 解压</a>
+      <a href="#step-3">03 打开并开口</a>
+      <a href="#first-chat">04 第一次对话</a>
+      <a href="#upload">05 回传</a>
+      <a href="#support">卡住了</a>
+    </nav>
+
+    <main class="main" id="main">
+
+      <section class="card hero" aria-labelledby="hero-title">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">客户使用教程 · 工作区 v1</p>
+            <h1 id="hero-title">三步装好，<br><span class="soft">开口说你想做什么。</span></h1>
+            <p class="lede">这份教程带你把 DeepSeek Harness 和工作区准备好。装好之后，用日常的话跟它聊，它会把想法一步步问成一份能开工的需求。<strong>全程不用写代码。</strong></p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="https://afkfactory.dev/downloads/%E5%AE%A2%E6%88%B7%E5%B7%A5%E4%BD%9C%E5%8C%BA-v1.zip">下载客户工作区 <span class="sub">41,461 字节</span></a>
+              <a class="btn btn-secondary" href="https://www.deepseek.com/harness">下载 DeepSeek Harness <span class="sub">↗</span></a>
+            </div>
+            <p class="hero-meta">支持 macOS（Apple 芯片 / Intel）和 Windows 64 位，不支持 Linux。需要一台能联网的电脑。</p>
+          </div>
+
+          <aside class="hero-card" aria-label="开始之前你会用到">
+            <p class="hero-card-title">开始之前，你会用到</p>
+            <ol class="need-list">
+              <li>
+                <span class="need-num" aria-hidden="true">1</span>
+                <span>
+                  <span class="need-name">DeepSeek Harness 桌面版</span>
+                  <span class="need-note">下面叫它 dsh。打开工作区、跟你对话的就是它。</span>
+                </span>
+              </li>
+              <li>
+                <span class="need-num" aria-hidden="true">2</span>
+                <span>
+                  <span class="need-name">客户工作区 v1</span>
+                  <span class="need-note">40.5 KB。技能和规则都在里面，解压就能用。</span>
+                </span>
+              </li>
+              <li>
+                <span class="need-num" aria-hidden="true">3</span>
+                <span>
+                  <span class="need-name">一个空文件夹</span>
+                  <span class="need-note">名字用日常中文，例如「需求澄清」。</span>
+                </span>
+              </li>
+            </ol>
+            <p class="hero-card-foot">不用装命令行，不用 GitHub，也不用再装技能。</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="route-title">
+        <div class="route-head">
+          <p class="eyebrow">先选一条</p>
+          <h2 id="route-title" class="route-title">两条路，装法不一样</h2>
+        </div>
+        <div class="route">
+          <div class="route-card default">
+            <span class="route-tag">大多数人走这条</span>
+            <h3>不会写代码</h3>
+            <p>用本页的客户工作区。技能已经装好，按三步走，第 4 节看第一次对话，第 5 节传回来。下面的教程都是给这条路写的。</p>
+          </div>
+          <div class="route-card other">
+            <span class="route-tag">另一条</span>
+            <h3>会写代码，有自己的项目</h3>
+            <p>用 <a href="https://github.com/mattpocock/skills">mattpocock/skills 原版技能包</a>，自己装进项目。不用下载工作区，也不用解压。本页只看第 4、5 节。</p>
+          </div>
+        </div>
+        <p class="route-note">两条路的装法不同，选一条走完，不要混在一起。</p>
+      </section>
+
+      <!-- ============ 第 1 步 ============ -->
+      <section class="section-card" id="step-1" data-num="01" aria-labelledby="step-1-title">
+        <div class="step-head">
+          <p class="step-kicker">安装 · 第 1 步</p>
+          <span class="step-chip">先下载，先别解压</span>
+        </div>
+        <h2 id="step-1-title">下载两样东西</h2>
+        <p class="section-lead">dsh 是打开工作区的工具，工作区包是给 dsh 读的规则和技能。两样都下好，再往下走。</p>
+
+        <div class="dl-grid">
+
+          <article class="dl-card" aria-labelledby="dl-dsh">
+            <span class="dl-tag">第一样</span>
+            <h3 id="dl-dsh">DeepSeek Harness 桌面版</h3>
+            <p>到 DeepSeek 官网下载对应系统的安装包，按提示装好。</p>
+            <div class="dl-actions">
+              <a class="btn btn-secondary" href="https://www.deepseek.com/harness">打开官方下载页 <span class="sub">↗</span></a>
+            </div>
+            <dl class="file-table">
+              <dt>Windows 64 位</dt>
+              <dd>dsh-latest-windows-x64.exe</dd>
+              <dt>Mac · Apple 芯片</dt>
+              <dd>dsh-latest-macos-arm64.dmg</dd>
+              <dt>Mac · Intel 芯片</dt>
+              <dd>dsh-latest-macos-x64.dmg</dd>
+            </dl>
+            <p class="dl-note">不知道 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 看「芯片」那一行。装完先打开一次，能看到选择文件夹的界面，就说明装对了。安装时如果系统弹出安全提示，先截图找客服，不要自己关系统保护。</p>
+          </article>
+
+          <article class="dl-card" aria-labelledby="dl-kit">
+            <span class="dl-tag">第二样</span>
+            <h3 id="dl-kit">客户工作区 v1</h3>
+            <p>这是给 dsh 用的工作区。九个技能、规则和说明都在里面，解压就能用，不用再装配。</p>
+            <div class="dl-actions">
+              <a class="btn btn-primary" href="https://afkfactory.dev/downloads/%E5%AE%A2%E6%88%B7%E5%B7%A5%E4%BD%9C%E5%8C%BA-v1.zip">下载 客户工作区-v1.zip</a>
+            </div>
+            <p class="dl-meta">41,461 字节（40.5 KB）· 2026-11-07 版</p>
+            <p class="dl-note">下载完，浏览器下载列表里应该能看到 <code>客户工作区-v1.zip</code>。名字后面多一个 <code>.download</code>，说明还没下完，等一会儿再看。</p>
+            <details>
+              <summary>怎么确认文件没坏</summary>
+              <div class="details-body">
+                <p>最简单的检查：双击能解压，解压后能看到 <code>AGENTS.md</code>，文件就没坏。打不开，就删掉重新下载一次。</p>
+                <p>要精确核对，把这个校验值和下载的文件对一下。这个值只给需要的时候用，平时不用管。</p>
+                <span class="hash">SHA256 49d3d89a8ccea55c76c19b84e1fbe6375d33b3d2a2f3fc9922a7533ae97038a6</span>
+                <p>Mac 在终端里跑：</p>
+                <code class="cmd">shasum -a 256 ~/Downloads/客户工作区-v1.zip</code>
+                <p>Windows 在命令提示符里跑：</p>
+                <code class="cmd">certutil -hashfile "%USERPROFILE%\Downloads\客户工作区-v1.zip" SHA256</code>
+                <p>算出来和上面的值一样，就没坏。对不上，先确认下的是最新版，再找客服。</p>
+              </div>
+            </details>
+          </article>
+
+        </div>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="shot-head">
+              <span class="shot-no">图 1</span>
+              <span>官网下载页</span>
+              <span class="pill-placeholder">示意图，真图待拍</span>
+            </div>
+            <div class="mock" role="img" aria-label="示意图：DeepSeek Harness 官网下载页，三个系统的下载按钮被红框标出。">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">www.deepseek.com/harness</span><span class="mock-tag">示意图</span></div>
+              <div class="mock-body">
+                <span class="mock-url">https://www.deepseek.com/harness</span>
+                <p class="mock-h">下载 DeepSeek Harness</p>
+                <p class="mock-sub">选你电脑对应的版本。装好后打开一次。</p>
+                <div class="marked" style="padding:5px">
+                  <div class="dl-row"><span class="os"><b>Windows 64 位</b>dsh-latest-windows-x64.exe</span><span class="fake-btn">下载</span></div>
+                  <div class="dl-row"><span class="os"><b>macOS · Apple 芯片</b>dsh-latest-macos-arm64.dmg</span><span class="fake-btn">下载</span></div>
+                  <div class="dl-row"><span class="os"><b>macOS · Intel 芯片</b>dsh-latest-macos-x64.dmg</span><span class="fake-btn">下载</span></div>
+                </div>
+                <span class="mark-note">红框：只点你电脑对应的那一行</span>
+              </div>
+            </div>
+          </div>
+          <figcaption><b>图 1 · 官网下载页。</b><span class="red">红框里是你电脑对应的那一行。</span>按你的系统选一个，下载完先装好，打开一次。</figcaption>
+        </figure>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="shot-head">
+              <span class="shot-no">图 2</span>
+              <span>工作区 zip 下载完成</span>
+              <span class="pill-placeholder">示意图，真图待拍</span>
+            </div>
+            <div class="mock" role="img" aria-label="示意图：浏览器下载列表里出现客户工作区-v1.zip，文件名被红框标出。">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">浏览器下载列表</span><span class="mock-tag">示意图</span></div>
+              <div class="mock-body">
+                <div class="shelf">
+                  <span class="shelf-icon" aria-hidden="true">ZIP</span>
+                  <span class="shelf-main marked" style="padding:2px 4px">
+                    <span class="shelf-name">客户工作区-v1.zip</span>
+                    <span class="shelf-meta">41,461 字节 · 来自 afkfactory.dev</span>
+                  </span>
+                  <span class="shelf-done">已完成</span>
+                </div>
+                <span class="mark-note">红框：文件名和大小对得上，再往下走</span>
+              </div>
+            </div>
+          </div>
+          <figcaption><b>图 2 · 下载完成。</b>浏览器下载列表里出现文件名和大小，就说明下好了。</figcaption>
+        </figure>
+
+        <div class="stuck">
+          <div>
+            <p class="stuck-title">卡在这一步？</p>
+            <p class="script"><span id="stuck-1">我卡在第 1 步，下载或安装 dsh 不顺利。</span><button class="copy-btn" type="button" data-copy="stuck-1">复制这句话</button></p>
+            <p>截一张下载页或下载列表的图，一起发。</p>
+          </div>
+          <a class="stuck-go" href="#support">怎么找客服 →</a>
+        </div>
+      </section>
+
+      <!-- ============ 第 2 步 ============ -->
+      <section class="section-card" id="step-2" data-num="02" aria-labelledby="step-2-title">
+        <div class="step-head">
+          <p class="step-kicker">安装 · 第 2 步</p>
+          <span class="step-chip">这一步最容易出错</span>
+        </div>
+        <h2 id="step-2-title">解压到一个空文件夹</h2>
+        <p class="section-lead">工作区要单独放一个文件夹。以后每次都打开它，进度也存在里面。不要放进已有的代码项目，也不要和别的项目混在一起。</p>
+
+        <ol class="substeps">
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">1</span>
+            <div>
+              <h3>新建一个空文件夹</h3>
+              <p>名字用日常中文，例如「需求澄清」。放在你找得到的地方，桌面或文稿都行。</p>
+              <p class="small">路径里不要有奇怪符号。中文和空格没问题。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">2</span>
+            <div>
+              <h3>把 zip 放进去，解压到当前文件夹</h3>
+              <p>Mac：双击 zip，系统会在旁边解压出一份。Windows：右键 zip → 全部解压缩，选这个空文件夹。</p>
+              <p class="small">不要在压缩软件里直接打开里面的文件，要先解压出来。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">3</span>
+            <div>
+              <h3>看文件列表</h3>
+              <p>解压后打开文件夹，第一层就要能直接看到 <code>AGENTS.md</code>。看到它，就说明位置对了。</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="check-block">
+          <p class="check-title"><span class="dot-ok" aria-hidden="true">✓</span>对的样子</p>
+          <pre class="tree">需求澄清/
+├── <span class="hit">AGENTS.md</span>
+├── README.txt
+├── 技能清单.md
+├── docs/
+└── .dsh/</pre>
+          <p class="tree-caption"><strong>看到 AGENTS.md 就对了。</strong>macOS 的 Finder 默认不显示 .dsh，按 <code>Cmd + Shift + .</code> 可以显示。以后打开的就是这个「需求澄清」文件夹。</p>
+        </div>
+
+        <div class="shot-grid">
+          <figure class="shot">
+            <div class="shot-frame">
+              <div class="shot-head">
+                <span class="shot-no">图 3</span>
+                <span>Mac 的文件列表</span>
+                <span class="pill-placeholder">示意图</span>
+              </div>
+              <div class="mock" role="img" aria-label="示意图：Mac 访达里解压后的文件列表，AGENTS.md 被红框标出。">
+                <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">访达 · 需求澄清</span><span class="mock-tag">示意图</span></div>
+                <div class="mock-body">
+                  <span class="win-path">Macintosh HD › 桌面 › 需求澄清</span>
+                  <div class="file-list">
+                    <div class="file-row hit-row marked-row"><span class="file-ico"></span><span class="file-name hit">AGENTS.md</span><span class="file-meta">13 KB</span></div>
+                    <div class="file-row"><span class="file-ico"></span><span class="file-name">README.txt</span><span class="file-meta">2 KB</span></div>
+                    <div class="file-row"><span class="file-ico"></span><span class="file-name">技能清单.md</span><span class="file-meta">1 KB</span></div>
+                    <div class="file-row"><span class="file-ico folder"></span><span class="file-name">docs</span><span class="file-meta">文件夹</span></div>
+                    <div class="file-row"><span class="file-ico folder hidden"></span><span class="file-name" style="opacity:.5">.dsh</span><span class="file-meta">文件夹</span></div>
+                  </div>
+                  <p class="file-tip">.dsh 默认看不见。按 <code>Cmd + Shift + .</code> 显示隐藏文件。</p>
+                </div>
+              </div>
+            </div>
+            <figcaption><b>图 3 · Mac 的文件列表。</b><span class="red">红框里是 AGENTS.md。</span>看到它，就说明解压到当前文件夹了。</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <div class="shot-frame">
+              <div class="shot-head">
+                <span class="shot-no">图 4</span>
+                <span>Windows 的文件列表</span>
+                <span class="pill-placeholder">示意图</span>
+              </div>
+              <div class="mock" role="img" aria-label="示意图：Windows 资源管理器里解压后的文件列表，AGENTS.md 被红框标出。">
+                <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">文件资源管理器 · 需求澄清</span><span class="mock-tag">示意图</span></div>
+                <div class="mock-body">
+                  <span class="win-path">此电脑 › 桌面 › 需求澄清</span>
+                  <div class="file-list">
+                    <div class="file-row hit-row marked-row"><span class="file-ico"></span><span class="file-name hit">AGENTS.md</span><span class="file-meta">13 KB</span></div>
+                    <div class="file-row"><span class="file-ico"></span><span class="file-name">README.txt</span><span class="file-meta">2 KB</span></div>
+                    <div class="file-row"><span class="file-ico"></span><span class="file-name">技能清单.md</span><span class="file-meta">1 KB</span></div>
+                    <div class="file-row"><span class="file-ico folder"></span><span class="file-name">docs</span><span class="file-meta">文件夹</span></div>
+                    <div class="file-row"><span class="file-ico folder"></span><span class="file-name">.dsh</span><span class="file-meta">文件夹</span></div>
+                  </div>
+                  <p class="file-tip">Windows 一般能直接看到 .dsh。看不到先别急，确认 AGENTS.md 在就行。</p>
+                </div>
+              </div>
+            </div>
+            <figcaption><b>图 4 · Windows 的文件列表。</b><span class="red">红框里是 AGENTS.md。</span>Windows 上看到它，也是解压对了。</figcaption>
+          </figure>
+        </div>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="shot-head">
+              <span class="shot-no">图 5</span>
+              <span>多套了一层的样子</span>
+              <span class="pill-placeholder">示意图</span>
+            </div>
+            <div class="mock" role="img" aria-label="示意图：解压后多了一层文件夹，AGENTS.md 藏在里面，最外层看不到。">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">访达 · 需求澄清</span><span class="mock-tag">示意图</span></div>
+              <div class="mock-body">
+                <span class="win-path">Macintosh HD › 桌面 › 需求澄清</span>
+                <div class="nest-row"><span class="file-ico folder"></span><span>客户工作区-v1</span><span class="file-meta">文件夹</span></div>
+                <div class="nest-row"><span class="file-ico"></span><span>AGENTS.md</span><span class="file-meta">在里层，最外层看不到</span></div>
+                <div class="nest-row"><span class="file-ico folder"></span><span>docs</span><span class="file-meta">在里层</span></div>
+                <p class="nest-note">只看到一层文件夹 = 多套了一层。把里面的东西全部拖出来，放到当前文件夹。</p>
+              </div>
+            </div>
+          </div>
+          <figcaption><b>图 5 · 多套了一层的样子。</b>打开文件夹只看到一个文件夹，看不到 <code>AGENTS.md</code>。把里面的东西全部拖出来。</figcaption>
+        </figure>
+
+        <div class="note note-amber">
+          <strong>一个文件夹只做一个软件。</strong>要做第二个软件，重新下载一份最新版工作区，解压到新文件夹。这个包不自动升级。
+        </div>
+
+        <div class="stuck">
+          <div>
+            <p class="stuck-title">卡在这一步？</p>
+            <p class="script"><span id="stuck-2">我卡在第 2 步，解压后看不到 AGENTS.md。</span><button class="copy-btn" type="button" data-copy="stuck-2">复制这句话</button></p>
+            <p>截一张整个文件列表的图，把路径也带上，一起发。不要自己删文件。</p>
+          </div>
+          <a class="stuck-go" href="#support">怎么找客服 →</a>
+        </div>
+      </section>
+
+      <!-- ============ 第 3 步 ============ -->
+      <section class="section-card" id="step-3" data-num="03" aria-labelledby="step-3-title">
+        <div class="step-head">
+          <p class="step-kicker">安装 · 第 3 步</p>
+          <span class="step-chip">到这一步就能开始聊了</span>
+        </div>
+        <h2 id="step-3-title">用 dsh 打开，说第一句话</h2>
+        <p class="section-lead">文件已经放好。打开 dsh，选中这个文件夹，说一句话就开始。</p>
+
+        <ol class="substeps">
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">1</span>
+            <div>
+              <h3>打开 dsh，选择这个文件夹</h3>
+              <p>在 dsh 里打开「需求澄清」文件夹。窗口里显示的路径，应该就是你刚才那个文件夹。看不到路径，就重新选一次。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">2</span>
+            <div>
+              <h3>说第一句话</h3>
+              <p>把下面这句复制过去，或者直接说你想做什么。</p>
+              <div class="copybox">
+                <code id="start-sentence">开始需求澄清</code>
+                <button class="copy-btn" type="button" data-copy="start-sentence">复制</button>
+              </div>
+              <p class="copy-note">也可以直接说，例如「我想做一个能预约的理发店小程序」。Agent 会先判断这件事是大还是小。</p>
+              <p>Agent 会先检查三样文件在不在，然后讲一段话，再问你想做什么。一次只问一小轮。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">3</span>
+            <div>
+              <h3>弹窗问权限，就点允许</h3>
+              <p>它要写文件时，dsh 会弹窗问。点允许，它才能把进度写进文件夹。</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="note note-blue">
+          <strong>如果它说「文件没放对，按官网第 2 步重放」：</strong>先回到第 2 步看文件列表。不要重装，截这句话和文件列表找客服。
+        </div>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="shot-head">
+              <span class="shot-no">图 6</span>
+              <span>dsh 打开文件夹</span>
+              <span class="pill-placeholder">示意图，真图待拍</span>
+            </div>
+            <div class="mock" role="img" aria-label="示意图：dsh 窗口里显示工作区路径，客户发送开始需求澄清，Agent 开始回应。">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">需求澄清 · dsh</span><span class="mock-tag">示意图</span></div>
+              <div class="mock-body">
+                <div class="dsh-path marked">~/Desktop/需求澄清</div>
+                <div class="bubble">
+                  <p>我先说说这件事接下来会怎么走。</p>
+                  <p>你先说你想做什么。我会判断这件事是大还是小。</p>
+                </div>
+                <div class="bubble me">开始需求澄清</div>
+                <div class="mock-input"><span>用你自己的话说，想做什么…</span><span class="send">发送</span></div>
+                <span class="mark-note">红框：窗口里的路径就是刚才那个文件夹</span>
+              </div>
+            </div>
+          </div>
+          <figcaption><b>图 6 · dsh 窗口。</b>窗口里的路径就是刚才那个文件夹。发一句「开始需求澄清」，对话就开始了。</figcaption>
+        </figure>
+
+        <h3 class="remember-title">装好之后，记住三件事</h3>
+        <ol class="substeps" style="margin-top:0">
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">1</span>
+            <div><p>每次都打开这个文件夹。换文件夹，进度就没了。</p></div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">2</span>
+            <div><p>进度写在 <code>.scratch/</code> 里。不要自己改，想改什么直接跟 Agent 说。</p></div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">3</span>
+            <div><p>一个文件夹只做一个软件。第二个软件，另开一个文件夹。</p></div>
+          </li>
+        </ol>
+
+        <div class="stuck">
+          <div>
+            <p class="stuck-title">卡在这一步？</p>
+            <p class="script"><span id="stuck-3">我卡在第 3 步，dsh 打不开文件夹，或者提示没有权限。</span><button class="copy-btn" type="button" data-copy="stuck-3">复制这句话</button></p>
+            <p>截 dsh 窗口和弹窗，一起发。不要反复重装。</p>
+          </div>
+          <a class="stuck-go" href="#support">怎么找客服 →</a>
+        </div>
+      </section>
+
+      <!-- ============ 第 4 节：第一次对话 ============ -->
+      <section class="section-card chat-section" id="first-chat" data-num="04" aria-labelledby="first-chat-title">
+        <div class="step-head">
+          <p class="step-kicker">开始之后 · 第 4 节</p>
+          <span class="step-chip">在 dsh 里</span>
+        </div>
+        <h2 id="first-chat-title">第一次对话会遇到什么</h2>
+        <p class="section-lead">Agent 会先讲一遍接下来怎么走，再请你说想做什么。事情大，这一次会一直走到拆议题、排顺序。事情小，问完就结束。下面按大需求讲，一共六步；小需求在第 3 步分开。</p>
+
+        <div class="note note-amber">
+          <strong>先留意一句话。</strong>第一次打开时，Agent 会先检查工作区文件。如果它说「文件没放对，按官网第 2 步重放」，说明工作区文件没放对。截这句话和文件列表，找客服，不要自己重装。
+        </div>
+
+        <div class="note note-blue">
+          <strong>遇到完全不懂的技术题，直接说「这个我不懂」。</strong>要如实告诉 Agent，不然流程会在这里转不下去。它会按推荐答案往下问，并记下来，开工前有人跟你确认。
+        </div>
+
+        <div class="three-things">
+          <p class="tt-title">大需求的六步里，你实际只做三件事</p>
+          <div class="tt-row">
+            <span><b>1</b>说你想做什么</span>
+            <span class="tt-sep">→</span>
+            <span><b>2</b>回答 Agent 的问题</span>
+            <span class="tt-sep">→</span>
+            <span><b>3</b>看清单，定先做哪张</span>
+          </div>
+          <p class="tt-note">之后每次新对话，只多一件事：把 Agent 给的那一行原样复制过去。</p>
+        </div>
+
+        <ol class="chat-steps">
+
+          <li class="chat-step">
+            <span class="chat-num">1</span>
+            <div>
+              <h3>Agent 先讲一遍接下来怎么走</h3>
+              <p>它会告诉你：先说想做什么，它来判断大小；小的当场问清楚，大的拆成几次做。听完你直接说想法就行。</p>
+              <div class="mock" role="img" aria-label="示意图：dsh 里 Agent 讲第一段开场词，下面是指输入框。">
+                <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">需求澄清 · dsh</span><span class="mock-tag">示意图</span></div>
+                <div class="mock-body">
+                  <div class="bubble">
+                    <p>我先说说这件事接下来会怎么走。</p>
+                    <p>你先说你想做什么。我会判断这件事是大还是小。小的当场问清楚就完事了，之后会交给开发者；任务量大就需要拆分了，拆分成几个小任务，分几次做。</p>
+                    <p>你可以开始跟我说你模糊的想法了。</p>
+                  </div>
+                  <div class="mock-input"><span>用你自己的话说，想做什么…</span><span class="send">发送</span></div>
+                </div>
+              </div>
+              <p class="do"><span>你要做</span>听它讲完，直接说想法。</p>
+            </div>
+          </li>
+
+          <li class="chat-step">
+            <span class="chat-num">2</span>
+            <div>
+              <h3>你说想做什么</h3>
+              <p>用日常的话说，不用想术语，也不用一次说全。Agent 会从这段话判断事情大还是小。</p>
+              <p class="do"><span>你要做</span>说一段你想做的东西。</p>
+            </div>
+          </li>
+
+          <li class="chat-step">
+            <span class="chat-num">3</span>
+            <div>
+              <h3>Agent 判断大小</h3>
+              <p>它自己判断，不用你选。听完你的想法，它会说走哪条路。</p>
+              <div class="branch">
+                <div class="branch-card small">
+                  <h4>事情小</h4>
+                  <p class="quote">「这件事不大，今天就能问清楚。问完我整理成一份需求草稿，交给开发去做。」</p>
+                  <p>接下来它问几轮，你回答。问完这次对话就结束，没有议题清单。</p>
+                </div>
+                <div class="branch-card big">
+                  <h4>事情大</h4>
+                  <p class="quote">「已经确定需要拆分。」</p>
+                  <p>接着往下走，把终点定成一句话，再拆成议题。继续看第 4 步。</p>
+                </div>
+              </div>
+              <p class="do"><span>你要做</span>听它说走哪条，接着答。</p>
+            </div>
+          </li>
+
+          <li class="chat-step">
+            <span class="chat-num">4</span>
+            <div>
+              <h3>把终点定成一句话</h3>
+              <p>Agent 一轮列几个问题，每个都带推荐答案。你按自己的情况答。它把这些答案收成一句话，就是终点。</p>
+              <blockquote>
+                <p>拆的话，第一步是我跟你把它最后要做成什么样定下来。这就是终点。终点是一句话，比如「顾客在微信上看今天的水果、下单、选到店取还是送货，你在后台改价格和库存」。</p>
+              </blockquote>
+              <blockquote>
+                <p>我问的问题请你自己答，一定要重视，因为问题和问题之间是有逻辑联系的，一步错，后面全跟着错。</p>
+              </blockquote>
+              <p class="do"><span>你要做</span>自己答。一轮答不完就分几轮。</p>
+            </div>
+          </li>
+
+          <li class="chat-step">
+            <span class="chat-num">5</span>
+            <div>
+              <h3>拆成一张一张议题</h3>
+              <p>终点定下来，Agent 会先说「终点定了」，再把整件事拆成一张一张议题。一张议题就是一次对话，只定这一件事。</p>
+              <blockquote>
+                <p>接下来我把它拆成一张一张的议题，一张议题代表一个任务。这些任务都做完，你要的东西就做成了。</p>
+              </blockquote>
+              <p class="do"><span>你要做</span>等它拆完。文件你不用打开，也不用管。</p>
+            </div>
+          </li>
+
+          <li class="chat-step">
+            <span class="chat-num">6</span>
+            <div>
+              <h3>看清单，定先做哪张</h3>
+              <p>拆完它把清单给你看：一共几张、每张做什么。顺序由你定。你说哪张先做，它就按你说的排。</p>
+              <blockquote>
+                <p>拆完我把清单给你看：一共几张、每张做什么、按什么顺序做。哪张要先做，你说，我按你说的排。</p>
+              </blockquote>
+              <p>每张开头还会写一句，这次是聊、看个样子、动手做，还是我去查。</p>
+              <p class="do"><span>你要做</span>看清单，说一句先做哪张。</p>
+            </div>
+          </li>
+
+        </ol>
+
+        <div class="after">
+          <p class="eyebrow" style="margin-bottom:6px">第一次对话结束</p>
+          <h3>之后每次新对话，只复制一行</h3>
+          <p>定完顺序，Agent 会说一句「议题拆好了，顺序按你定的」，再请你新开一次对话。它给你一行字，原样复制过去，不要改。</p>
+          <div class="example-line"><code id="continue-example">继续：tanxin-yuyue 01 空档怎么放</code></div>
+          <p class="copy-note">这是举例。每次的「需求名、编号、票名」都不一样，以 Agent 给你的那一行为准，不要复制这里的例子。</p>
+          <p class="after-note">Agent 会自己接上，不用你重新讲一遍。它会先说三句：这件事最后要做成什么、现在走到哪；已经定了几条；下一步做哪张。然后开始。</p>
+          <figure class="shot">
+            <div class="shot-frame">
+              <div class="shot-head">
+                <span class="shot-no">图 7</span>
+                <span>收尾给的「继续」行</span>
+                <span class="pill-placeholder">示意图，真图待拍</span>
+              </div>
+              <div class="mock" role="img" aria-label="示意图：dsh 对话末尾，Agent 给出一行继续加需求名、编号和票名。">
+                <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">需求澄清 · dsh</span><span class="mock-tag">示意图</span></div>
+                <div class="mock-body">
+                  <div class="bubble"><p>议题拆好了，顺序按你定的。下次新开一个对话，把下面这一行原样发给我。</p></div>
+                  <div class="continue-box marked">继续：tanxin-yuyue 01 空档怎么放</div>
+                  <span class="mark-note">红框：Agent 给的那一行，原样复制</span>
+                </div>
+              </div>
+            </div>
+            <figcaption><b>图 7 · 收尾那一行。</b>Agent 给你的一行字，原样复制，不要改需求名、编号或票名。</figcaption>
+          </figure>
+        </div>
+
+        <div class="taboos">
+          <h3>这个做法最怕的三件事</h3>
+          <p>Agent 在拆议题前会提前说。记住这三句，后面会顺很多。</p>
+          <ol>
+            <li><strong>在一张议题里聊另一张的事。</strong>想到了就先说一声，我记到那张去，这张先做完。</li>
+            <li><strong>说着说着拐到别处。</strong>拐了就拐了，你照说，我记下来，再拉回来。</li>
+            <li><strong>在后面的议题里改前面定过的事。</strong>要改就说，我去改当初那一张，在地图上记一笔，不在新议题里悄悄改。</li>
+          </ol>
+        </div>
+
+        <p class="progress-quote">「进度我写在这个文件夹里，你不用打开，也不用改。想改什么直接跟我说。」</p>
+
+        <div class="stuck">
+          <div>
+            <p class="stuck-title">卡在这一步？</p>
+            <p class="script"><span id="stuck-4">我卡在第 4 步，Agent 没有讲开场那段，或者一直说文件没放对。</span><button class="copy-btn" type="button" data-copy="stuck-4">复制这句话</button></p>
+            <p>截 Agent 说的话和文件列表，一起发。</p>
+          </div>
+          <a class="stuck-go" href="#support">怎么找客服 →</a>
+        </div>
+      </section>
+
+      <!-- ============ 第 5 节：回传 ============ -->
+      <section class="section-card" id="upload" data-num="05" aria-labelledby="upload-title">
+        <div class="step-head">
+          <p class="step-kicker">全部做完 · 第 5 节</p>
+          <span class="step-chip">最后一步</span>
+        </div>
+        <h2 id="upload-title">压缩整个文件夹，传回来</h2>
+        <p class="section-lead">全部做完，Agent 会说「这件事都问完了」，不再推荐下一张票。接下来把整个工作区传回来，剩下的交给我们。</p>
+
+        <ol class="substeps">
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">1</span>
+            <div>
+              <h3>压缩整个文件夹</h3>
+              <p>Mac：右键「需求澄清」文件夹 → 压缩「需求澄清」。Windows：右键文件夹 → 压缩为 ZIP 文件。</p>
+              <p class="small">压缩的是整个文件夹，不是只压 <code>.scratch/</code>。包里要带着 <code>AGENTS.md</code> 和 <code>.scratch/</code>。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">2</span>
+            <div>
+              <h3>打开上传页</h3>
+              <p>上传页和教程页不在同一个地址。点下面这个按钮过去。</p>
+              <p style="margin-top:11px"><a class="btn btn-primary" href="https://upload.afkfactory.dev/">打开上传页 <span class="sub">↗</span></a></p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">3</span>
+            <div>
+              <h3>拖入 zip，填三样</h3>
+              <p>把压缩包拖进上传框，填客户简称和邮箱，勾上「已问完」。</p>
+              <p class="small">客户简称是签约时给你的名字，不是需求名。拿不准就问客服。</p>
+            </div>
+          </li>
+          <li class="substep">
+            <span class="sub-num" aria-hidden="true">4</span>
+            <div>
+              <h3>提交，等我们联系</h3>
+              <p>看到上传成功就结束了。后面由我们处理，不用再操作。</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="note note-amber">
+          <strong>文件夹里的所有文件都会上传，请只放本项目的资料。</strong>
+        </div>
+        <p class="tree-caption">对话记录不在这个文件夹里，不会跟着上传。整个压缩包控制在 50 MB 以内。</p>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="shot-head">
+              <span class="shot-no">图 8</span>
+              <span>上传页</span>
+              <span class="pill-placeholder">上传页还没上线</span>
+            </div>
+            <div class="mock" role="img" aria-label="示意图：上传页有拖入区域、客户简称、邮箱、已问完勾选和提交按钮。">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="mock-title">upload.afkfactory.dev</span><span class="mock-tag">示意图</span></div>
+              <div class="mock-body">
+                <span class="mock-url">https://upload.afkfactory.dev/</span>
+                <p class="mock-h">传回你的需求澄清</p>
+                <p class="mock-sub">把整个工作区压缩包拖进来。</p>
+                <div class="upload-form">
+                  <div class="upload-drop marked"><b>把 zip 拖到这里</b><span>或点这里选择文件</span></div>
+                  <div class="field marked"><span class="lab">客户简称</span><span class="val">签约时给你的名字</span></div>
+                  <div class="field marked"><span class="lab">邮箱</span><span class="val">用来联系你</span></div>
+                  <div class="upload-row marked" style="padding:4px 6px"><span class="checkbox"></span><span>已问完</span><span style="margin-left:auto;color:#a39a89">50 MB 以内</span></div>
+                  <span class="upload-submit">上传</span>
+                </div>
+                <span class="mark-note">红框：拖入区、客户简称、邮箱、已问完</span>
+              </div>
+            </div>
+          </div>
+          <figcaption><b>图 8 · 上传页。</b><span class="red">红框里是拖入区、客户简称、邮箱和「已问完」。</span>填完提交，等我们联系。</figcaption>
+        </figure>
+
+        <div class="stuck">
+          <div>
+            <p class="stuck-title">卡在这一步？</p>
+            <p class="script"><span id="stuck-5">我卡在第 5 步，压缩包传不上去。</span><button class="copy-btn" type="button" data-copy="stuck-5">复制这句话</button></p>
+            <p>截上传页和报错提示，一起发。不要重复传很多次。</p>
+          </div>
+          <a class="stuck-go" href="#support">怎么找客服 →</a>
+        </div>
+      </section>
+
+      <!-- ============ 客服 ============ -->
+      <section class="card support-card" id="support" aria-labelledby="support-title">
+        <p class="eyebrow">卡住了</p>
+        <h2 id="support-title">找客服，比自己重装快</h2>
+        <p class="section-lead">每一步下面都有一句话。照抄，配一张屏幕截图，发给客服。说清楚卡在第几步，客服不用再问一圈。</p>
+
+        <div class="support-grid">
+          <div class="support-col">
+            <h3>发这三样</h3>
+            <ul>
+              <li>第几步，直接说「我卡在第 2 步」。</li>
+              <li>一张屏幕截图，把窗口边框和路径带上。</li>
+              <li>那一步下面的那句话，复制过去。</li>
+            </ul>
+          </div>
+          <div class="support-col">
+            <h3>先别做这些</h3>
+            <ul>
+              <li>不要自己删文件、重装 dsh、换文件夹。</li>
+              <li>不要重复下载很多次，先看一眼报错。</li>
+              <li>不要把工作区发给别人，里面有你的需求。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="wechat-card">
+          <div class="qr-slot" aria-hidden="true">二维码<br>位置</div>
+          <div class="wechat-text">
+            <b>扫码加客服</b>
+            <p>或直接找签约时对接你的那个人。微信为主，电话兜底。</p>
+            <p class="small">二维码和微信号上线前补。样品阶段先用签约时留的联系方式。</p>
+          </div>
+        </div>
+
+        <div class="support-warn">
+          <strong>语气不用客气，说清楚就行。</strong>「我卡在第 2 步，解压后看不到 AGENTS.md，截图在下面。」这一句就够客服接手。
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="version">客户工作区 v1 · 2026-11-07</span>
+        <span>afkfactory.dev</span>
+        <span class="foot-links">
+          <a href="#step-1">下载</a>
+          <a href="#upload">回传说明</a>
+          <a href="https://upload.afkfactory.dev/">上传页 ↗</a>
+          <a href="https://github.com/mattpocock/skills">原版技能包</a>
+        </span>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<p class="copy-status" role="status" aria-live="polite" id="copy-status"></p>
+
+<noscript>
+  <p style="max-width:760px;margin:16px auto;padding:12px 16px;background:#fbf3e2;border:1px solid #e7d3ab;border-radius:8px;font-size:14px">复制按钮需要浏览器开启 JavaScript。开不了时，选中那行字手动复制。</p>
+</noscript>
+
+<script>
+(function () {
+  "use strict";
+
+  var statusEl = document.getElementById("copy-status");
+
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () {
+        return fallbackCopy(text);
+      });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest("[data-copy]");
+    if (!btn) return;
+    var source = document.getElementById(btn.getAttribute("data-copy"));
+    if (!source) return;
+    var text = source.textContent.replace(/\s+/g, " ").trim();
+    var original = btn.getAttribute("data-label") || btn.textContent;
+    btn.setAttribute("data-label", original);
+    copyText(text).then(function (ok) {
+      btn.textContent = ok ? "已复制" : "复制失败";
+      if (ok) btn.classList.add("done");
+      if (statusEl) statusEl.textContent = ok ? "已复制到剪贴板" : "没能复制，请手动选中";
+      window.setTimeout(function () {
+        btn.textContent = original;
+        btn.classList.remove("done");
+      }, 1800);
+    });
+  });
+
+  var progress = document.querySelector(".scroll-progress");
+  var docEl = document.documentElement;
+  function updateProgress() {
+    if (!progress) return;
+    var max = docEl.scrollHeight - docEl.clientHeight;
+    progress.style.transform = "scaleX(" + (max > 0 ? Math.min(1, docEl.scrollTop / max) : 0) + ")";
+  }
+  window.addEventListener("scroll", updateProgress, { passive: true });
+  window.addEventListener("resize", updateProgress);
+  updateProgress();
+
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.rail-list a, .mobile-toc a'));
+  var navById = {};
+  navLinks.forEach(function (a) {
+    var id = a.getAttribute("href");
+    if (!id || id.charAt(0) !== "#") return;
+    navById[id.slice(1)] = navById[id.slice(1)] || [];
+    navById[id.slice(1)].push(a);
+  });
+  var sections = Object.keys(navById).map(function (id) {
+    return document.getElementById(id);
+  }).filter(Boolean);
+
+  var ticking = false;
+  function updateActive() {
+    ticking = false;
+    var line = window.innerHeight * 0.28 + 80;
+    var current = sections[0];
+    sections.forEach(function (section) {
+      if (section.getBoundingClientRect().top <= line) current = section;
+    });
+    navLinks.forEach(function (a) { a.classList.remove("active"); });
+    if (current && navById[current.id]) {
+      navById[current.id].forEach(function (a) { a.classList.add("active"); });
+    }
+  }
+  window.addEventListener("scroll", function () {
+    if (!ticking) {
+      ticking = true;
+      window.requestAnimationFrame(updateActive);
+    }
+  }, { passive: true });
+  window.addEventListener("resize", updateActive);
+  updateActive();
+})();
+</script>
+
+</body>
+</html>
