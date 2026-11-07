@@ -21,6 +21,8 @@ sudo systemctl reload caddy
 
 `/data/www` 给 `dev`，上传时才不用 sudo。目录默认 755，`caddy` 用户读得到。Caddy 配置改了以后每次都跑 `validate` 和 `reload`，不重启服务。
 
+根路径现在放一个临时的 `ok` 占位页（`/data/www/index.html`），让手册里「站点回 `ok`」的检查继续成立。教程页上线后换掉。
+
 ## 每次发布
 
 ```bash
