@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR.
+description: Build and sharpen a project's domain model. Use when discussing codebase terminology, or writing or editing a GLOSSARY.md. This workspace does not write ADRs.
 ---
 
 # Domain Modeling
@@ -39,6 +39,8 @@ If a `GLOSSARY-MAP.md` exists at the root, the repo has multiple contexts. The m
 
 Create files lazily: only when you have something to write. If no `GLOSSARY.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
 
+本工作区不建 `docs/adr/`，上面结构图里的 `docs/adr/` 在这里不适用。
+
 ## During the session
 
 ### Challenge against the glossary
@@ -64,6 +66,8 @@ When a term is resolved, update `GLOSSARY.md` right there. Don't batch these up:
 `GLOSSARY.md` should be totally devoid of implementation details. Do not treat `GLOSSARY.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
 
 ### Offer ADRs sparingly
+
+本工作区不写 ADR，也不要提议建 ADR。难回退的决定写进票的 `## 结论` 和地图 Decisions so far。下面是通用写法，这里不适用。
 
 Only offer to create an ADR when all three are true:
 

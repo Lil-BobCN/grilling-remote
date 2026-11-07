@@ -3,7 +3,7 @@
   "date": "2026-11-07",
   "skills": [
     {"name": "grilling", "summary": "一次问一件事，把模糊的想法问清楚", "when": "聊需求、定终点的时候"},
-    {"name": "domain-modeling", "summary": "把需求里的词定清楚，记下以后难改的决定", "when": "同一个词有几种意思，或有重大决定要记的时候"},
+    {"name": "domain-modeling", "summary": "把需求里的词定清楚，写进词表", "when": "同一个词有几种意思的时候"},
     {"name": "wayfinder", "summary": "把大需求拆成一张张小议题，一次做一张", "when": "需求太大，一次对话装不下的时候"},
     {"name": "prototype", "summary": "先做个粗糙的样子给你看，边看边改", "when": "要定长什么样、怎么操作的时候"},
     {"name": "research", "summary": "去查资料，把查到的结论写成文件", "when": "有个事实要查清才能做决定的时候"},
