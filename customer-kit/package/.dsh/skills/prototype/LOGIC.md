@@ -34,7 +34,7 @@ Pick whichever shape best fits the question being asked, *not* whichever is easi
 
 ### 3. Build the shareable HTML file
 
-Write it to `.scratch/{简称}/prototypes/prototype-<name>.html`. One file, plain HTML/CSS/JS: no framework, no bundler, no server, everything inline so it opens by double-click and survives being emailed around. Anyone should be able to run it by opening it.
+Write it to `.scratch/{需求名}/prototypes/prototype-<name>.html`. One file, plain HTML/CSS/JS: no framework, no bundler, no server, everything inline so it opens by double-click and survives being emailed around. Anyone should be able to run it by opening it.
 
 Write it for a non-developer. Every label is in **domain language**, not code: buttons and state read like the business, not the reducer. Explain in plain words what's happening.
 
@@ -55,7 +55,7 @@ Send them the file, or open it for them. They'll click through the walkthroughs 
 
 ### 5. Capture the answer and the prototype
 
-Once the prototype has answered its question, write the verdict and the question it settled into the current ticket's `## 结论`. The HTML file stays under `.scratch/{简称}/prototypes/` and travels back with the progress files. Don't create a branch, don't push, don't open a PR.
+Once the prototype has answered its question, write the verdict and the question it settled into the current ticket's `## 结论`. The HTML file stays under `.scratch/{需求名}/prototypes/` and travels back with the progress files. Don't create a branch, don't push, don't open a PR.
 
 ## Anti-patterns
 

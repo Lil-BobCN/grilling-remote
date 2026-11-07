@@ -7,7 +7,7 @@ description: Grill the user relentlessly about a plan, decision, or idea. Use wh
 
 这个技能装在客户的工作文件夹里。对客户说日常简体中文，不要提“技能”“grilling”“wayfinder”这些词。
 
-技术题照问，但在题旁加一句“这题偏技术，不懂就按我的推荐”。客户说不懂，就按推荐答案往下问，把这条记进 `.scratch/{简称}/pending.md`，不要卡住。
+技术题照问，但在题旁加一句“这题偏技术，不懂就按我的推荐”。客户说不懂，就按推荐答案往下问，把这条记进 `.scratch/{需求名}/pending.md`，不要卡住。
 
 推荐答案先联网查证，写出处。查不到就写“未核验”，把它当假设继续。
 

@@ -18,9 +18,9 @@ The two branches produce very different artifacts, so getting this wrong wastes 
 
 ## Rules that apply to both
 
-1. **Throwaway from day one, and clearly marked as such.** Write it under `.scratch/{简称}/prototypes/`, named so a casual reader can see it's a prototype (`prototype-<name>.html`). It is never imported by real code and never shipped.
+1. **Throwaway from day one, and clearly marked as such.** Write it under `.scratch/{需求名}/prototypes/`, named so a casual reader can see it's a prototype (`prototype-<name>.html`). It is never imported by real code and never shipped.
 2. **Trivial to run.** Every prototype is a single HTML file the customer double-clicks. No project, no dev server, no build step, no thinking required to start it.
 3. **No persistence by default.** State lives in memory. Persistence is the thing the prototype is _checking_, not something it should depend on. If the question explicitly involves a database, hit a scratch DB or a local file with a clear "PROTOTYPE, wipe me" name.
 4. **Skip the polish.** No tests, no error handling beyond what makes the prototype _runnable_, no abstractions. The point is to learn something fast.
 5. **Surface the state.** After every action (logic) or on every variant switch (UI), print or render the full relevant state so the user can see what changed.
-6. **Capture it when done.** Write the verdict and the question it settled into the current ticket's `## 结论`. Keep the HTML file under `.scratch/{简称}/prototypes/`; it travels back with the progress files. Don't create a branch, don't push, don't open a PR.
+6. **Capture it when done.** Write the verdict and the question it settled into the current ticket's `## 结论`. Keep the HTML file under `.scratch/{需求名}/prototypes/`; it travels back with the progress files. Don't create a branch, don't push, don't open a PR.
