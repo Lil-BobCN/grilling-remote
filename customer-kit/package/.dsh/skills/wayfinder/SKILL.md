@@ -5,7 +5,7 @@ description: Plan a huge chunk of work (more than one agent session can hold) as
 
 A loose idea has arrived, too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Wayfinding is about finding that way, not charging at the destination. This skill charts the way as a **shared map** on the repo's issue tracker, then works its **decision tickets** (questions whose resolution is a decision, not slices of a build to execute) one at a time until the route is clear.
 
-In the customer workspace the tracker is local Markdown, with no GitHub and no git. Where this skill says issue, close, assignee, or comment, follow `docs/agents/issue-tracker.md` → "Wayfinding operations" for the file equivalent.
+In the customer workspace the tracker is local Markdown, with no GitHub and no git. Where this skill says issue, close, assignee, or comment, follow `docs/agents/issue-tracker.md` → "Wayfinder 用法" for the file equivalent.
 
 The destination varies per effort, and naming it is the first act of charting: it shapes every ticket. It might be a spec to hand off and iterate on, a decision to lock before planning starts, or a change made in place like a data-structure migration. The map is domain-agnostic: engineering work, course content, whatever fits the shape.
 
@@ -23,7 +23,7 @@ The map is a single issue on this repo's issue tracker, labelled `wayfinder:map`
 
 The map is an **index**, not a store. It lists the decisions made and points at the tickets that hold their detail; a decision lives in exactly one place, its ticket, so the map never restates it, only gists it and links.
 
-**Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you. In the customer workspace it is `docs/agents/issue-tracker.md`. Consult the tracker doc's "Wayfinding operations" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker.
+**Where the map, its child tickets, blocking, and frontier queries physically live is tracker-specific.** The issue tracker should have been provided to you. In the customer workspace it is `docs/agents/issue-tracker.md`. Consult the tracker doc's "Wayfinder 用法" section for how _this_ repo expresses them. If no tracker has been provided, default to the local-markdown tracker.
 
 ### The map body
 
@@ -166,7 +166,7 @@ The user may run unblocked tickets in parallel, so expect other sessions to be e
 
 | `Type:` | 对客户说 |
 | --- | --- |
-| `grilling` | 这张是 <编号>，要定的是 <一句话>。我一件一件问你，你自己答。 |
+| `grilling` | 这张是 <编号>，要定的是 <一句话>。我一轮列出几个问题，每个带我的推荐答案，你自己答。 |
 | `prototype` | 这张是 <编号>，要定的是 <一句话>。我先做个样子给你看，你看着改。 |
 | `research` | 这张是 <编号>，要定的是 <一句话>。这个我去查，查完告诉你。 |
 | `task` | 这张是 <编号>，要做的是 <一句话>。我带你一步一步做。 |

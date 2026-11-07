@@ -7,6 +7,7 @@
 - AGENTS.md：工作区规则，dsh 每次打开都会读
 - docs/agents/：两份说明文件
 - .dsh/skills/：九个技能。名字以点开头，系统可能默认不显示
+- 技能清单.md：九个技能各管什么，什么时候用
 - LICENSE：上游技能的 MIT 许可证
 - NOTICE.md：上游来源和改动说明
 - README.txt：本文件
