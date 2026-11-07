@@ -1,0 +1,18 @@
+# 服务器上的 /etc/caddy/Caddyfile 以这份为准。
+# 改完在服务器上跑 sudo caddy validate --config /etc/caddy/Caddyfile，再 sudo systemctl reload caddy。
+
+afkfactory.dev {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+
+	root * /data/www
+	file_server
+
+	# 下载链接固定，内容会随重打包变。不加这句，Cloudflare 会把旧 zip 留在边上。
+	@downloads path /downloads/*
+	header @downloads Cache-Control "no-cache"
+}
+
+upload.afkfactory.dev {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	respond "ok"
+}

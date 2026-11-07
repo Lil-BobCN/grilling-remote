@@ -37,9 +37,13 @@ bash customer-kit/build.sh
 
 zip 直接打 `package/`，不套外层文件夹，解压后根目录就是工作区。要带上隐藏目录 `.dsh`，排除 `.DS_Store`。包内 `技能清单.md` 和官网清单，都由 `manifest.json` 生成。改 `package/` 后必须重打。重新构建会生成新的校验值。
 
+打包用 `python3` 的 `zipfile`，不用系统的 `zip`。系统的 zip 3.0 给中文文件名不打 UTF-8 标记，Windows 自带解压会按本地代码页读，`技能清单.md` 显示成乱码。`build.sh` 现在依赖 `jq` 和 `python3`。
+
 改版本号或日期时，要同时改三处：`manifest.json`、`package/AGENTS.md` 第 3 行、`package/README.txt` 前两行。`build.sh` 只用 `manifest.json` 生成包名和 `技能清单.md`，不会改另外两处。
 
 2026-11-07 已改：`build.sh` 用 `jq` 读 `manifest.json` 的版本号，包名 `客户工作区-v1`，zip 不套层。构建时重写 `package/技能清单.md`。本机构建一次，解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
+
+2026-11-07 第二次构建（#35 发布用，含 #95 改过的客户规则）：`customer-kit/dist/客户工作区-v1.zip`，41461 字节，SHA256 `49d3d89a8ccea55c76c19b84e1fbe6375d33b3d2a2f3fc9922a7533ae97038a6`。20 个文件，`unzip` 和 `ditto` 各解压一次，`diff -r` 与 `package/` 一致，`shasum -c` 通过。`技能清单.md` 带 UTF-8 标记。包内时间戳固定成 `manifest.json` 的日期，同一份内容连打两次，SHA256 一样。
 
 ## 这版测过什么
 
