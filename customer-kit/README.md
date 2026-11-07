@@ -37,6 +37,8 @@ bash customer-kit/build.sh
 
 zip 直接打 `package/`，不套外层文件夹，解压后根目录就是工作区。要带上隐藏目录 `.dsh`，排除 `.DS_Store`。包内 `技能清单.md` 和官网清单，都由 `manifest.json` 生成。改 `package/` 后必须重打。重新构建会生成新的校验值。
 
+改版本号或日期时，要同时改三处：`manifest.json`、`package/AGENTS.md` 第 3 行、`package/README.txt` 前两行。`build.sh` 只用 `manifest.json` 生成包名和 `技能清单.md`，不会改另外两处。
+
 2026-11-07 已改：`build.sh` 用 `jq` 读 `manifest.json` 的版本号，包名 `客户工作区-v1`，zip 不套层。构建时重写 `package/技能清单.md`。本机构建一次，解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
 
 ## 这版测过什么
