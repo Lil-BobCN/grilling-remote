@@ -19,7 +19,7 @@ disable-model-invocation: true
 
 2. **规则。** 把 `templates/issue-tracker-trail.md` 追加到 `docs/agents/issue-tracker.md` 末尾。文件里已有「## 地图上的变动怎么留痕」就跳过，并说明已有。完成条件：该标题恰好出现一次，`git diff` 里这个文件只有追加，旧行没动。
 
-3. **术语。** `GLOSSARY.md` 不存在就新建，只放 `# <项目名>` 和 `## 语言` 两行标题。把 `templates/glossary-trail.md` 里的四个词追加进去，已有同名词的跳过。完成条件：冒头、扫描表、现行决定、已废各出现一次。
+3. **术语。** `GLOSSARY.md` 不存在就新建，只放 `# <项目名>` 和 `## 语言` 两行标题。把 `templates/glossary-trail.md` 里的词追加进去，已有同名词的跳过。完成条件：冒头、决定、扫描表、台账、现行决定、被取代、依据、推迟各出现一次。
 
 4. **指针。** 把 `templates/agents-pointer.md` 放进第 1 步选定的规则文件：有 `## Agent skills` 就放在这一节末尾、下一个 `##` 标题之前，没有就追加到文件末尾。已有「### 地图变动」就跳过。完成条件：该标题恰好出现一次，其他段落没动。
 
