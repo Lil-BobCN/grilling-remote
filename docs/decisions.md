@@ -23,3 +23,6 @@
 | D-0005 | 开工前先选方法：改动很小 one-shot，中等以上先 `/grill-with-docs`，grilling 中雾大升级 `/wayfinder`；钱、数据、安全、公开 API 类即使小 diff 也不 one-shot；不从 `/wayfinder` 起步再降级 | 无 | 无 | docs/agents/issue-tracker.md、.claude/skills/next/SKILL.md、.claude/skills/init-trail/SKILL.md、.claude/skills/init-trail/templates/skill-next.md |
 | D-0005a | 票型按保真度选：低保真讨论，中保真方框箭头或线框图，高保真半可运行原型；grilling 停在抽象层面转 prototype；原型票写「用 `/prototype`」，研究票写「用 `/research`」；先拆小原型验证方案 | 无 | 无 | docs/agents/issue-tracker.md |
 | D-0005b | 客户单分流（G-009）与本仓任务选方法各管各的；工厂流程、术语表、讲解的分流句加范围限定，指回 issue-tracker.md 的入口；不取代 G-009 | 无 | 无 | docs/工厂流程.md、GLOSSARY.md、docs/讲解.md |
+| D-0006 | 词汇表格式以 `domain-modeling` 技能的 `GLOSSARY-FORMAT.md` 为准，本仓不再另写格式说明 | 无 | 无 | docs/agents/domain.md |
+| D-0006a | ADR 只在难回退、不写会让人意外、真取舍三条同时成立时写，缺一条不写；修剪按三条复检，够不上的删掉，被取代的删留按 D-0002c | 无 | 无 | docs/agents/domain.md |
+| D-0006b | `docs/agents/issue-tracker.md` 只留 GitHub 特有差异：sub-issue、原生 blocked-by、`wayfinder:*` 标签、`gh` 命令；地图结构、四种票型、frontier、关票动作指向 `/wayfinder` | 无 | 无 | docs/agents/issue-tracker.md |
