@@ -26,3 +26,6 @@
 | D-0006 | 词汇表格式以 `domain-modeling` 技能的 `GLOSSARY-FORMAT.md` 为准，本仓不再另写格式说明 | 无 | 无 | docs/agents/domain.md |
 | D-0006a | ADR 只在难回退、不写会让人意外、真取舍三条同时成立时写，缺一条不写；修剪按三条复检，够不上的删掉，被取代的删留按 D-0002c | 无 | 无 | docs/agents/domain.md |
 | D-0006b | `docs/agents/issue-tracker.md` 只留 GitHub 特有差异：sub-issue、原生 blocked-by、`wayfinder:*` 标签、`gh` 命令；地图结构、四种票型、frontier、关票动作指向 `/wayfinder` | 无 | 无 | docs/agents/issue-tracker.md |
+| D-0007 | Destination 覆盖表由 `build` 按 `## Destination` 原文切句生成，固定四列：句、原文片段、由哪张票落、状态；切句按 `。！？`，跳过 `<details>` 旧稿、`**状态：**` 行和以冒号结尾的引导行；agent 只填第三列，有票即已落票、无票未定、原文变了标原文已改并清空旧票 | 无 | 无 | scripts/decisions |
+| D-0007a | `check` 第 8 条校验覆盖表：句数和原文片段与 Destination 对齐、状态只取三值、已落票必须有票，输出行报「n 句里 m 句没落票」 | 无 | 无 | scripts/decisions |
+| D-0007b | 在 D-0003 的 build、check、chain 三个子命令之外新增只读子命令 `coverage`，报「n 句里 m 句没落票」并列出没落的句子；`map-gate` 第 1 步记数、第 7 步 m 不为 0 不发布放行报告，D-0003 原文不动 | 无 | 无 | scripts/decisions、.claude/skills/map-gate/SKILL.md、.claude/skills/init-trail/templates/skill-map-gate.md |
