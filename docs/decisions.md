@@ -29,3 +29,8 @@
 | D-0007 | Destination 覆盖表由 `build` 按 `## Destination` 原文切句生成，固定四列：句、原文片段、由哪张票落、状态；切句按 `。！？`，跳过 `<details>` 旧稿、`**状态：**` 行和以冒号结尾的引导行；agent 只填第三列，有票即已落票、无票未定、原文变了标原文已改并清空旧票 | 无 | 无 | scripts/decisions |
 | D-0007a | `check` 第 8 条校验覆盖表：句数和原文片段与 Destination 对齐、状态只取三值、已落票必须有票，输出行报「n 句里 m 句没落票」 | 无 | 无 | scripts/decisions |
 | D-0007b | 在 D-0003 的 build、check、chain 三个子命令之外新增只读子命令 `coverage`，报「n 句里 m 句没落票」并列出没落的句子；`map-gate` 第 1 步记数、第 7 步 m 不为 0 不发布放行报告，D-0003 原文不动 | 无 | 无 | scripts/decisions、.claude/skills/map-gate/SKILL.md、.claude/skills/init-trail/templates/skill-map-gate.md |
+| D-0008 | 「关票扫描」的五项检查并进一张四列表：结论进「决定」列，产出进「产出文件」列，被推翻的决定进「取代」列；删掉逐张判开放票和判地图索引行两项，开放票前提改由领取时的「开工核对」查 | 无 | 无 | docs/agents/issue-tracker.md、.claude/skills/init-trail/templates/issue-tracker-trail.md |
+| D-0008a | 关票顺序写死：贴四列表 → 关票 → `scripts/decisions build` → `scripts/decisions check` → `/wrap-up` 和 `/next` → 推当前 PR → 合并；`check` 只读已关闭票，本票的四列表关票后才进 `check`，`build` 也在关票后跑 | 无 | 无 | docs/agents/issue-tracker.md、.claude/skills/init-trail/templates/issue-tracker-trail.md |
+| D-0008b | `map-gate` 第 7 步发的评论降为放行报告，不再是新会话的唯一输入；给新会话的提示词改成读地图全文、`docs/decisions.md` 和决定对应的来源票，地图 `Decisions so far` 只当索引 | 无 | 无 | .claude/skills/map-gate/SKILL.md、.claude/skills/init-trail/templates/skill-map-gate.md |
+| D-0008c | 被取代的 ADR 整份删掉，靠 git 历史找回；部分被取代的保留，开头指向新 ADR；流程文档的旧句句末注「被取代，见 <票名>」，四列表例子用同一说法 | 无 | 无 | docs/agents/issue-tracker.md、.claude/skills/init-trail/templates/issue-tracker-trail.md |
+| D-0008d | `customer-kit/package/` 下的同名文件是本地 Markdown 跟踪器和客户版技能，没有 `scripts/decisions`、`build`、`check`，和本仓不同构，保持原样；客户版 `wrap-up` 已在 #121 改六步 | 无 | 无 | 无 |
