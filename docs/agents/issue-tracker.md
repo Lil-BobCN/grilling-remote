@@ -65,9 +65,9 @@
 
 同一张票的第二条起，加小写字母后缀：`D-0002a`、`D-0002b`。首条不带后缀。
 
-编号写完不再复用。被取代的编号保留在 `docs/decisions.md` 里，标出被谁取代。
+编号写完不再复用。被取代的编号从 `docs/decisions.md` 挪进 `docs/decisions-archive.md`，编号和原行保留，标出被谁取代。
 
-新编号取 `docs/decisions.md` 里现有最大号加一。文件还不存在时从 `D-0001` 起。两人同时关票抢到同一个号，`check` 第 1 条会报，后关的那张改号。
+新编号取 `docs/decisions.md` 和 `docs/decisions-archive.md` 里现有最大号加一。两个文件都不存在时，取所有已关闭票评论里的最大号加一；一张都没有才从 `D-0001` 起。两人同时关票抢到同一个号，`check` 第 1 条会报，后关的那张改号。
 
 ### 开放票首行写依据
 
@@ -85,7 +85,7 @@
 | D-0007 | 交接文档放 `$TMPDIR`，不放仓库 | D-0003 | U-02 | 无 |
 ```
 
-`D-0003` 原本说交接文档放 `docs/handoff/`，这份票推翻它。`docs/decisions.md` 里 `D-0003` 那行标「已废，见 D-0007」。
+`D-0003` 原本说交接文档放 `docs/handoff/`，这份票推翻它。`D-0003` 那行从 `docs/decisions.md` 挪进 `docs/decisions-archive.md`，标「被 D-0007 取代」。
 
 无结论的例子：
 
