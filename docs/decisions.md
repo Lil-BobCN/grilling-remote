@@ -18,3 +18,5 @@
 | D-0003b | 地图 `Decisions so far` 整段由 `build` 重写，夹在 `<!-- decisions:begin… -->` 和 `<!-- decisions:end -->` 之间，只列地图的已关闭子票，一张票一行 | 无 | 无 | scripts/decisions |
 | D-0003c | 被取代的条目进 `docs/decisions-archive.md` 时保留原行，取代关系另用「被取代、被谁取代」两列表标出；`产出文件` 多路径按 `,` 或 `、` 拆，文件名里的 `，` 不拆 | 无 | 无 | docs/decisions-archive.md、scripts/decisions |
 | D-0003d | 退出码 0 全过、1 有不变量破、2 用法错；`build` 和 `check` 的目标 issue 必须带 `wayfinder:map` 标签，否则退出 | 无 | 无 | scripts/decisions |
+| D-0004 | `scripts/decisions check` 是独立入口，运营者先跑，`wrap-up` 只读它的输出、不重跑；`wrap-up` 由八步改六步：前置 check、扫会话查漏、查冲突、查票、给运营者看、回应后动手 | 无 | 无 | .claude/skills/wrap-up/SKILL.md、.claude/skills/init-trail/templates/skill-wrap-up.md |
+| D-0004a | 开放票前提不在 `wrap-up` 里逐张扫，改由领取时的「开工核对」查；客户版 `wrap-up` 由七步改六步，合并「扫对话」和「查漏」，没有 check 前置 | 无 | 无 | customer-kit/package/.dsh/skills/wrap-up/SKILL.md |
