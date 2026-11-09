@@ -11,15 +11,15 @@ _Avoid_: 决策、决定项、决议
 _Avoid_: 影响分析、检查单
 
 **台账**：
-`docs/decisions.md`，全部已关闭票的决定按编号汇总成的文件。由 `scripts/decisions build` 生成后提交进 git，禁止手改。
+`docs/decisions.md`，只收现行决定，按编号排列。由 `scripts/decisions build` 生成后提交进 git，禁止手改。被取代的条目不放这里，进 `docs/decisions-archive.md`。
 _Avoid_: 决定清单、清单文件
 
 **现行决定**：
-台账里没被标「被取代」的行，是 `to-spec` 的输入。由脚本从已关闭票编出，不是人手维护的清单。
+台账的行，是 `to-spec` 读的现行决定之一。`to-spec` 还读地图全文，需要细节时打开台账里这条决定对应的来源票；地图 `Decisions so far` 只当索引。台账不是唯一输入。
 _Avoid_: 最新决定
 
 **被取代**：
-被后来的决定推翻的决定。编号保留，台账里那行标「被取代，见 `D-xxxx`」，历史不删。新票开头也标「取代 <旧文件路径>」。
+被后来的决定推翻的决定。编号和原行从台账挪进 `docs/decisions-archive.md`，原样保留，历史不删。ADR 整份被取代的直接删，靠 git 历史找回；部分被取代的保留，开头指向新 ADR。
 _Avoid_: 已废、删除、过期
 
 **依据**：
