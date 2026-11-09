@@ -2,8 +2,9 @@
 """scripts/decisions：编台账、查八条不变量、查编号链。
 
 build <地图编号>  读带 wayfinder: 标签的已关闭票及评论、地图子票；写 docs/decisions.md、
-                  docs/decisions-archive.md、地图 Decisions so far 段。
+                  docs/decisions-archive.md、地图 Decisions so far 段和 Destination 覆盖表。
 check <地图编号>  读同上加两份台账、地图正文、开放票正文；只读。八条不变量逐条报。
+coverage <地图编号> 只读。报覆盖表「n 句里 m 句没落票」，列出没落票的句子。
 chain <编号>      读同上；只读。列引用票、同票编号、后继编号，只供判，不自动废。
 报错三类：A 格式错给改法，agent 自己改；B 二选一打印选项等运营者；C 重做并打印建议新票。
 退出码：0 全过；1 有不变量破；2 用法错。
@@ -12,7 +13,9 @@ import json, os, re, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 L, A = (os.path.join(ROOT, p) for p in ("docs/decisions.md", "docs/decisions-archive.md"))
 HEAD = "| id | 决定 | 取代 | 解答未定 | 产出文件 |\n| --- | --- | --- | --- | --- |\n"
-HDR = re.compile(r"^\|\s*id\s*\|\s*决定\s*\|\s*取代\s*\|\s*解答未定\s*\|\s*产出文件\s*\|$"); COV = re.compile(r"^\|\s*句\s*\|\s*原文片段\s*\|\s*由哪张票落\s*\|\s*状态\s*\|$")
+HDR = re.compile(r"^\|\s*id\s*\|\s*决定\s*\|\s*取代\s*\|\s*解答未定\s*\|\s*产出文件\s*\|$")
+COVSEC, COVSTATUSES = "## Destination 覆盖表", ("已落票", "未定", "原文已改")
+DETAILS, STATUSLINE = re.compile(r"<details>.*?</details>", re.S), re.compile(r"^\*\*状态[：:].*\*\*$")
 BEGIN, END = "<!-- decisions:begin：由 build 生成，勿手改 -->", "<!-- decisions:end -->"; KEY = lambda r: (r["id"], r["ticket"], r["line"])
 def gh(*a, stdin=None):
     p = subprocess.run(["gh", *a], input=stdin, capture_output=True, text=True)
@@ -61,19 +64,78 @@ def read_map(n):
     m = json.loads(gh("issue", "view", str(n), "--json", "number,title,body,labels,url"))
     if not is_map(m): sys.exit("地图 %d 没有 wayfinder:map 标签" % n)
     return m
-def edit_map(n, body, sec):
-    ls = body.splitlines(); h = next((k for k, l in enumerate(ls) if l.strip() == "## Decisions so far"), None)
-    if h is None: sys.exit("地图没有 ## Decisions so far 段")
-    e = next((k for k in range(h + 1, len(ls)) if ls[k].startswith("## ")), len(ls))
-    gh("issue", "edit", str(n), "--body-file", "-", stdin="\n".join(ls[:h + 1] + [""] + sec.splitlines() + [""] + ls[e:]) + "\n")
+def headings(ls):
+    out, d = [], 0
+    for k, l in enumerate(ls):
+        s = l.strip()
+        if s.startswith("<details"): d += 1
+        elif s.startswith("</details>"): d = max(0, d - 1)
+        elif d == 0 and s.startswith("## "): out.append(k)
+    return out
+def splice(body, title, lines, after=None):
+    ls = body.splitlines(); hs = headings(ls)
+    h = next((k for k in hs if ls[k].strip() == title), None)
+    if h is not None:
+        e = next((k for k in hs if k > h), len(ls)); pre, post = ls[:h], ls[e:]
+    else:
+        a = next((k for k in hs if ls[k].strip() == after), None)
+        if a is None: sys.exit("地图没有 ## %s 段" % after)
+        e = next((k for k in hs if k > a), len(ls)); pre, post = ls[:e], ls[e:]
+    while pre and not pre[-1].strip(): pre.pop()
+    while post and not post[0].strip(): post.pop(0)
+    return "\n".join(pre + [""] + lines + ([""] + post if post else [])) + "\n"
+def dest_sentences(body):
+    ls = body.splitlines(); hs = headings(ls)
+    h = next((k for k in hs if ls[k].strip() == "## Destination"), None)
+    if h is None: sys.exit("地图没有 ## Destination 段")
+    e = next((k for k in hs if k > h), len(ls))
+    out = []
+    for raw in DETAILS.sub("", "\n".join(ls[h + 1:e])).splitlines():
+        line = raw.strip()
+        if not line or STATUSLINE.match(line): continue
+        line = re.sub(r"^\s*(?:\d+[.)、]\s*|[-*+]\s+)", "", line).replace("**", "").strip()
+        if not line or line.endswith(("：", ":")): continue
+        out += [p.strip() for p in re.split(r"(?<=[。！？])", line) if p.strip()]
+    return out
+def cov_rows(body):
+    ls = body.splitlines(); hs = headings(ls)
+    h = next((k for k in hs if ls[k].strip() == COVSEC), None)
+    if h is None: return None
+    e = next((k for k in hs if k > h), len(ls)); out = []
+    for line in ls[h + 1:e]:
+        s = line.strip()
+        if not s.startswith("|"): continue
+        c = [x.strip() for x in re.split(r"(?<!\\)\|", s.strip("|"))]
+        if len(c) == 4 and c[0] != "句" and not re.match(r"^-+$", c[0]): out.append([c[0], c[1].replace("\\|", "|"), c[2], c[3]])
+    return out
+def cov_merge(body):
+    sents, old = dest_sentences(body), cov_rows(body) or []
+    used, new = [False] * len(old), []
+    for s in sents:
+        j = next((j for j, o in enumerate(old) if not used[j] and o[1] == s), None)
+        if j is None: new.append([s, "", None]); continue
+        used[j] = True; o = old[j]
+        new.append([s, o[2], "已落票" if o[2] else ("原文已改" if o[3] == "原文已改" else "未定")])
+    rest, k = [o for j, o in enumerate(old) if not used[j]], 0
+    for r in new:
+        if r[2] is not None: continue
+        if k < len(rest): r[1], r[2] = "", "原文已改"; k += 1
+        else: r[2] = "未定"
+    return [[str(i + 1)] + r for i, r in enumerate(new)]
+def cov_text(rows):
+    head = [COVSEC, "", "由 `scripts/decisions build` 按 `## Destination` 原文切句生成，句子编号和状态自动维护，agent 只填「由哪张票落」一列。状态只取三值：`已落票` 有票，`未定` 没票，`原文已改` 原文变过、要重判。", "", "| 句 | 原文片段 | 由哪张票落 | 状态 |", "| --- | --- | --- | --- |"]
+    return "\n".join(head + ["| %s | %s | %s | %s |" % (no, frag.replace("|", "\\|"), ticket, st) for no, frag, ticket, st in rows])
 def build(n):
     rows = [r for i in load() if i["state"] == "CLOSED" and wf(i) for r in rows_of(i)]
     led, arc = texts(rows); open(L, "w", encoding="utf-8").write(led); open(A, "w", encoding="utf-8").write(arc)
     by = {}
     for r in rows: by.setdefault(r["ticket"], []).append(r)
     sec = "\n".join([BEGIN] + ["- [%s](%s) — %s" % (t, u, sorted(by.get(x), key=KEY)[0]["decision"] if by.get(x) else "缺四列表，待补") for x, t, u in sorted(children_of(n))] + [END])
-    edit_map(n, read_map(n)["body"], sec)
-    print("build 完成：%d 条现行，%d 条被取代；写两份台账和地图 %d。" % (len(parse(led)), len(parse(arc)), n))
+    body = read_map(n)["body"]; cov = cov_merge(body)
+    body = splice(body, "## Decisions so far", ["## Decisions so far", ""] + sec.splitlines())
+    body = splice(body, COVSEC, cov_text(cov).splitlines(), after="## Destination")
+    gh("issue", "edit", str(n), "--body-file", "-", stdin=body)
+    print("build 完成：%d 条现行，%d 条被取代；覆盖表 %d 句，%d 句没落票；写两份台账和地图 %d。" % (len(parse(led)), len(parse(arc)), len(cov), sum(1 for r in cov if r[3] != "已落票"), n))
 def check(n):
     all_i = load(); closed = [i for i in all_i if i["state"] == "CLOSED" and wf(i)]; rows = [r for i in closed for r in rows_of(i)]
     by, sup, E, ids = {}, sup_of(rows), [], {r["id"] for r in rows}
@@ -107,26 +169,38 @@ def check(n):
     for r in rows:
         for u in items(r["answers"]):
             if u in uns: bad(7, "%s 的「解答未定」写着 %s，地图未定块里还在。" % (r["id"], u), "B", "① 从地图未定块删掉 %s；② 把「解答未定」改成「无」。" % u)
-    ls = body.splitlines()  # 8 覆盖表每句有状态
-    k = next((k for k, l in enumerate(ls) if COV.match(l.strip())), None)
-    if k is None:
+    sents, crs = dest_sentences(body), cov_rows(body)  # 8 覆盖表每句有状态
+    extra = ""
+    if crs is None:
         bad(8, "地图里没有 Destination 覆盖表（表头 句 | 原文片段 | 由哪张票落 | 状态）。", "C", title="补 Destination 覆盖表：地图 %d" % n)
     else:
-        j = k + 2
-        while j < len(ls) and ls[j].strip().startswith("|"):
-            c = [x.strip() for x in ls[j].strip().strip("|").split("|")]
-            if len(c) == 4 and c[3] not in ("已落票", "未定", "原文已改"): bad(8, "覆盖表第 %d 行状态是「%s」。" % (j + 1, c[3]), fix="改成 已落票/未定/原文已改 之一。")
-            j += 1
+        for i, s in enumerate(sents):
+            r = crs[i] if i < len(crs) else None
+            if r is None: bad(8, "覆盖表缺第 %d 句：%s" % (i + 1, s), fix="跑 build。"); continue
+            if r[1] != s: bad(8, "覆盖表第 %d 行的原文片段和 Destination 第 %d 句对不上。" % (i + 1, i + 1), fix="跑 build。")
+            if r[3] not in COVSTATUSES: bad(8, "覆盖表第 %d 行状态是「%s」。" % (i + 1, r[3]), fix="改成 已落票/未定/原文已改 之一。")
+            elif r[2] and r[3] != "已落票": bad(8, "覆盖表第 %d 行填了票，状态还是「%s」。" % (i + 1, r[3]), fix="跑 build，状态按第三列重算。")
+            elif r[3] == "已落票" and not r[2]: bad(8, "覆盖表第 %d 行写着已落票，但没填票。" % (i + 1), fix="填上票，或改成未定。")
+        for j in range(len(sents), len(crs)): bad(8, "覆盖表第 %d 行多出来了，Destination 只有 %d 句。" % (j + 1, len(sents)), fix="跑 build。")
+        landed = sum(1 for r in crs if r[3] == "已落票")
+        extra = "（%d 句里 %d 句没落票）" % (len(crs), len(crs) - landed)
     names = ["编号唯一", "每个编号两份台账合计一次", "开放票依据不引用已取代编号", "每张已关闭票有表或写无结论", "产出文件存在且被取代的行提到取代者", "提交版等于 build 结果", "解答未定的 U- 已从未定块移除", "覆盖表每句有状态"]
     print("scripts/decisions check %d" % n)
     for inv in range(1, 9):
-        es = [e for e in E if e[0] == inv]; print("第 %d 条 %s：%s" % (inv, names[inv - 1], "通过" if not es else "破 %d 处" % len(es)))
+        es = [e for e in E if e[0] == inv]; print("第 %d 条 %s：%s%s" % (inv, names[inv - 1], "通过" if not es else "破 %d 处" % len(es), extra if inv == 8 else ""))
         for _, text, cls, fix, title in es:
             print("  × %s [%s] %s" % (text, cls, "建议新票：" + title if cls == "C" else ("改法：" if cls == "A" else "二选一：") + fix))
     if not E: print("八条全过。"); return 0
     c = {x: sum(1 for e in E if e[2] == x) for x in "ABC"}; print("共 %d 处：A %d、B %d、C %d。" % (len(E), c["A"], c["B"], c["C"]))
     if c["C"]: print("C 类建议新票正文骨架：\n## Question\n<票名> 的关票评论缺四列表或覆盖表，决定没有写下来。\n## Scope\n1. 读这张票的正文和评论，写一条四列表评论。\n## 完成条件\nscripts/decisions check <地图编号> 对应条目通过。")
     return 1
+def coverage(n):
+    crs = cov_rows(read_map(n)["body"])
+    if crs is None: print("地图 %d 没有 Destination 覆盖表，跑 build。" % n); return 1
+    miss = [r for r in crs if r[3] != "已落票"]
+    print("%d 句里 %d 句没落票。" % (len(crs), len(miss)))
+    for r in miss: print("  第 %s 句 [%s] %s" % (r[0], r[3], r[1]))
+    return 0
 def chain(rid):
     all_i = load(); rows = [r for i in all_i if i["state"] == "CLOSED" and wf(i) for r in rows_of(i)]
     src = [r for r in rows if r["id"] == rid]
@@ -142,7 +216,7 @@ def chain(rid):
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"): print(__doc__.strip()); return 0
-    if a[0] in ("build", "check") and len(a) == 2 and a[1].isdigit(): return (build if a[0] == "build" else check)(int(a[1]))
+    if a[0] in ("build", "check", "coverage") and len(a) == 2 and a[1].isdigit(): return {"build": build, "check": check, "coverage": coverage}[a[0]](int(a[1]))
     if a[0] == "chain" and len(a) == 2: return chain(a[1].upper())
     print(__doc__.strip(), file=sys.stderr); return 2
 if __name__ == "__main__":
