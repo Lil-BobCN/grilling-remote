@@ -1,12 +1,12 @@
 ---
 type: concept
 title: grilling 的提问规则
-tags: [grilling, wayfinder, 提问, 需求澄清, frontier]
-related: [技能与流程, 任务拆分与上下文, matt-pocock-skills, 接单流程与口播的冲突, 术语表]
-sources: ["口播提取/Matt Pocock 推荐_用动画讲解从 grill 到 retro 的全程工作流 p01 【中英字幕】Matt Pocock 推荐_用动.md", "口播提取/Matt Pocock Skills 全流程实战.md"]
+tags: [grilling, wayfinder, 提问, 需求澄清, frontier, domain-modeling]
+related: [技能与流程, 任务拆分与上下文, matt-pocock-skills, 接单流程与口播的冲突, 术语表, 领域语言与决策记录, wayfinder-地图与决策票]
+sources: ["口播提取/Matt Pocock 推荐_用动画讲解从 grill 到 retro 的全程工作流 p01 【中英字幕】Matt Pocock 推荐_用动.md", "口播提取/Matt Pocock Skills 全流程实战.md", "口播提取/Software Factories for Real Engineers/第 3 集_Using Grill with Docs Solution.md", "口播提取/Software Factories for Real Engineers/第 6 集_Writing an ADR Solution.md", "口播提取/Software Factories for Real Engineers/第 17 集_Grilling Ticket Solution.md"]
 evidence_status: mixed
 created: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-09
 ---
 # grilling 的提问规则
 
@@ -45,6 +45,18 @@ updated: 2026-11-03
 grill-with-docs 等于 grilling 加 domain-modeling。问的过程中，定下来的词当场写进 GLOSSARY.md。用户打「wait what」，agent 用词汇表里的词重讲上一条（S4 自述）。
 
 domain-modeling 文档提醒：词汇表只放术语，不能长成 spec。没人审过的 agent 词汇表，会塞满自信但没验证的说法。
+
+## 课程里的 grilling（S9）
+
+课程第 3、6、17 集把 grilling 和 domain modeling 放在一起演示。每次 grilling 会话都会调用两次技能：grilling 负责提问，domain modeling 负责维护术语表和 ADR。
+
+课程里能看到三种动作：
+
+- 逐题裁决：agent 给推荐答案，人只需说同意或改。第 17 集一口气过了十五个问题，票最后以决定表关闭。
+- 场景测试：候选词在边缘场景下自相矛盾，就拆概念。第 3 集用退款请求和退款两条生命周期演示。
+- 读不懂就停：第 6 集作者遇到一句读不懂的话，立刻要求做场景测试，最后发现团队许可证、座位、个人购买三个概念混在一起。
+
+grilling 结束后，结论写进票的 resolution 和地图的 Decisions so far。grilling 票只做决定，不改代码；实现另开票。这和 [[wayfinder-地图与决策票]] 的分工一致。
 
 ## 谈不拢的题怎么办
 
