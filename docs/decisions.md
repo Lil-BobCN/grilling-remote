@@ -20,3 +20,6 @@
 | D-0003d | 退出码 0 全过、1 有不变量破、2 用法错；`build` 和 `check` 的目标 issue 必须带 `wayfinder:map` 标签，否则退出 | 无 | 无 | scripts/decisions |
 | D-0004 | `scripts/decisions check` 是独立入口，运营者先跑，`wrap-up` 只读它的输出、不重跑；`wrap-up` 由八步改六步：前置 check、扫会话查漏、查冲突、查票、给运营者看、回应后动手 | 无 | 无 | .claude/skills/wrap-up/SKILL.md、.claude/skills/init-trail/templates/skill-wrap-up.md |
 | D-0004a | 开放票前提不在 `wrap-up` 里逐张扫，改由领取时的「开工核对」查；客户版 `wrap-up` 由七步改六步，合并「扫对话」和「查漏」，没有 check 前置 | 无 | 无 | customer-kit/package/.dsh/skills/wrap-up/SKILL.md |
+| D-0005 | 开工前先选方法：改动很小 one-shot，中等以上先 `/grill-with-docs`，grilling 中雾大升级 `/wayfinder`；钱、数据、安全、公开 API 类即使小 diff 也不 one-shot；不从 `/wayfinder` 起步再降级 | 无 | 无 | docs/agents/issue-tracker.md、.claude/skills/next/SKILL.md、.claude/skills/init-trail/SKILL.md、.claude/skills/init-trail/templates/skill-next.md |
+| D-0005a | 票型按保真度选：低保真讨论，中保真方框箭头或线框图，高保真半可运行原型；grilling 停在抽象层面转 prototype；原型票写「用 `/prototype`」，研究票写「用 `/research`」；先拆小原型验证方案 | 无 | 无 | docs/agents/issue-tracker.md |
+| D-0005b | 客户单分流（G-009）与本仓任务选方法各管各的；工厂流程、术语表、讲解的分流句加范围限定，指回 issue-tracker.md 的入口；不取代 G-009 | 无 | 无 | docs/工厂流程.md、GLOSSARY.md、docs/讲解.md |

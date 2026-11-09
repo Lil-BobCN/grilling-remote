@@ -31,6 +31,8 @@ disable-model-invocation: true
 
 本仓库的 ADR 0006 记的是本仓库为什么这样做，不带到新项目。新项目要不要写自己的 ADR，由运营者定。
 
+选方法和保真度的判据见 `docs/agents/issue-tracker.md` 的「开工前先选方法」和「票型与保真度」两节，本技能不重抄。
+
 ## 维护
 
 `templates/` 是拷贝。本仓库里对应的内容改了，在 grilling-remote 根目录运行 `.claude/skills/init-trail/sync-templates.sh` 重新生成。
