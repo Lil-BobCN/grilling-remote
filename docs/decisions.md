@@ -13,3 +13,8 @@
 | D-0002c | `docs/decisions.md` 只收现行决定；被取代的条目连编号带原行挪进 `docs/decisions-archive.md`，原样保留。ADR 整份被取代时删掉，靠 git 历史找回；部分被取代的保留，开头指向新 ADR | 无 | 无 | GLOSSARY.md、docs/adr/0008-决定写在关票评论，台账编译生成.md |
 | D-0002d | 新编号取 `docs/decisions.md` 和 `docs/decisions-archive.md` 里最大的号加一；两个文件都不存在时，取所有已关闭票评论里的最大号加一 | 无 | 无 | docs/adr/0008-决定写在关票评论，台账编译生成.md |
 | D-0002e | `to-spec` 读地图全文、`docs/decisions.md` 和台账里这条决定对应的来源票，地图 `Decisions so far` 只当索引；`map-gate` 与 `spec-check` 都按这个读法改，清单评论降为放行报告 | 无 | 无 | GLOSSARY.md、docs/adr/0008-决定写在关票评论，台账编译生成.md、docs/adr/0006-地图变动要留痕.md |
+| D-0003 | `scripts/decisions` 三个子命令：`build <地图编号>` 编两份台账并重写地图 `Decisions so far`，`check <地图编号>` 只读跑八条不变量，`chain <编号>` 只读列引用票和派生编号 | 无 | 无 | scripts/decisions、docs/decisions.md、docs/decisions-archive.md |
+| D-0003a | 报错分类：第 1、2、6 条不变量和覆盖表状态非法归 A（给改法），第 3、5、7 条归 B（二选一），第 4 条和缺覆盖表归 C（建议新票） | 无 | 无 | scripts/decisions |
+| D-0003b | 地图 `Decisions so far` 整段由 `build` 重写，夹在 `<!-- decisions:begin… -->` 和 `<!-- decisions:end -->` 之间，只列地图的已关闭子票，一张票一行 | 无 | 无 | scripts/decisions |
+| D-0003c | 被取代的条目进 `docs/decisions-archive.md` 时保留原行，取代关系另用「被取代、被谁取代」两列表标出；`产出文件` 多路径按 `,` 或 `、` 拆，文件名里的 `，` 不拆 | 无 | 无 | docs/decisions-archive.md、scripts/decisions |
+| D-0003d | 退出码 0 全过、1 有不变量破、2 用法错；`build` 和 `check` 的目标 issue 必须带 `wayfinder:map` 标签，否则退出 | 无 | 无 | scripts/decisions |
