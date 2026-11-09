@@ -49,7 +49,7 @@
 - **地图与子票**：地图是带 `wayfinder:map` 标签的 Issue。子票优先用 GitHub sub-issue（见"设为子任务"），不可用时在总任务和子票正文里互相引用。按票型打 `wayfinder:research`、`wayfinder:prototype`、`wayfinder:grilling`、`wayfinder:task` 标签。地图和它的票只带 `wayfinder:*`，不打 `ready-for-agent`。
 - **阻塞**：用 GitHub 原生 issue dependencies（命令见"阻塞"）。用不了时，在子票正文顶部写 `Blocked by: #<编号>`。
 - **领取**：`gh issue edit <编号> --add-assignee @me`，这是一次工作会话的首次写操作。
-- **完成**：按 `/wayfinder` 贴结论评论、关票。本仓在中间多两段：先跑 `/wrap-up` 和 `/next`，两样跑完再合并 PR。一张票只开一个 PR，没合并之前的提交都推到它上面，不另开；wrap-up 判「改」的文件直接推上去，不开新分支。合并 PR 之后关票。PR 合并后这条分支不再用，要改就开新分支。
+- **完成**：按 `/wayfinder` 贴结论评论。本仓在中间多两段：先跑 `/wrap-up` 和 `/next`，两样跑完再合并 PR。一张票只开一个 PR，没合并之前的提交都推到它上面，不另开；wrap-up 判「改」的文件直接推上去，不开新分支。合并 PR 之后关票。PR 合并后这条分支不再用，要改就开新分支。
 
 ### 票型与保真度
 
