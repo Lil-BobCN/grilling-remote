@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""scripts/decisions：编台账、查八条不变量、查编号链。
+
+build <地图编号>  读带 wayfinder: 标签的已关闭票及评论、地图子票；写 docs/decisions.md、
+                  docs/decisions-archive.md、地图 Decisions so far 段。
+check <地图编号>  读同上加两份台账、地图正文、开放票正文；只读。八条不变量逐条报。
+chain <编号>      读同上；只读。列引用票、同票编号、后继编号，只供判，不自动废。
+报错三类：A 格式错给改法，agent 自己改；B 二选一打印选项等运营者；C 重做并打印建议新票。
+退出码：0 全过；1 有不变量破；2 用法错。
+"""
+import json, os, re, subprocess, sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+L, A = (os.path.join(ROOT, p) for p in ("docs/decisions.md", "docs/decisions-archive.md"))
+HEAD = "| id | 决定 | 取代 | 解答未定 | 产出文件 |\n| --- | --- | --- | --- | --- |\n"
+HDR = re.compile(r"^\|\s*id\s*\|\s*决定\s*\|\s*取代\s*\|\s*解答未定\s*\|\s*产出文件\s*\|$"); COV = re.compile(r"^\|\s*句\s*\|\s*原文片段\s*\|\s*由哪张票落\s*\|\s*状态\s*\|$")
+BEGIN, END = "<!-- decisions:begin：由 build 生成，勿手改 -->", "<!-- decisions:end -->"; KEY = lambda r: (r["id"], r["ticket"], r["line"])
+def gh(*a, stdin=None):
+    p = subprocess.run(["gh", *a], input=stdin, capture_output=True, text=True)
+    if p.returncode: sys.exit("gh 失败：" + p.stderr.strip())
+    return p.stdout
+def load():
+    return json.loads(gh("issue", "list", "--state", "all", "--limit", "1000", "--json", "number,title,state,url,labels,body,comments,closedAt"))
+def wf(i): return any(x["name"].startswith("wayfinder:") for x in i["labels"])
+def is_map(i): return any(x["name"] == "wayfinder:map" for x in i["labels"])
+def first(i): return next((l.strip() for l in (i["body"] or "").splitlines() if l.strip()), "")
+def items(s): return [] if s == "无" else [x.strip() for x in re.split(r"[,，、]", s) if x.strip()]
+def paths(s): return [] if s == "无" else [x.strip() for x in re.split(r"[,、]", s) if x.strip()]
+def basis(i):
+    return items(m.group(1)) if (m := re.match(r"^依据[：:]\s*(.+)$", first(i))) else []
+def parse(text):
+    ls, out = text.splitlines(), []
+    for k, line in enumerate(ls):
+        if HDR.match(line.strip()):
+            j = k + 2
+            while j < len(ls) and ls[j].strip().startswith("|"):
+                c = [x.strip() for x in ls[j].strip().strip("|").split("|")]
+                if len(c) == 5: out.append((j + 1, c, ls[j].strip()))
+                j += 1
+    return out
+def rows_of(i):
+    return [dict(id=c[0], decision=c[1], supersedes=c[2], answers=c[3], files=c[4], raw=raw, line=n, ticket=i["number"], title=i["title"], url=i["url"], closed=i["closedAt"] or "") for t in i.get("comments") or [] for n, c, raw in parse(t["body"])]
+def no_conclusion(i):
+    return next((s[4:].strip() for c in i.get("comments") or [] for s in [next((l.strip() for l in c["body"].splitlines() if l.strip()), "")] if s.startswith("无结论：")), None)
+def sup_of(rows):
+    sup = {}
+    for r in rows:
+        for old in items(r["supersedes"]): sup.setdefault(old, []).append(r["id"])
+    return sup
+def texts(rows):
+    sup = sup_of(rows)
+    def mk(keep, head):
+        return head + HEAD + "".join(r["raw"] + "\n" for r in sorted([x for x in rows if (x["id"] not in sup) == keep], key=KEY))
+    led = mk(True, "# 现行决定\n\n由 `scripts/decisions build` 从已关闭票的关票评论生成，禁止手改。改决定就改票的关票评论，再跑 build。\n\n")
+    arc = mk(False, "# 被取代的决定\n\n由 `scripts/decisions build` 生成，禁止手改。这里只放被取代的条目，现行决定在 `docs/decisions.md`。\n\n")
+    if sup: arc += "\n## 取代关系\n\n| 被取代 | 被谁取代 |\n| --- | --- |\n" + "".join("| %s | %s |\n" % (k, "、".join(v)) for k, v in sorted(sup.items()))
+    return led, arc
+def children_of(n):
+    out = gh("api", "--paginate", "repos/{owner}/{repo}/issues/%d/sub_issues" % n, "--jq", ".[] | [.number,.state,.title,.html_url] | @tsv")
+    return [(int(x[0]), x[2], x[3]) for x in (l.split("\t") for l in out.splitlines() if l) if x[1] == "closed"]
+def read_map(n):
+    m = json.loads(gh("issue", "view", str(n), "--json", "number,title,body,labels,url"))
+    if not is_map(m): sys.exit("地图 %d 没有 wayfinder:map 标签" % n)
+    return m
+def edit_map(n, body, sec):
+    ls = body.splitlines(); h = next((k for k, l in enumerate(ls) if l.strip() == "## Decisions so far"), None)
+    if h is None: sys.exit("地图没有 ## Decisions so far 段")
+    e = next((k for k in range(h + 1, len(ls)) if ls[k].startswith("## ")), len(ls))
+    gh("issue", "edit", str(n), "--body-file", "-", stdin="\n".join(ls[:h + 1] + [""] + sec.splitlines() + [""] + ls[e:]) + "\n")
+def build(n):
+    rows = [r for i in load() if i["state"] == "CLOSED" and wf(i) for r in rows_of(i)]
+    led, arc = texts(rows); open(L, "w", encoding="utf-8").write(led); open(A, "w", encoding="utf-8").write(arc)
+    by = {}
+    for r in rows: by.setdefault(r["ticket"], []).append(r)
+    sec = "\n".join([BEGIN] + ["- [%s](%s) — %s" % (t, u, sorted(by.get(x), key=KEY)[0]["decision"] if by.get(x) else "缺四列表，待补") for x, t, u in sorted(children_of(n))] + [END])
+    edit_map(n, read_map(n)["body"], sec)
+    print("build 完成：%d 条现行，%d 条被取代；写两份台账和地图 %d。" % (len(parse(led)), len(parse(arc)), n))
+def check(n):
+    all_i = load(); closed = [i for i in all_i if i["state"] == "CLOSED" and wf(i)]; rows = [r for i in closed for r in rows_of(i)]
+    by, sup, E, ids = {}, sup_of(rows), [], {r["id"] for r in rows}
+    for r in rows: by.setdefault(r["ticket"], []).append(r)
+    led, arc = texts(rows)
+    bad = lambda inv, text, cls="A", fix="", title="": E.append((inv, text, cls, fix, title))
+    for rid in ids:  # 1 编号唯一
+        rs = [r for r in rows if r["id"] == rid]
+        if len(rs) > 1:
+            late = max(rs, key=lambda r: r["closed"]); bad(1, "%s 出现 %d 次：%s。后关闭的是 #%d %s。" % (rid, len(rs), "；".join("#%d 评论第 %d 行" % (x["ticket"], x["line"]) for x in rs), late["ticket"], late["title"]), fix="给后关闭的票改号，再重跑 build。")
+    fl = {p: (parse(open(p, encoding="utf-8").read()) if os.path.exists(p) else None) for p in (L, A)}  # 2
+    [bad(2, "%s 不存在。" % os.path.relpath(p, ROOT), fix="跑 build。") for p, rs in fl.items() if rs is None]
+    for rid in (ids | {c[0] for rs in fl.values() for _, c, _ in rs or []}) if None not in fl.values() else set():
+        hits = [(os.path.relpath(p, ROOT), ln) for p, rs in fl.items() for ln, c, _ in rs or [] if c[0] == rid]
+        if len(hits) != 1: bad(2, "%s 在台账里出现 %d 次（%s）。" % (rid, len(hits), "、".join("%s 第 %d 行" % h for h in hits) or "两份都没有"), fix="跑 build；仍破就是源表重复或台账被手改。")
+    for i in all_i:  # 3 依据不引已取代编号
+        for rid in basis(i) if i["state"] == "OPEN" and wf(i) and not is_map(i) else []:
+            if rid in sup: bad(3, "#%d %s 的依据引用 %s，它只在 archive，被 %s 取代。" % (i["number"], i["title"], rid, "、".join(sup[rid])), "B", "① 依据改成 %s；② 前提要重判，改票或新开取代票。" % "、".join(sup[rid]))
+    [bad(4, "#%d %s 没有四列表，也没有「无结论：」。" % (i["number"], i["title"]), "C", title="补四列表：%s" % i["title"]) for i in closed if not by.get(i["number"]) and no_conclusion(i) is None]  # 4 有表或写无结论
+    for r in rows:  # 5 产出文件存在且提到取代者
+        for p in paths(r["files"]):
+            if not os.path.exists(os.path.join(ROOT, p)):
+                bad(5, "%s 的产出文件 %s 不存在（#%d 评论第 %d 行）。" % (r["id"], p, r["ticket"], r["line"]), "B", "① 补回 %s；② 改四列表「产出文件」列。" % p)
+            elif r["id"] in sup and any(s not in open(os.path.join(ROOT, p), encoding="utf-8", errors="replace").read() for s in sup[r["id"]]):
+                bad(5, "%s 已被 %s 取代，%s 没提到它。" % (r["id"], "、".join(sup[r["id"]]), p), "B", "① 在 %s 加取代标记；② 改四列表「取代」列。" % p)
+    for p, want in ((L, led), (A, arc)):  # 6 提交版等于 build
+        have = open(p, encoding="utf-8").read() if os.path.exists(p) else None
+        if have != want: bad(6, "%s 和 build 结果不一致（%s）。" % (os.path.relpath(p, ROOT), "文件不存在" if have is None else "内容有差"), fix="跑 build 覆盖。")
+    body = read_map(n)["body"]; blk = re.search(r"^## Not yet specified\s*$(.*?)(?=^## |\Z)", body, re.M | re.S)  # 7 U- 已从未定块移除
+    uns = set(re.findall(r"U-\d+", blk.group(1))) if blk else set()
+    for r in rows:
+        for u in items(r["answers"]):
+            if u in uns: bad(7, "%s 的「解答未定」写着 %s，地图未定块里还在。" % (r["id"], u), "B", "① 从地图未定块删掉 %s；② 把「解答未定」改成「无」。" % u)
+    ls = body.splitlines()  # 8 覆盖表每句有状态
+    k = next((k for k, l in enumerate(ls) if COV.match(l.strip())), None)
+    if k is None:
+        bad(8, "地图里没有 Destination 覆盖表（表头 句 | 原文片段 | 由哪张票落 | 状态）。", "C", title="补 Destination 覆盖表：地图 %d" % n)
+    else:
+        j = k + 2
+        while j < len(ls) and ls[j].strip().startswith("|"):
+            c = [x.strip() for x in ls[j].strip().strip("|").split("|")]
+            if len(c) == 4 and c[3] not in ("已落票", "未定", "原文已改"): bad(8, "覆盖表第 %d 行状态是「%s」。" % (j + 1, c[3]), fix="改成 已落票/未定/原文已改 之一。")
+            j += 1
+    names = ["编号唯一", "每个编号两份台账合计一次", "开放票依据不引用已取代编号", "每张已关闭票有表或写无结论", "产出文件存在且被取代的行提到取代者", "提交版等于 build 结果", "解答未定的 U- 已从未定块移除", "覆盖表每句有状态"]
+    print("scripts/decisions check %d" % n)
+    for inv in range(1, 9):
+        es = [e for e in E if e[0] == inv]; print("第 %d 条 %s：%s" % (inv, names[inv - 1], "通过" if not es else "破 %d 处" % len(es)))
+        for _, text, cls, fix, title in es:
+            print("  × %s [%s] %s" % (text, cls, "建议新票：" + title if cls == "C" else ("改法：" if cls == "A" else "二选一：") + fix))
+    if not E: print("八条全过。"); return 0
+    c = {x: sum(1 for e in E if e[2] == x) for x in "ABC"}; print("共 %d 处：A %d、B %d、C %d。" % (len(E), c["A"], c["B"], c["C"]))
+    if c["C"]: print("C 类建议新票正文骨架：\n## Question\n<票名> 的关票评论缺四列表或覆盖表，决定没有写下来。\n## Scope\n1. 读这张票的正文和评论，写一条四列表评论。\n## 完成条件\nscripts/decisions check <地图编号> 对应条目通过。")
+    return 1
+def chain(rid):
+    all_i = load(); rows = [r for i in all_i if i["state"] == "CLOSED" and wf(i) for r in rows_of(i)]
+    src = [r for r in rows if r["id"] == rid]
+    if not src: print("%s 不在任何已关闭票的四列表里。" % rid); return 1
+    base = re.match(r"D-(\d+)", rid).group(1)
+    sibs = sorted({r["id"] for r in rows if re.match(r"D-%s[a-z]$" % base, r["id"]) and r["id"] != rid})
+    succ = sorted({(r["id"], r["ticket"], r["title"]) for r in rows if rid in items(r["supersedes"])})
+    refs = ["#%d %s" % (i["number"], i["title"]) for i in all_i if i["state"] == "OPEN" and wf(i) and not is_map(i) and rid in basis(i)]
+    print("%s 出自 %s。" % (rid, "、".join(sorted({"[%s](%s)（#%d）" % (r["title"], r["url"], r["ticket"]) for r in src}))))
+    print("同票编号（后缀派生）：%s" % ("、".join(sibs) or "无")); print("后继编号（取代它的）：%s" % ("、".join("%s（#%d %s）" % s for s in succ) or "无"))
+    print("引用它的开放票：%s" % ("、".join(refs) or "无")); print("只供判，脚本不动任何票。")
+    return 0
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help"): print(__doc__.strip()); return 0
+    if a[0] in ("build", "check") and len(a) == 2 and a[1].isdigit(): return (build if a[0] == "build" else check)(int(a[1]))
+    if a[0] == "chain" and len(a) == 2: return chain(a[1].upper())
+    print(__doc__.strip(), file=sys.stderr); return 2
+if __name__ == "__main__":
+    sys.exit(main())
