@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中台决策看板 · 屏幕原型 #144</title>
+<meta name="description" content="用 #139 和 #117 的真数据做的决策看板屏幕原型，三个版面可切换。">
+<style>
+:root{
+  --paper:#f4f0e7; --paper2:#fbf8f1; --card:#fffdf8; --card2:#f8f4eb;
+  --ink:#1e1b16; --ink2:#4a453c; --muted:#7b7264; --faint:#a79c8b;
+  --line:#dfd6c6; --line2:#cbbfa9;
+  --accent:#2f4a8a; --accent2:#22386b; --accent-soft:#eef1f9; --accent-line:#c9d3ea;
+  --green:#2f6b4d; --green-soft:#edf5ef; --green-line:#c9ddcf;
+  --amber:#96621a; --amber-soft:#fbf3e1; --amber-line:#e6d2a8;
+  --red:#a83a2c; --red-soft:#fbeeea; --red-line:#e8c9c1;
+  --violet:#6b4a8a; --violet-soft:#f3eef9; --violet-line:#dccfe8;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --shadow:0 1px 0 rgba(30,27,22,.02),0 18px 40px -34px rgba(30,27,22,.45);
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;color:var(--ink);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(circle at 8% 0%,rgba(47,74,138,.05),transparent 34rem),
+    radial-gradient(circle at 96% 8%,rgba(150,98,26,.04),transparent 30rem),
+    linear-gradient(0deg,rgba(30,27,22,.014) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,27,22,.014) 1px,transparent 1px),
+    var(--paper);
+  background-size:auto,auto,32px 32px,32px 32px,auto;
+  padding-bottom:86px;
+}
+p{margin:0}
+h1,h2,h3,h4{margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:inherit;text-decoration:none}
+.id{font-family:var(--mono);font-size:12px;letter-spacing:.02em}
+.mono{font-family:var(--mono)}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card2);border-radius:999px;padding:1px 8px;font-size:11px;line-height:1.7;white-space:nowrap;color:var(--ink2)}
+.chip.green{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.chip.amber{border-color:var(--amber-line);background:var(--amber-soft);color:var(--amber)}
+.chip.red{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.chip.violet{border-color:var(--violet-line);background:var(--violet-soft);color:var(--violet)}
+.chip.accent{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent2)}
+.chip.gray{color:var(--muted);background:#f1eee7}
+.btn{border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--ink2);transition:.15s}
+.btn:hover{border-color:var(--accent);color:var(--accent2);background:var(--accent-soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent2);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--accent-soft);color:var(--accent2)}
+.btn.small{padding:3px 8px;font-size:11px}
+.btn.danger{border-color:var(--red-line);color:var(--red);background:var(--red-soft)}
+.btn.danger:hover{background:#f6ddd7;color:#862a20}
+.icon{width:14px;height:14px;display:inline-block;vertical-align:-2px}
+
+/* 原型说明 */
+.prototype-strip{
+  background:#161512;color:#f1ede3;font-size:11px;letter-spacing:.04em;
+  padding:5px 18px;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.prototype-strip b{color:#d8c9a8;font-weight:600}
+
+/* 顶栏 */
+.topbar{
+  height:64px;display:flex;align-items:center;gap:22px;padding:0 20px;
+  background:rgba(255,253,248,.82);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:190px}
+.logo{
+  width:34px;height:34px;border-radius:9px;background:var(--ink);color:#f6f0e2;
+  display:grid;place-items:center;font:600 17px/1 var(--serif);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.brand b{display:block;font-size:14px;letter-spacing:.08em}
+.brand small{display:block;font-size:10px;color:var(--muted);letter-spacing:.16em;text-transform:uppercase}
+.map-title{min-width:0;flex:1}
+.map-title b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-title span{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.seg{display:flex;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--card2);gap:2px}
+.seg button{border:0;background:transparent;border-radius:6px;padding:5px 12px;font-size:12px;color:var(--muted)}
+.seg button.active{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(30,27,22,.12);font-weight:600}
+.top-meta{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);white-space:nowrap}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+
+/* 版面 A */
+.a-body{display:grid;grid-template-columns:minmax(0,1fr) 392px;height:calc(100vh - 64px - 27px - 40px - 52px);min-height:560px}
+.a-col{display:flex;flex-direction:column;min-width:0;min-height:0}
+.a-main{position:relative;min-width:0;overflow:auto;padding:18px 18px 24px;flex:1}
+.a-main.coverage-mode{padding-bottom:18px}
+.a-col .reminder{position:static;left:auto;right:auto;bottom:auto;margin:0 18px 14px}
+.drawer{border-left:1px solid var(--line);background:rgba(255,253,248,.72);overflow:auto;padding:18px 18px 40px}
+.graph-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px}
+.graph-head h1{font:600 21px/1.3 var(--serif);letter-spacing:.01em}
+.graph-head p{font-size:12px;color:var(--muted);margin-top:3px}
+.graph-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.graph-wrap{
+  border:1px solid var(--line);border-radius:14px;background:
+    radial-gradient(circle at 50% 0%,rgba(47,74,138,.035),transparent 60%),
+    linear-gradient(0deg,rgba(30,27,22,.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,27,22,.02) 1px,transparent 1px),
+    var(--card);
+  background-size:auto,26px 26px,26px 26px,auto;box-shadow:var(--shadow);overflow:auto;
+}
+.graph-wrap svg{display:block;min-width:820px;width:100%;height:auto}
+.graph-legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:9px;font-size:11px;color:var(--muted)}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:0}
+.legend-dot.green{background:var(--green)}.legend-dot.amber{background:var(--amber)}.legend-dot.red{background:var(--red)}
+.legend-dot.gray{background:#c0b5a1}.legend-dot.accent{background:var(--accent)}.legend-dot.void{background:#8a8172}
+
+/* SVG 图 */
+.node{cursor:pointer}
+.node rect{transition:.15s}
+.node:hover rect{filter:drop-shadow(0 5px 10px rgba(30,27,22,.13))}
+.node .nrect{fill:var(--card);stroke:var(--line2);stroke-width:1.15}
+.node.green .nrect{fill:var(--green-soft);stroke:var(--green-line)}
+.node.amber .nrect{fill:var(--amber-soft);stroke:var(--amber-line)}
+.node.red .nrect{fill:var(--red-soft);stroke:var(--red-line)}
+.node.root .nrect{fill:var(--accent-soft);stroke:var(--accent-line);stroke-width:1.5}
+.node.bare .nrect{fill:#fbf9f3;stroke:#c9bda8;stroke-dasharray:4 3}
+.node.void .nrect{fill:#f1eee7;stroke:#bcb09b;stroke-dasharray:3 3}
+.node.oldroot .nrect{fill:transparent;stroke:#b3a58d;stroke-dasharray:6 4}
+.node.selected .nrect{stroke:var(--accent);stroke-width:2.2}
+.node.dim{opacity:.22}
+.node.impact .nrect{stroke:var(--red);stroke-width:2.4}
+.node .nid{font:600 11px/1 var(--mono);fill:var(--ink2);letter-spacing:.02em}
+.node .nstmt{font:13px/1.35 var(--sans);fill:var(--ink)}
+.node .nmeta{font:10px/1 var(--sans);fill:var(--muted)}
+.node .nbadge{font:9px/1 var(--sans);fill:var(--muted);letter-spacing:.06em}
+.node .dot{stroke:var(--card);stroke-width:2}
+.node .dot.green{fill:var(--green)}.node .dot.amber{fill:var(--amber)}.node .dot.red{fill:var(--red)}
+.node .dot.gray{fill:#b7ab97}.node .dot.accent{fill:var(--accent)}
+.edge path{fill:none;stroke:#c6baa5;stroke-width:1.35}
+.edge.strong path{stroke:#9d8f78}
+.edge.impact path{stroke:var(--red);stroke-width:2.3}
+.edge.dim{opacity:.16}
+.edge-label{cursor:pointer}
+.edge-label rect{fill:var(--card);stroke:var(--line);stroke-width:1;rx:6}
+.edge-label:hover rect{stroke:var(--accent)}
+.edge-label text{font:10px/1 var(--mono);fill:var(--ink2)}
+.edge-label .t{font:9px/1 var(--sans);fill:var(--muted)}
+.edge-label.impact rect{stroke:var(--red);fill:var(--red-soft)}
+.ticket-chip{cursor:pointer}
+.ticket-chip rect{fill:var(--card);stroke:var(--line2);stroke-width:1.1}
+.ticket-chip:hover rect{stroke:var(--accent)}
+.ticket-chip.impact rect{fill:var(--red-soft);stroke:var(--red);stroke-width:2}
+.ticket-chip.dim{opacity:.22}
+.ticket-chip text{font:11px/1 var(--mono);fill:var(--ink2)}
+.ticket-chip .tt{font:10px/1 var(--sans);fill:var(--muted)}
+.old-band{cursor:pointer}
+.old-band rect{fill:rgba(241,238,231,.42);stroke:#c8bca6;stroke-dasharray:5 4}
+.old-band text{font:11px/1 var(--sans);fill:var(--muted)}
+.old-band:hover rect{stroke:var(--accent)}
+.svg-note{font:10px/1.3 var(--sans);fill:var(--faint)}
+
+/* 详情 */
+.detail-head{padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.detail-head .id-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px}
+.detail-head h2{font:600 20px/1.45 var(--serif);letter-spacing:.01em}
+.detail-head .sub{font-size:12px;color:var(--muted);margin-top:5px}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.section{margin:16px 0 0}
+.section h3{display:flex;align-items:center;gap:7px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.section h3 .count{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:0}
+.premise{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;margin-bottom:8px}
+.premise.red{border-color:var(--red-line);background:linear-gradient(180deg,var(--red-soft),var(--card) 70%)}
+.premise.amber{border-color:var(--amber-line);background:linear-gradient(180deg,var(--amber-soft),var(--card) 70%)}
+.premise.green{border-color:var(--green-line);background:linear-gradient(180deg,var(--green-soft),var(--card) 70%)}
+.premise.gray{border-style:dashed}
+.p-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px}
+.p-stmt{font:13px/1.5 var(--serif);color:var(--ink)}
+.p-ev{font-size:11px;color:var(--muted);margin-top:5px;word-break:break-word}
+.p-reason{font-size:11px;color:var(--ink2);margin-top:5px;padding-left:8px;border-left:2px solid var(--line2)}
+.p-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:7px;font-size:10px;color:var(--faint)}
+.sub-row{display:flex;gap:8px;align-items:flex-start;padding:7px 4px;border-bottom:1px dashed var(--line);cursor:pointer}
+.sub-row:hover{background:var(--accent-soft)}
+.sub-row .sid{min-width:64px;font:10px/1.5 var(--mono);color:var(--muted)}
+.sub-row .sst{font-size:12px;line-height:1.45;color:var(--ink2)}
+.sub-row .dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none}
+.kv{display:grid;grid-template-columns:74px minmax(0,1fr);gap:6px 10px;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;color:var(--ink2);word-break:break-word}
+.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:1px 7px;font:11px/1.7 var(--mono);color:var(--ink2);cursor:pointer;margin:0 4px 4px 0}
+.pill:hover{border-color:var(--accent);color:var(--accent2)}
+.pill .work-dot{width:6px;height:6px;border-radius:50%;background:#b7ab97}
+.pill .work-dot.done{background:var(--green)}.pill .work-dot.now{background:var(--accent)}.pill .work-dot.stuck{background:var(--amber)}
+.empty{font-size:12px;color:var(--muted);padding:8px 0}
+.note{font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px}
+
+/* 覆盖表 */
+.coverage{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.cov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;padding:16px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--card2),var(--card))}
+.cov-head h2{font:600 19px/1.35 var(--serif);margin-top:3px}
+.cov-head .sum{font-size:11px;color:var(--muted);margin-top:3px}
+.cov-bar{min-width:210px}
+.cov-bar .bar{height:8px;border-radius:999px;background:#e9e2d4;overflow:hidden;display:flex}
+.cov-bar .bar i{display:block;height:100%}
+.cov-bar .bar .done{background:var(--green)}
+.cov-bar .bar .doing{background:var(--amber)}
+.cov-bar .bar .gap{background:var(--red)}
+.cov-bar .lbl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
+.cov-table{width:100%;border-collapse:collapse}
+.cov-table th{text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--card2)}
+.cov-table td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.cov-table tr:last-child td{border-bottom:0}
+.cov-table tr:hover td{background:#fbf8f0}
+.cov-num{font:600 11px/1 var(--mono);color:var(--faint)}
+.cov-text{font:13px/1.55 var(--serif);color:var(--ink)}
+.cov-tickets{display:flex;flex-wrap:wrap;gap:4px}
+.cov-status{font-size:11px;white-space:nowrap}
+.cov-status.done{color:var(--green)}
+.cov-status.doing{color:var(--amber)}
+.cov-status.gap{color:var(--red);font-weight:600}
+.cov-status.void{color:var(--muted);text-decoration:line-through}
+.cov-row.gap td{background:var(--red-soft)}
+.cov-row.gap .cov-text{color:#7a2a20}
+.cov-note{padding:10px 14px;font-size:11px;color:var(--muted);background:var(--card2);border-top:1px solid var(--line)}
+.cov-compact{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.cov-mini-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);background:var(--card2)}
+.cov-mini-head b{display:block;font:600 12px/1.4 var(--serif);margin-top:2px}
+.cov-mini-head .cov-bar{min-width:110px;flex:none}
+.cov-mini{padding:8px 11px;border-bottom:1px solid var(--line)}
+.cov-mini:last-child{border-bottom:0}
+.cov-mini.gap{background:var(--red-soft)}
+.cm-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.cm-text{font:12px/1.45 var(--serif);color:var(--ink);margin-top:2px}
+.cm-tickets{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.cm-tickets .pill{font-size:10px;padding:0 5px;margin:0}
+
+/* 信号 */
+.sig-list{display:flex;flex-direction:column;gap:4px}
+.sig-chips{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 10px}
+.sig-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 8px;font-size:11px;color:var(--ink2)}
+.sig-chip:hover{border-color:var(--accent)}
+.sig-chip.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent2)}
+.sig-chip b{font:10px/1 var(--mono);color:var(--muted)}
+.sig-chip i{font-style:normal;font-size:9px;color:var(--violet);border:1px solid var(--violet-line);background:var(--violet-soft);border-radius:4px;padding:0 3px}
+.sig-chip .sig-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.sig{display:flex;align-items:center;gap:7px;width:100%;border:1px solid transparent;background:transparent;border-radius:7px;padding:5px 7px;text-align:left;font-size:12px}
+.sig:hover{background:var(--card2);border-color:var(--line)}
+.sig.active{background:var(--accent-soft);border-color:var(--accent-line)}
+.sig .sig-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.sig .sig-label{flex:1;color:var(--ink2)}
+.sig .sig-count{font:10px/1 var(--mono);color:var(--muted)}
+.sig .sig-count.zero{color:var(--faint)}
+.sig .sig-demo{font-size:9px;color:var(--violet);border:1px solid var(--violet-line);background:var(--violet-soft);border-radius:4px;padding:0 4px}
+.sig-dot.green{background:var(--green)}.sig-dot.amber{background:var(--amber)}.sig-dot.red{background:var(--red)}
+.sig-dot.gray{background:#bcb09c}.sig-dot.violet{background:var(--violet)}
+.sig-hint{font-size:10px;color:var(--muted);padding:0 7px 6px 21px;line-height:1.5}
+.signal-panel{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px;margin-top:12px}
+.signal-panel h3{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.filter-banner{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent2);border-radius:9px;padding:7px 10px;font-size:12px;margin-bottom:10px}
+.filter-banner b{font-weight:600}
+
+/* 影响案 */
+.impact-banner{display:flex;align-items:center;gap:12px;padding:9px 20px;background:linear-gradient(90deg,var(--red-soft),#fff8f4);border-bottom:1px solid var(--red-line);font-size:12px;color:#7a2a20}
+.impact-banner .pulse{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(168,58,44,.13);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(168,58,44,.12)}50%{box-shadow:0 0 0 7px rgba(168,58,44,.04)}}
+.impact-banner b{font-weight:600}
+.impact-banner .spacer{flex:1}
+.queue-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.queue-head h2{font:600 20px/1.3 var(--serif)}
+.queue-head .progress{font:11px/1.5 var(--mono);color:var(--muted);text-align:right}
+.queue-head .progress b{display:block;font:600 18px/1 var(--mono);color:var(--red)}
+.trigger-card{border:1px solid var(--red-line);background:var(--red-soft);border-radius:10px;padding:10px 11px;margin-bottom:10px}
+.trigger-card .tc-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.trigger-card p{font-size:12px;color:#7a2a20;line-height:1.5}
+.q-list{display:flex;flex-direction:column;gap:7px}
+.q-item{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 10px}
+.q-item.pending{border-left:3px solid var(--red)}
+.q-item.done{opacity:.72;border-left:3px solid var(--green)}
+.q-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.q-top .kind{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.q-why{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
+.q-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.q-actions .btn{font-size:10px;padding:3px 7px}
+.q-done-line{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;font-size:11px;color:var(--green)}
+.q-empty{font-size:12px;color:var(--muted);padding:12px 0}
+.impact-layout{display:grid;grid-template-columns:minmax(0,1fr) 392px;height:calc(100vh - 64px - 27px - 40px);min-height:560px}
+.impact-main{overflow:auto;padding:18px 20px 80px}
+.impact-side{border-left:1px solid var(--line);overflow:auto;padding:18px 18px 60px;background:rgba(255,253,248,.72)}
+
+/* 版面 B */
+.b-body{display:grid;grid-template-columns:300px minmax(0,1fr) 380px;height:calc(100vh - 64px - 27px);min-height:600px}
+.b-left,.b-right{border-right:1px solid var(--line);overflow:auto;padding:14px 12px 50px;background:rgba(255,253,248,.62)}
+.b-right{border-right:0;border-left:1px solid var(--line)}
+.b-center{overflow:auto;padding:18px 22px 80px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:2px 2px 8px}
+.panel-head span{font-family:var(--mono);letter-spacing:0;color:var(--faint)}
+.tree-group{margin-bottom:10px}
+.tree-group>button{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;padding:4px 3px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tree-group>button:hover{color:var(--ink2)}
+.tree-row{display:flex;align-items:flex-start;gap:7px;padding:5px 5px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+.tree-row:hover{background:var(--card);border-color:var(--line)}
+.tree-row.selected{background:var(--accent-soft);border-color:var(--accent-line)}
+.tree-row .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:none}
+.tree-row .tid{font:10px/1.5 var(--mono);color:var(--muted);min-width:52px}
+.tree-row .tst{font-size:11px;line-height:1.4;color:var(--ink2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tree-row .tmeta{font-size:9px;color:var(--faint);margin-top:1px}
+.tabs{display:flex;gap:2px;border:1px solid var(--line);border-radius:8px;padding:3px;background:var(--card2);margin-bottom:10px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:6px;padding:5px 6px;font-size:11px;color:var(--muted)}
+.tabs button.active{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(30,27,22,.1);font-weight:600}
+.mini-graph{border:1px solid var(--line);border-radius:10px;background:var(--card);margin:10px 0}
+.mini-graph svg{display:block;width:100%;height:auto}
+
+/* 版面 C */
+.c-body{display:grid;grid-template-columns:270px minmax(0,1fr) 330px;height:calc(100vh - 64px - 27px - 112px);min-height:560px}
+.c-queue{border-right:1px solid var(--line);overflow:auto;padding:12px 10px 50px;background:rgba(255,253,248,.62)}
+.c-main{overflow:auto;padding:20px 24px 70px;min-width:0}
+.c-context{border-left:1px solid var(--line);overflow:auto;padding:16px 14px 60px;background:rgba(255,253,248,.62)}
+.impact-hero{padding:16px 22px 14px;background:linear-gradient(180deg,#fff8f3,rgba(255,253,248,.6));border-bottom:1px solid var(--red-line)}
+.impact-hero .row{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;max-width:1280px;margin:0 auto}
+.impact-hero h1{font:600 24px/1.3 var(--serif);margin-top:3px}
+.impact-hero .trigger{font-size:12px;color:#7a2a20;margin-top:4px}
+.impact-hero .counts{display:flex;gap:18px;align-items:flex-end}
+.impact-hero .counts .n{font:600 24px/1 var(--mono)}
+.impact-hero .counts .l{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.impact-hero .progress-line{height:6px;border-radius:999px;background:#eadfd7;margin-top:10px;overflow:hidden}
+.impact-hero .progress-line i{display:block;height:100%;background:var(--red)}
+.q-list-c .q-item{margin-bottom:6px;cursor:pointer}
+.q-list-c .q-item.current{border-color:var(--red);box-shadow:0 0 0 2px rgba(168,58,44,.12)}
+.q-list-c .q-item .q-why{display:none}
+.impact-card{max-width:860px}
+.impact-card .card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.impact-card h1{font:600 28px/1.35 var(--serif);letter-spacing:.005em;margin:8px 0 6px}
+.impact-card .why-box{border-left:3px solid var(--red);background:var(--red-soft);padding:9px 12px;border-radius:0 8px 8px 0;font-size:13px;color:#7a2a20;margin:12px 0}
+.impact-card .actions-big{display:flex;gap:7px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.impact-card .actions-big .btn{padding:7px 13px;font-size:13px}
+.causal{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px;margin:12px 0}
+.causal h3{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.causal svg{display:block;width:100%;height:auto}
+.next-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.kbd{display:inline-block;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;font:10px/1.6 var(--mono);color:var(--muted);background:var(--card)}
+
+/* 通用底部 */
+.reminder{
+  position:fixed;left:20px;right:412px;bottom:74px;z-index:25;
+  display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:11px;
+  border:1px solid var(--red-line);background:rgba(251,238,234,.94);backdrop-filter:blur(8px);
+  box-shadow:0 8px 24px -18px rgba(168,58,44,.55);font-size:12px;color:#7a2a20;
+}
+.reminder .pulse{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(168,58,44,.1)}
+.reminder b{font-weight:600}
+.reminder .spacer{flex:1}
+.reminder button{border:1px solid #d9a99f;background:#fff7f4;color:#7a2a20;border-radius:6px;padding:3px 9px;font-size:11px}
+.switcher{
+  position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;
+  display:flex;align-items:center;gap:8px;background:#171612;color:#f6f0e2;
+  border-radius:999px;padding:6px 8px;box-shadow:0 14px 34px -12px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.switcher button{width:30px;height:30px;border-radius:50%;border:0;background:#2e2b24;color:#f6f0e2;font-size:17px;line-height:1;padding:0}
+.switcher button:hover{background:#474135;color:#fff}
+.switcher .sw-label{min-width:172px;text-align:center;font-size:12px;letter-spacing:.02em;white-space:nowrap}
+.switcher .sw-label b{font-family:var(--mono);color:#e2c98f;margin-right:5px}
+.switcher .keys{font-size:9px;color:#8d8678;letter-spacing:.06em;padding-right:5px}
+.switcher .sw-tag{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#8d8678;border-left:1px solid #353128;padding-left:8px;margin-left:2px}
+
+/* 弹窗与提示 */
+.modal-wrap{position:fixed;inset:0;z-index:100;display:grid;place-items:center}
+.modal-backdrop{position:absolute;inset:0;background:rgba(20,18,14,.38);backdrop-filter:blur(2px)}
+.modal{position:relative;width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 80px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 30px 80px -20px rgba(20,18,14,.45);padding:18px 20px 20px}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.modal-head h3{font:600 19px/1.3 var(--serif)}
+.modal-head .sub{font-size:11px;color:var(--muted);margin-top:3px}
+.modal-close{border:0;background:transparent;font-size:22px;line-height:1;color:var(--muted);padding:0 2px}
+.modal label{display:block;font-size:11px;color:var(--muted);margin:10px 0 4px}
+.modal textarea,.modal input,.modal select{width:100%;border:1px solid var(--line2);border-radius:8px;background:var(--paper2);padding:8px 9px;font:13px/1.5 var(--sans);color:var(--ink);outline:none}
+.modal textarea:focus,.modal input:focus,.modal select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.modal textarea{min-height:74px;resize:vertical}
+.modal .radio-row{display:flex;gap:6px;flex-wrap:wrap}
+.modal .radio-row label{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;margin:0;font-size:12px;color:var(--ink2);cursor:pointer}
+.modal .radio-row input{width:auto;margin:0}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.toast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(8px);z-index:120;background:#171612;color:#f6f0e2;border-radius:9px;padding:8px 14px;font-size:12px;opacity:0;pointer-events:none;transition:.2s;max-width:min(560px,calc(100vw - 30px));text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:1100px){
+  .a-body,.b-body,.impact-layout,.c-body{grid-template-columns:1fr;height:auto;min-height:0}
+  .drawer,.b-left,.b-right,.impact-side,.c-queue,.c-context{border:0;border-top:1px solid var(--line);max-height:none}
+  .b-left{order:2}.b-center{order:1}.b-right{order:3}
+  .c-queue{order:2}.c-main{order:1}.c-context{order:3}
+  .a-main,.b-center,.impact-main,.c-main{padding-bottom:110px}
+  .reminder{display:none}
+  .impact-banner{flex-wrap:wrap;row-gap:4px}
+  .impact-banner .spacer{display:none}
+  .impact-banner button{margin-left:auto}
+  .topbar{height:auto;flex-wrap:wrap;padding:9px 12px;gap:8px}
+  .map-title{order:3;flex-basis:100%}
+  .seg{order:2}
+  .top-meta{order:4}
+  .brand{min-width:0;flex:1}
+  .switcher .keys,.switcher .sw-tag{display:none}
+  .switcher .sw-label{min-width:130px}
+  .impact-hero .row{flex-direction:column;align-items:flex-start}
+  .impact-hero .counts{gap:14px}
+}
+@media(max-width:640px){
+  .graph-wrap svg{min-width:820px}
+  .cov-table th:nth-child(3),.cov-table td:nth-child(3){display:none}
+  .switcher{width:calc(100vw - 24px);justify-content:center}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast" aria-live="polite"></div>
+<script src="data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var D = window.PROTO_DATA;
+  var VARIANTS = {A:"图优先 · 决策图铺满", B:"台账优先 · 三栏工作台", C:"影响案优先 · 逐项处理"};
+  var ORDER = ["A","B","C"];
+  var params = new URLSearchParams(location.search);
+  var state = {
+    variant: ORDER.indexOf(params.get("variant")) >= 0 ? params.get("variant") : "A",
+    mode: params.get("mode") || "graph",
+    tab: params.get("tab") || "impact",
+    sel: params.get("sel") || "decision:D-ROOT",
+    expandedOld: params.get("old") === "1",
+    demo: new Set((params.get("demo") || "").split(",").filter(Boolean)),
+    filter: params.get("filter") || null,
+    processed: {},
+    modal: null,
+    toast: ""
+  };
+  var local = { decisions: [], premises: [], tickets: [], comments: {}, status: {} };
+  var toastTimer = null;
+
+  function allDecisions(){ return D.decisions.concat(local.decisions); }
+  function allPremises(){ return D.premises.concat(local.premises); }
+  function allTickets(){ return D.tickets.concat(local.tickets); }
+  function findDecision(id){ return allDecisions().filter(function(d){ return d.id === id; })[0] || null; }
+  function findTicket(id){ return allTickets().filter(function(t){ return String(t.id) === String(id); })[0] || null; }
+  function findPremise(id){ return allPremises().filter(function(p){ return p.id === id; })[0] || null; }
+  function decisionStatus(d){ return local.status[d.id] || d.status; }
+  function premisesOf(d){ return allPremises().filter(function(p){ return p.decision === d.id; }); }
+  function subDecisions(d){ return allDecisions().filter(function(x){ return x.base === d.id && !x.isBase; }); }
+  function producedBy(d){ return allTickets().filter(function(t){ return (t.produces || []).indexOf(d.id) >= 0; }); }
+  function ticketById(id){ return findTicket(id); }
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[c]; }); }
+  function trunc(s, n){ s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+  function wrap(s, n){
+    s = String(s || ""); var out = [], line = "";
+    for (var i = 0; i < s.length; i++){
+      line += s[i];
+      if (line.length >= n){ out.push(line); line = ""; }
+    }
+    if (line) out.push(line);
+    return out;
+  }
+  function toneOf(d){
+    if (decisionStatus(d) === "superseded" || decisionStatus(d) === "void") return "void";
+    if (d.root && d.id === "D-117") return "oldroot";
+    if (d.root) return "root";
+    var ps = premisesOf(d);
+    if (!ps.length) return "bare";
+    if (ps.some(function(p){ return p.state === "已破"; })) return "red";
+    if (ps.some(function(p){ return p.state === "未知" || p.state === "未验"; })) return "amber";
+    if (ps.every(function(p){ return p.state === "成立"; })) return "green";
+    return "amber";
+  }
+  function toneClass(t){ return {root:"accent", green:"green", amber:"amber", red:"red", bare:"gray", void:"void", oldroot:"gray"}[t] || "gray"; }
+  function stateChip(s){
+    var cls = s === "成立" ? "green" : s === "已破" ? "red" : s === "未知" ? "violet" : s === "未验" ? "gray" : "gray";
+    return '<span class="chip ' + cls + '">' + esc(s) + "</span>";
+  }
+  function workDot(w){ return w === "已完成" ? "done" : w === "进行中" ? "now" : w === "卡住" ? "stuck" : ""; }
+  function typeLetter(t){ return {grilling:"G", research:"R", prototype:"P", task:"T"}[t] || "?"; }
+  function counts(){
+    var ds = allDecisions(), ts = allTickets();
+    return {decisions: ds.length, bases: ds.filter(function(d){ return d.isBase && !d.root; }).length, tickets: ts.length, open: ts.filter(function(t){ return t.state === "open"; }).length};
+  }
+  function cycle(dir){
+    var i = ORDER.indexOf(state.variant);
+    state.variant = ORDER[(i + dir + ORDER.length) % ORDER.length];
+    if (state.variant === "C"){
+      state.mode = "impact";
+      var keys = D.impact.items.map(function(x){ return x.key; });
+      if (keys.indexOf(state.sel) < 0) state.sel = keys[0];
+    }
+    render();
+  }
+  function setSel(kind, id){ state.sel = kind + ":" + id; render(); }
+  function parseSel(){
+    var parts = String(state.sel || "").split(":");
+    return {kind: parts[0], id: parts.slice(1).join(":")};
+  }
+  function signalByKey(k){ return D.signals.filter(function(s){ return s.key === k; })[0] || null; }
+  function signalDemo(s){ return state.demo.has(s.key); }
+
+  /* ---------- 图 ---------- */
+  var POS = {
+    "D-ROOT":{x:600,y:52,w:380,h:92},
+    "D-0010":{x:190,y:258,w:220,h:108},
+    "D-0011":{x:460,y:258,w:220,h:108},
+    "D-0012":{x:730,y:258,w:220,h:108},
+    "D-0013":{x:1000,y:258,w:220,h:108},
+    "D-117":{x:600,y:612,w:380,h:76},
+    "D-0001":{x:105,y:736,w:150,h:64},
+    "D-0002":{x:275,y:736,w:150,h:64},
+    "D-0003":{x:445,y:736,w:150,h:64},
+    "D-0004":{x:615,y:736,w:150,h:64},
+    "D-0005":{x:785,y:736,w:150,h:64},
+    "D-0006":{x:955,y:736,w:150,h:64},
+    "D-0007":{x:210,y:840,w:150,h:64},
+    "D-0008":{x:445,y:840,w:150,h:64},
+    "D-0009":{x:680,y:840,w:150,h:64}
+  };
+  var CHIPS = {
+    151:{x:190,y:438,w:220,h:50},
+    144:{x:460,y:438,w:220,h:50},
+    143:{x:730,y:438,w:220,h:50},
+    145:{x:1000,y:438,w:220,h:50}
+  };
+  function anchor(id, side){
+    var p = POS[id]; if (!p) return {x:0,y:0};
+    return side === "bottom" ? {x:p.x+p.w/2, y:p.y+p.h} : side === "top" ? {x:p.x+p.w/2, y:p.y} : {x:p.x+p.w/2, y:p.y+p.h/2};
+  }
+  function curve(a, b){
+    var dy = Math.max(36, (b.y - a.y) * 0.55);
+    return "M " + a.x + " " + a.y + " C " + a.x + " " + (a.y + dy) + ", " + b.x + " " + (b.y - dy) + ", " + b.x + " " + b.y;
+  }
+  function edgePath(from, to){
+    return curve(anchor(from, "bottom"), anchor(to, "top"));
+  }
+  function edgeLabel(x, y, ticket, extra){
+    if (!ticket) return "";
+    var impact = state.mode === "impact" && (D.impact.tickets.indexOf(Number(ticket.id)) >= 0 || Number(ticket.id) === 140);
+    var dim = state.mode === "impact" && !impact;
+    return '<g class="edge-label ' + (impact ? "impact " : "") + (dim ? "dim" : "") + '" data-act="select" data-val="ticket:' + ticket.id + '" transform="translate(' + (x - 38) + ',' + (y - 12) + ')">' +
+      '<rect width="76" height="24" rx="6"></rect>' +
+      '<text x="8" y="15">#' + ticket.id + "</text>" +
+      '<text class="t" x="44" y="15">' + typeLetter(ticket.type) + " · " + esc(trunc(ticket.work, 4)) + "</text></g>";
+  }
+  function nodeSVG(d){
+    var p = POS[d.id]; if (!p) return "";
+    var tone = toneOf(d), ps = premisesOf(d), subs = subDecisions(d);
+    var selected = state.sel === "decision:" + d.id;
+    var dim = state.mode === "impact" && !d.root && D.impact.decisions.indexOf(d.id) < 0 && d.id !== "D-0010";
+    var impact = state.mode === "impact" && (D.impact.decisions.indexOf(d.id) >= 0 || d.id === "D-0010");
+    var lines = wrap(trunc(d.statement, p.w > 160 ? 34 : 22), p.w > 160 ? 18 : 12).slice(0, 2);
+    var stmt = lines.map(function(line, i){ return '<tspan x="12" dy="' + (i === 0 ? 0 : 16) + '">' + esc(line) + "</tspan>"; }).join("");
+    var badge = d.root ? (d.id === "D-117" ? "旧图终点" : "根决定") : (decisionStatus(d) === "superseded" ? "已被取代" : ps.length ? ps.length + " 条前提" : "裸决定");
+    var subText = subs.length ? subs.length + " 条子决定" : (producedBy(d).length ? producedBy(d).length + " 张来源票" : "");
+    return '<g class="node ' + tone + (selected ? " selected" : "") + (dim ? " dim" : "") + (impact ? " impact" : "") + '" data-act="select" data-val="decision:' + d.id + '" transform="translate(' + p.x + ',' + p.y + ')">' +
+      '<rect class="nrect" width="' + p.w + '" height="' + p.h + '" rx="11"></rect>' +
+      '<text class="nid" x="12" y="20">' + esc(d.id) + "</text>" +
+      '<circle class="dot ' + toneClass(tone) + '" cx="' + (p.w - 14) + '" cy="16" r="4.5"></circle>' +
+      '<text class="nstmt" x="12" y="41">' + stmt + "</text>" +
+      '<text class="nmeta" x="12" y="' + (p.h - 22) + '">' + esc(subText) + "</text>" +
+      '<text class="nbadge" x="12" y="' + (p.h - 9) + '">' + esc(badge) + "</text></g>";
+  }
+  function chipSVG(t){
+    var p = CHIPS[t.id]; if (!p) return "";
+    var impact = D.impact.tickets.indexOf(Number(t.id)) >= 0 && state.mode === "impact";
+    var dim = state.mode === "impact" && !impact;
+    var selected = state.sel === "ticket:" + t.id;
+    var syncDemo = state.demo.has("sync-error") && t.id === 151;
+    var staleDemo = state.demo.has("stale-decision") && t.id === 124;
+    var extra = syncDemo ? '<text class="tt" x="' + (p.w - 62) + '" y="19" style="fill:#6b4a8a">同步异常</text>' : staleDemo ? '<text class="tt" x="' + (p.w - 62) + '" y="19" style="fill:#a83a2c">吃旧决定</text>' : "";
+    return '<g class="ticket-chip ' + (impact ? "impact " : "") + (dim ? "dim " : "") + (selected ? "selected" : "") + '" data-act="select" data-val="ticket:' + t.id + '" transform="translate(' + p.x + ',' + p.y + ')">' +
+      '<rect width="' + p.w + '" height="' + p.h + '" rx="9"' + (syncDemo ? ' style="stroke:#6b4a8a;stroke-width:2"' : staleDemo ? ' style="stroke:#a83a2c;stroke-width:2"' : "") + '></rect>' +
+      '<text x="10" y="19">#' + t.id + "</text>" + extra +
+      '<text class="tt" x="10" y="35">' + typeLetter(t.type) + " · " + esc(trunc(t.title, 16)) + "</text>" +
+      '<circle class="dot ' + (t.work === "进行中" ? "accent" : t.work === "卡住" ? "amber" : "gray") + '" cx="' + (p.w - 12) + '" cy="12" r="3.5"></circle></g>';
+  }
+  function graphSVG(){
+    var out = [];
+    out.push('<svg viewBox="0 0 1220 ' + (state.expandedOld ? 960 : 720) + '" role="img" aria-label="决策图">');
+    // 旧图带
+    if (!state.expandedOld){
+      out.push('<g class="old-band" data-act="toggle-old"><rect x="70" y="566" width="1080" height="86" rx="12"></rect>' +
+        '<text x="92" y="600">旧图 #117 · 30 条决定 · 10 张票（已冻结）</text>' +
+        '<text x="92" y="622" style="font-size:10px;fill:#a79c8b">点开看旧票和旧决定。旧模型没有把终点存成决定，D-117 是补出来的占位。</text>' +
+        '<text x="1040" y="600" style="font-size:11px;fill:#2f4a8a">展开 →</text></g>');
+    } else {
+      out.push('<g class="svg-note" transform="translate(80,578)"><text>旧图 #117 · 30 条决定 · 10 张票（已冻结）</text></g>');
+      out.push('<g class="old-band" data-act="toggle-old"><rect x="1010" y="588" width="120" height="30" rx="7"></rect><text x="1026" y="608">收起 ↑</text></g>');
+    }
+    // 边
+    var edges = [];
+    var newEdges = [140,141,149,142].map(function(id){ return [id, "D-ROOT", "D-" + ({140:"0010",141:"0011",149:"0012",142:"0013"}[id])]; });
+    newEdges.forEach(function(e){
+      var t = ticketById(e[0]); if (!t) return;
+      var a = anchor(e[1], "bottom"), b = anchor(e[2], "top");
+      var hit = state.mode === "impact" && Number(e[0]) === 140;
+      edges.push('<g class="edge ' + (state.mode === "impact" ? (hit ? "impact" : "dim") : "") + '"><path d="' + curve(a,b) + '"></path></g>');
+      edges.push(edgeLabel((a.x + b.x) / 2, (a.y + b.y) / 2 + 30, t));
+    });
+    [151,144,143,145].forEach(function(id){
+      var t = ticketById(id); if (!t) return;
+      var a = anchor("D-ROOT", "bottom"), b = {x: CHIPS[id].x + CHIPS[id].w / 2, y: CHIPS[id].y};
+      var impact = D.impact.tickets.indexOf(id) >= 0 && state.mode === "impact";
+      var dim = state.mode === "impact" && !impact;
+      edges.push('<g class="edge ' + (impact ? "impact" : dim ? "dim" : "") + '"><path d="' + curve(a,b) + '"></path></g>');
+    });
+    if (state.expandedOld){
+      [[118,"D-0001"],[118,"D-0002"],[119,"D-0002"],[120,"D-0003"],[121,"D-0004"],[122,"D-0007"],[123,"D-0008"],[127,"D-0005"],[128,"D-0006"],[137,"D-0009"]].forEach(function(e){
+        var t = ticketById(e[0]); if (!t) return;
+        var a = anchor("D-117", "bottom"), b = anchor(e[1], "top");
+        edges.push('<g class="edge strong"><path d="' + curve(a,b) + '"></path></g>');
+        edges.push(edgeLabel((a.x + b.x) / 2, (a.y + b.y) / 2, t));
+      });
+    }
+    out.push('<g class="edges">' + edges.join("") + "</g>");
+    // 节点
+    var nodes = allDecisions().filter(function(d){ return d.isBase && (d.layer === "new" || state.expandedOld); });
+    out.push('<g class="nodes">' + nodes.map(nodeSVG).join("") + "</g>");
+    // 开放票 chip
+    [151,144,143,145].forEach(function(id){ var t = ticketById(id); if (t) out.push(chipSVG(t)); });
+    // 其它开放票
+    var otherOpen = allTickets().filter(function(t){ return t.state === "open" && !CHIPS[t.id] && !(state.expandedOld && t.id === 124); });
+    if (otherOpen.length){
+      out.push('<g class="svg-note" transform="translate(80,520)"><text>还有 ' + otherOpen.length + ' 张开放票：</text></g>');
+      otherOpen.forEach(function(t, i){
+        var stale = state.demo.has("stale-decision") && Number(t.id) === 124;
+        var sync = state.demo.has("sync-error") && Number(t.id) === 151;
+        out.push('<g class="ticket-chip' + (state.mode === "impact" ? " dim" : "") + '" data-act="select" data-val="ticket:' + t.id + '" transform="translate(' + (168 + i * 108) + ',508)"><rect width="100" height="28" rx="6"' + (stale ? ' style="stroke:#a83a2c;stroke-width:2"' : sync ? ' style="stroke:#6b4a8a;stroke-width:2"' : "") + '></rect><text x="8" y="18">#' + t.id + ' ' + esc(trunc(t.title, 7)) + "</text>" + (stale ? '<text x="8" y="26" style="font:8px var(--sans);fill:#a83a2c">吃旧决定</text>' : "") + "</g>");
+      });
+    }
+    out.push("</svg>");
+    return out.join("");
+  }
+  function legend(){
+    return '<div class="graph-legend"><span><i class="legend-dot accent"></i>根决定</span><span><i class="legend-dot green"></i>前提全成立</span><span><i class="legend-dot amber"></i>有前提未验 / 未知</span><span><i class="legend-dot red"></i>至少一条已破</span><span><i class="legend-dot gray"></i>裸决定</span><span><i class="legend-dot void"></i>已被取代</span><span style="margin-left:auto">票画成边，边上写票号、票型、工作状态</span></div>';
+  }
+
+  /* ---------- 覆盖表 ---------- */
+  function coverageView(compact){
+    var items = D.coverage.map(function(r){
+      var gap = r.status === "缺口" || (r.frag === 5 && state.demo.has("coverage-gap"));
+      var status = gap ? "缺口" : r.status;
+      var cls = status === "已落" ? "done" : status === "进行中" ? "doing" : status === "缺口" ? "gap" : "void";
+      return {frag: r.frag, text: r.text, tickets: r.tickets, status: status, cls: cls, gap: gap};
+    });
+    var done = D.coverage.filter(function(r){ return r.status === "已落"; }).length;
+    var gap = items.filter(function(r){ return r.gap; }).length;
+    var doing = 9 - done - gap;
+    var bar = '<div class="bar"><i class="done" style="width:' + (done / 9 * 100) + '%"></i><i class="doing" style="width:' + (doing / 9 * 100) + '%"></i><i class="gap" style="width:' + (gap / 9 * 100) + '%"></i></div>';
+    if (compact){
+      var mini = items.map(function(it){
+        var pills = it.tickets.map(function(id){ var t = ticketById(id); return t ? '<span class="pill" data-act="select" data-val="ticket:' + id + '"><span class="work-dot ' + workDot(t.work) + '"></span>#' + id + "</span>" : ""; }).join("");
+        return '<div class="cov-mini ' + (it.gap ? "gap" : "") + '"><div class="cm-top"><span class="cov-num">' + String(it.frag).padStart(2, "0") + '</span><span class="cov-status ' + it.cls + '">' + it.status + '</span></div><div class="cm-text">' + esc(it.text) + '</div><div class="cm-tickets">' + (pills || '<span class="empty">没有票</span>') + "</div></div>";
+      }).join("");
+      return '<div class="cov-compact"><div class="cov-mini-head"><div><span class="eyebrow">Destination 覆盖表</span><b>' + done + " 已落 · " + doing + " 进行中 · " + gap + ' 缺口</b></div><div class="cov-bar" style="min-width:110px">' + bar + '<div class="lbl"><span>已落 ' + done + '</span><span>缺口 ' + gap + "</span></div></div></div>" + mini + "</div>";
+    }
+    var rows = items.map(function(it){
+      var pills = it.tickets.map(function(id){ var t = ticketById(id); return t ? '<span class="pill" data-act="select" data-val="ticket:' + id + '"><span class="work-dot ' + workDot(t.work) + '"></span>#' + id + "</span>" : ""; }).join("");
+      return '<tr class="cov-row ' + (it.gap ? "gap" : "") + '"><td class="cov-num">' + String(it.frag).padStart(2, "0") + '</td><td class="cov-text">' + esc(it.text) + '</td><td><div class="cov-tickets">' + (pills || '<span class="empty">没有票</span>') + '</div></td><td class="cov-status ' + it.cls + '">' + it.status + "</td></tr>";
+    }).join("");
+    return '<div class="coverage">' +
+      '<div class="cov-head"><div><span class="eyebrow">Destination 覆盖表</span><h2>' + done + " 句已落 · " + doing + " 句进行中 · " + gap + ' 句缺口</h2><p class="sum">覆盖行由拆句和票上的 covers 联接算出。工作状态不存进票，由 orca 同步。</p></div>' +
+      '<div class="cov-bar">' + bar + '<div class="lbl"><span>已落 ' + done + '</span><span>进行中 ' + doing + '</span><span>缺口 ' + gap + "</span></div></div></div>" +
+      '<table class="cov-table"><thead><tr><th style="width:44px">句</th><th>原文</th><th style="width:190px">接的票</th><th style="width:74px">状态</th></tr></thead><tbody>' + rows + "</tbody></table>" +
+      '<div class="cov-note">缺口是根决定的某一句没有任何票接。红色虚线框，点一下能看缺在哪一句。当前 9 句都有票；打开「覆盖缺口」信号可以看示例。</div></div>';
+  }
+
+  /* ---------- 信号 ---------- */
+  function signalCount(s){
+    if (s.key === "bare-decision") return allDecisions().filter(function(d){ return d.isBase && !d.root && d.layer === "old" && !premisesOf(d).length; }).length;
+    if (s.key === "coverage-gap" && state.demo.has(s.key)) return 1;
+    return s.count;
+  }
+  function signalRail(){
+    return '<div class="sig-list">' + D.signals.map(function(s){
+      var n = signalCount(s);
+      var demo = signalDemo(s);
+      return '<button class="sig ' + (state.filter === s.key ? "active" : "") + '" data-act="signal" data-val="' + s.key + '" title="' + esc(s.hint) + '">' +
+        '<span class="sig-dot ' + s.tone + '"></span><span class="sig-label">' + s.label + '</span>' +
+        (demo ? '<span class="sig-demo">示例</span>' : "") +
+        '<span class="sig-count ' + (n === 0 ? "zero" : "") + '">' + n + "</span></button>";
+    }).join("") + "</div>";
+  }
+  function signalChips(){
+    return '<div class="sig-chips">' + D.signals.map(function(s){
+      var n = signalCount(s), demo = signalDemo(s);
+      return '<button class="sig-chip ' + (state.filter === s.key ? "active" : "") + '" data-act="signal" data-val="' + s.key + '" title="' + esc(s.hint) + '"><span class="sig-dot ' + s.tone + '"></span>' + s.label + '<b>' + n + "</b>" + (demo ? "<i>示例</i>" : "") + "</button>";
+    }).join("") + "</div>";
+  }
+  function demoTarget(key){ return {"stale-decision":"ticket:124", "sync-error":"ticket:151"}[key] || null; }
+  function signalBadges(kind, id){
+    var key = kind + ":" + id, out = [];
+    D.signals.forEach(function(s){
+      var hit = (s.targets || []).indexOf(key) >= 0 || (state.demo.has(s.key) && demoTarget(s.key) === key);
+      if (hit) out.push('<span class="chip ' + s.tone + '">' + s.label + (state.demo.has(s.key) ? " · 示例" : "") + "</span>");
+    });
+    return out.join("");
+  }
+  function signalList(){
+    return '<div class="signal-panel"><h3>九类视觉信号</h3>' + D.signals.map(function(s){
+      var n = signalCount(s), demo = signalDemo(s);
+      return '<button class="sig ' + (state.filter === s.key ? "active" : "") + '" data-act="signal" data-val="' + s.key + '">' +
+        '<span class="sig-dot ' + s.tone + '"></span><span class="sig-label">' + s.label + '</span>' +
+        (demo ? '<span class="sig-demo">示例</span>' : "") +
+        '<span class="sig-count ' + (n === 0 ? "zero" : "") + '">' + n + "</span></button>" +
+        '<div class="sig-hint">' + esc(s.hint) + "</div>";
+    }).join("") + "</div>";
+  }
+  function filterBanner(){
+    if (!state.filter) return "";
+    var s = signalByKey(state.filter); if (!s) return "";
+    return '<div class="filter-banner"><b>信号：' + s.label + "</b><span>" + esc(s.hint) + '</span><span style="flex:1"></span><button class="btn small ghost" data-act="clear-filter">清除</button></div>';
+  }
+
+  /* ---------- 详情 ---------- */
+  function statusChipFor(d){
+    var st = decisionStatus(d);
+    if (st === "superseded") return '<span class="chip gray">已被取代</span>';
+    if (st === "void") return '<span class="chip gray">已作废</span>';
+    var t = toneOf(d);
+    var label = t === "green" ? "前提全成立" : t === "red" ? "有前提已破" : t === "amber" ? "有前提未验 / 未知" : t === "root" ? "根决定" : "裸决定";
+    return '<span class="chip ' + toneClass(t) + '">' + label + "</span>";
+  }
+  function premiseCard(p){
+    var cls = p.state === "已破" ? "red" : p.state === "成立" ? "green" : p.state === "未知" ? "amber" : "gray";
+    var ev = (p.evidence || []).map(esc).join(" · ");
+    return '<div class="premise ' + cls + '"><div class="p-top"><span class="id">' + esc(p.id) + "</span>" + stateChip(p.state) + "</div>" +
+      '<p class="p-stmt">' + esc(p.statement) + "</p>" +
+      (ev ? '<p class="p-ev">证据：' + ev + "</p>" : "") +
+      (p.lastJudge ? '<p class="p-reason">判定：' + esc(p.lastJudge.reason) + "</p>" : '<p class="p-ev">还没判过</p>') +
+      '<div class="p-foot"><span>' + (p.lastJudge ? esc(p.lastJudge.by) + " · " + esc(p.lastJudge.at) : "新建") + "</span>" +
+      '<button class="btn small" data-act="modal" data-val="judge-premise" data-arg="' + esc(p.id) + '">判前提</button></div></div>';
+  }
+  function detailView(compact){
+    var sel = parseSel(), d = null, t = null, p = null;
+    if (sel.kind === "decision") d = findDecision(sel.id);
+    else if (sel.kind === "ticket") t = findTicket(sel.id);
+    else if (sel.kind === "premise") p = findPremise(sel.id);
+    if (p) d = findDecision(p.decision);
+    if (!d && !t && !p){
+      return '<div class="detail-head"><span class="eyebrow">中台</span><h2>点一条决定或一张票</h2><p class="sub">节点是决定，边是票。点节点看决定和它的前提；点边看票的拆票理由、来源和工作状态。</p></div>' + signalList();
+    }
+    if (t){
+      var produces = (t.produces || []).map(function(id){ return '<span class="pill" data-act="select" data-val="decision:' + id + '">' + id + "</span>"; }).join("");
+      var covers = (t.covers || []).map(function(n){ return '<span class="pill">第 ' + n + " 句</span>"; }).join("");
+      return '<div class="detail-head"><div class="id-row"><span class="id">#' + t.id + '</span><span class="chip">' + t.type + '</span><span class="chip ' + (t.state === "closed" ? "green" : "amber") + '">' + (t.work || t.state) + "</span>" + signalBadges("ticket", t.id) + "</div>" +
+        '<h2>' + esc(t.title) + "</h2><p class=\"sub\">" + (t.state === "closed" ? "已关闭" : "开放") + " · " + (t.mapId === 117 ? "旧图 #117" : "地图 #139") + "</p>" +
+        '<div class="actions"><button class="btn" data-act="modal" data-val="edit-ticket" data-arg="' + t.id + '">改票</button><button class="btn" data-act="modal" data-val="comment" data-arg="' + t.id + '">改评论</button><button class="btn" data-act="modal" data-val="new-ticket" data-arg="' + t.id + '">新建票</button></div></div>' +
+        '<div class="section"><h3>拆票理由</h3><p style="font:13px/1.6 var(--serif)">' + esc(t.splitReason || "（导入的老票没有拆票理由）") + "</p></div>" +
+        '<div class="section"><h3>因果</h3><dl class="kv"><dt>从哪拆出</dt><dd>' + (t.derivedFrom || []).map(function(id){ return '<span class="pill" data-act="select" data-val="decision:' + id + '">' + id + "</span>"; }).join("") + "</dd>" +
+        '<dt>产出决定</dt><dd>' + (produces || '<span class="empty">还没有产出决定</span>') + "</dd>" +
+        '<dt>覆盖</dt><dd>' + (covers || '<span class="empty">没有 covers</span>') + "</dd></dl></div>" +
+        '<div class="section"><h3>状态</h3><dl class="kv"><dt>工作状态</dt><dd>' + esc(t.work || "未领取") + '</dd><dt>GitHub</dt><dd><a href="' + t.url + '" target="_blank" rel="noreferrer">' + esc(t.url) + "</a></dd><dt>标签</dt><dd>" + (t.labels || []).map(function(l){ return '<span class="chip">' + esc(l) + "</span>"; }).join(" ") + "</dd></dl></div>" +
+        (local.comments[t.id] ? '<div class="section"><h3>评论</h3>' + local.comments[t.id].map(function(c){ return '<div class="note">' + esc(c) + "</div>"; }).join("") + "</div>" : "");
+    }
+    if (d){
+      var ps = premisesOf(d), subs = subDecisions(d), prod = producedBy(d);
+      var plist = ps.length ? ps.map(premiseCard).join("") : '<div class="empty">没有前提。这条决定永远不会被自动标记失效，只能靠人想起。</div>';
+      var sublist = subs.length ? subs.map(function(x){ return '<div class="sub-row" data-act="select" data-val="decision:' + x.id + '"><span class="dot ' + toneClass(toneOf(x)) + '"></span><span class="sid">' + esc(x.id) + '</span><span class="sst">' + esc(x.statement) + "</span></div>"; }).join("") : '<div class="empty">没有子决定。</div>';
+      var prodList = prod.length ? prod.map(function(t){ return '<span class="pill" data-act="select" data-val="ticket:' + t.id + '"><span class="work-dot ' + workDot(t.work) + '"></span>#' + t.id + " " + esc(trunc(t.title, 10)) + "</span>"; }).join("") : '<span class="empty">没有来源票</span>';
+      return '<div class="detail-head"><div class="id-row"><span class="id">' + esc(d.id) + "</span>" + statusChipFor(d) + '<span class="chip">' + (d.layer === "old" ? "旧图" : "新图") + "</span>" + signalBadges("decision", d.id) + "</div>" +
+        '<h2>' + esc(d.statement) + "</h2>" +
+        '<div class="actions"><button class="btn primary" data-act="modal" data-val="add-premise" data-arg="' + esc(d.id) + '">加前提</button>' +
+        (ps.length ? '<button class="btn" data-act="modal" data-val="judge-premise" data-arg="' + esc(ps[0].id) + '">判前提</button>' : "") +
+        '<button class="btn danger" data-act="modal" data-val="overturn" data-arg="' + esc(d.id) + '">推翻决定</button></div></div>' +
+        '<div class="section"><h3>前提 <span class="count">' + ps.length + "</span></h3>" + plist + "</div>" +
+        '<div class="section"><h3>子决定 <span class="count">' + subs.length + "</span></h3>" + sublist + "</div>" +
+        '<div class="section"><h3>来源与产出</h3><dl class="kv"><dt>来源票</dt><dd>' + prodList + "</dd><dt>产出文件</dt><dd>" + ((d.outputs || []).length ? d.outputs.map(function(f){ return '<code class="mono" style="font-size:11px">' + esc(f) + "</code>"; }).join("<br>") : '<span class="empty">无</span>') + "</dd></dl></div>";
+    }
+    return "";
+  }
+
+  /* ---------- 影响案 ---------- */
+  function impactStats(){
+    var total = D.impact.items.length, done = Object.keys(state.processed).length;
+    return {total: total, done: done, pct: total ? Math.round(done / total * 100) : 0};
+  }
+  function impactTrigger(){
+    var p = findPremise(D.impact.triggerPremise), d = findDecision(D.impact.triggerDecision);
+    return '<div class="trigger-card"><div class="tc-top"><span class="id">' + esc(D.impact.id) + "</span>" + stateChip("已破") + '<span class="chip">' + esc(D.impact.openedAt) + "</span></div>" +
+      '<p><b>' + esc(p ? p.statement : "") + "</b><br>" + esc(p && p.lastJudge ? p.lastJudge.reason : "") + "</p></div>";
+  }
+  function impactQueue(){
+    var st = impactStats();
+    var items = D.impact.items.map(function(it){
+      var done = state.processed[it.key];
+      var isDec = it.kind === "decision";
+      var acts = isDec ? ["仍成立","需修改","作废","要补问"] : ["保留","改范围","关掉","重开","新建","合并"];
+      return '<div class="q-item ' + (done ? "done" : "pending") + '">' +
+        '<div class="q-top"><span class="kind">' + (isDec ? "决定" : "票") + '</span><span class="id">' + esc(isDec ? it.id : "#" + it.id) + "</span>" +
+        (done ? '<span class="chip green">已处理：' + esc(done) + "</span>" : '<span class="chip red">待处理</span>') + "</div>" +
+        '<p class="q-why">' + esc(it.why) + "</p>" +
+        (done ? '<div class="q-done-line"><span>处理动作：' + esc(done) + '</span><button class="btn small ghost" data-act="undo" data-val="' + it.key + '">撤销</button></div>' :
+          '<div class="q-actions">' + acts.map(function(a){ return '<button class="btn small" data-act="process" data-val="' + it.key + '" data-arg="' + a + '">' + a + "</button>"; }).join("") + "</div>") +
+        "</div>";
+    }).join("");
+    return '<div class="queue-head"><div><span class="eyebrow">影响案 · 逐项处理</span><h2>' + esc(D.impact.id) + '</h2><p style="font-size:11px;color:var(--muted);margin-top:2px">决定四档，票六种。系统只列名单，不改决定。</p></div><div class="progress"><b>' + st.done + "/" + st.total + "</b>已处理<br>" + st.pct + "%</div></div>" + impactTrigger() + '<div class="q-list">' + items + "</div>";
+  }
+  function impactBanner(){
+    var st = impactStats();
+    var action = state.mode === "impact"
+      ? '<button class="btn small" data-act="mode" data-val="graph">回到决策图</button>'
+      : '<button class="btn small" data-act="mode" data-val="impact">开始判定</button>';
+    return '<div class="impact-banner"><span class="pulse"></span><b>' + esc(D.impact.triggerPremise) + " 已破</b><span>影响 5 条决定、2 张票</span><span>·</span><span>已处理 " + st.done + "/" + st.total + '</span><span class="spacer"></span>' + action + "</div>";
+  }
+  function impactLayout(){
+    return '<div class="impact-layout"><main class="impact-main"><div class="graph-wrap">' + graphSVG() + '</div>' + legend() + '</main><aside class="impact-side">' + impactQueue() + '<div class="section" style="margin-top:18px">' + detailView() + "</div></aside></div>";
+  }
+
+  /* ---------- 顶栏 ---------- */
+  function topbar(){
+    var c = counts();
+    return '<header class="topbar"><div class="brand"><span class="logo">中</span><div><b>中台</b><small>Decision Board</small></div></div>' +
+      '<div class="map-title"><b>#139 中台 v1：决策看板，GitHub 做镜像</b><span>' + c.bases + " 条决定 · " + c.tickets + " 张票 · " + c.open + " 张开放 · 根决定 9 句</span></div>" +
+      '<div class="seg"><button class="' + (state.mode === "graph" ? "active" : "") + '" data-act="mode" data-val="graph">决策图</button><button class="' + (state.mode === "impact" ? "active" : "") + '" data-act="mode" data-val="impact">影响案</button><button class="' + (state.mode === "coverage" ? "active" : "") + '" data-act="mode" data-val="coverage">覆盖表</button></div>' +
+      '<div class="top-meta"><span class="live-dot"></span>快照 ' + esc(D.generatedAt.slice(11)) + '</div></header>';
+  }
+  function strip(){
+    return '<div class="prototype-strip"><b>原型 · 不是成品</b><span>真数据来自 #139 / #117；前提和影响案是示例。按 ← → 切换版面。</span></div>';
+  }
+  function switcher(){
+    return '<div class="switcher"><button data-act="cycle" data-val="-1" aria-label="上一版">‹</button><div class="sw-label"><b>' + state.variant + "</b>" + VARIANTS[state.variant] + '</div><button data-act="cycle" data-val="1" aria-label="下一版">›</button><span class="keys">← → 切换</span><span class="sw-tag">原型</span></div>';
+  }
+  function reminder(){
+    if (state.mode === "impact") return "";
+    return '<div class="reminder"><span class="pulse"></span><b>P-0001 已破</b><span>运营者的数据只在一台机器上产生</span><span>·</span><span>影响 5 条决定、2 张票</span><span class="spacer"></span><button data-act="mode" data-val="impact">开始判定</button></div>';
+  }
+
+  /* ---------- 三套版面 ---------- */
+  function graphView(){
+    return '<div class="graph-head"><div><span class="eyebrow">地图 #139 · 决策图</span><h1>决策是节点，票是边</h1><p>点节点看决定和前提；点边看票。红色节点至少有一条前提已破。</p></div><div class="graph-tools"><button class="btn small" data-act="toggle-old">' + (state.expandedOld ? "收起旧图 #117" : "展开旧图 #117") + '</button><button class="btn small" data-act="mode" data-val="coverage">覆盖表</button></div></div>' +
+      filterBanner() + '<div class="graph-wrap">' + graphSVG() + "</div>" + legend();
+  }
+  function viewA(){
+    return strip() + topbar() + impactBanner() +
+      (state.mode === "impact" ? impactLayout() :
+        '<div class="a-body"><div class="a-col"><main class="a-main ' + (state.mode === "coverage" ? "coverage-mode" : "") + '">' + signalChips() + (state.mode === "coverage" ? coverageView() : graphView()) + '</main>' + reminder() + '</div><aside class="drawer">' + detailView() + "</aside></div>") +
+      switcher() + (state.modal ? modalView() : "");
+  }
+  function tree(){
+    var newBases = allDecisions().filter(function(d){ return d.isBase && d.layer === "new"; }).sort(function(a,b){ return a.id.localeCompare(b.id); });
+    var oldBases = allDecisions().filter(function(d){ return d.isBase && d.layer === "old"; }).sort(function(a,b){ return a.id.localeCompare(b.id); });
+    function row(d){
+      var sub = subDecisions(d).length, ps = premisesOf(d).length;
+      return '<div class="tree-row ' + (state.sel === "decision:" + d.id ? "selected" : "") + '" data-act="select" data-val="decision:' + d.id + '"><span class="dot ' + toneClass(toneOf(d)) + '"></span><span><span class="tid">' + esc(d.id) + '</span><span class="tst">' + esc(trunc(d.statement, 40)) + '</span><span class="tmeta">' + (ps ? ps + " 前提" : "裸决定") + (sub ? " · " + sub + " 子决定" : "") + "</span></span></div>";
+    }
+    return '<div class="tree-group"><button data-act="toggle-old">新图 #139 ' + (state.expandedOld ? "▾" : "▸") + '</button>' + newBases.map(row).join("") + "</div>" +
+      '<div class="tree-group"><button data-act="toggle-old">旧图 #117 ' + (state.expandedOld ? "▾" : "▸") + "</button>" + (state.expandedOld ? oldBases.map(row).join("") : '<div class="tree-row" data-act="toggle-old"><span class="tst" style="color:var(--muted)">30 条旧决定 · 点开看</span></div>') + "</div>";
+  }
+  function miniGraph(){
+    var nodes = ["D-ROOT","D-0010","D-0011","D-0012","D-0013"];
+    var svg = '<svg viewBox="0 0 360 150">';
+    var pos = {"D-ROOT":{x:120,y:10,w:120,h:34},"D-0010":{x:10,y:90,w:64,h:34},"D-0011":{x:82,y:90,w:64,h:34},"D-0012":{x:154,y:90,w:64,h:34},"D-0013":{x:226,y:90,w:64,h:34}};
+    nodes.forEach(function(id){
+      var d = findDecision(id); if (!d) return; var p = pos[id];
+      svg += '<g class="node ' + toneOf(d) + '" data-act="select" data-val="decision:' + id + '" transform="translate(' + p.x + ',' + p.y + ')"><rect class="nrect" width="' + p.w + '" height="' + p.h + '" rx="7"></rect><text class="nid" x="7" y="14" style="font-size:9px">' + id + '</text><text class="nstmt" x="7" y="26" style="font-size:9px">' + esc(trunc(d.statement, 9)) + "</text></g>";
+    });
+    [["D-ROOT","D-0010"],["D-ROOT","D-0011"],["D-ROOT","D-0012"],["D-ROOT","D-0013"]].forEach(function(e){
+      var a = pos[e[0]], b = pos[e[1]];
+      svg += '<path d="M ' + (a.x + a.w / 2) + " " + (a.y + a.h) + " C " + (a.x + a.w / 2) + " 60, " + (b.x + b.w / 2) + " 60, " + (b.x + b.w / 2) + " " + b.y + '" fill="none" stroke="#c6baa5" stroke-width="1.2"></path>';
+    });
+    return '<div class="mini-graph">' + svg + "</svg></div>";
+  }
+  function viewB(){
+    var tabs = '<div class="tabs"><button class="' + (state.tab === "impact" ? "active" : "") + '" data-act="tab" data-val="impact">影响案</button><button class="' + (state.tab === "coverage" ? "active" : "") + '" data-act="tab" data-val="coverage">覆盖表</button><button class="' + (state.tab === "signals" ? "active" : "") + '" data-act="tab" data-val="signals">信号</button></div>';
+    var right = state.tab === "impact" ? impactQueue() : state.tab === "coverage" ? coverageView(true) : signalList();
+    return strip() + topbar() + '<div class="b-body"><aside class="b-left"><div class="panel-head">决定树 <span>' + counts().bases + '</span></div>' + tree() + '<div class="panel-head" style="margin-top:16px">信号</div>' + signalRail() + "</aside>" +
+      '<main class="b-center">' + filterBanner() + detailView(true) + miniGraph() + "</main>" +
+      '<aside class="b-right">' + tabs + right + "</aside></div>" + switcher() + (state.modal ? modalView() : "");
+  }
+  function impactHero(){
+    var st = impactStats(), p = findPremise(D.impact.triggerPremise);
+    return '<div class="impact-hero"><div class="row"><div><span class="eyebrow">影响案 · 逐项处理</span><h1>' + esc(D.impact.id) + " · " + esc(p ? p.statement : "") + '</h1><p class="trigger">' + esc(p && p.lastJudge ? p.lastJudge.reason : "") + '</p></div><div class="counts"><div><div class="n">5</div><div class="l">决定</div></div><div><div class="n">2</div><div class="l">票</div></div><div><div class="n">' + st.done + "/" + st.total + '</div><div class="l">已处理</div></div></div></div><div class="progress-line"><i style="width:' + st.pct + '%"></i></div></div>';
+  }
+  function queueListC(){
+    return '<div class="panel-head">处理队列 <span>' + impactStats().done + "/" + D.impact.items.length + '</span></div><div class="q-list q-list-c">' + D.impact.items.map(function(it){
+      var done = state.processed[it.key];
+      return '<div class="q-item ' + (done ? "done" : "pending") + ' ' + (state.sel === it.key ? "current" : "") + '" data-act="select" data-val="' + it.key + '"><div class="q-top"><span class="kind">' + (it.kind === "decision" ? "决定" : "票") + '</span><span class="id">' + esc(it.kind === "decision" ? it.id : "#" + it.id) + "</span>" + (done ? '<span class="chip green">' + esc(done) + "</span>" : '<span class="chip red">待处理</span>') + "</div></div>";
+    }).join("") + "</div>";
+  }
+  function currentImpact(){
+    var key = state.sel && state.sel.indexOf(":") >= 0 ? state.sel : D.impact.items[0].key;
+    var it = D.impact.items.filter(function(x){ return x.key === key || x.id === key; })[0] || D.impact.items[0];
+    var done = state.processed[it.key];
+    var isDec = it.kind === "decision";
+    var obj = isDec ? findDecision(it.id) : findTicket(it.id);
+    var acts = isDec ? ["仍成立","需修改","作废","要补问"] : ["保留","改范围","关掉","重开","新建","合并"];
+    var title = obj ? (isDec ? obj.statement : obj.title) : it.id;
+    return '<div class="impact-card"><div class="card-top"><span class="chip ' + (isDec ? "accent" : "gray") + '">' + (isDec ? "决定" : "票") + '</span><span class="id">' + esc(isDec ? it.id : "#" + it.id) + "</span>" + (done ? '<span class="chip green">已处理：' + esc(done) + "</span>" : '<span class="chip red">待处理</span>') + "</div>" +
+      "<h1>" + esc(title) + "</h1>" +
+      '<div class="why-box"><b>为什么受影响：</b>' + esc(it.why) + "</div>" +
+      '<div class="actions-big">' + acts.map(function(a){ return '<button class="btn ' + (done === a ? "primary" : "") + '" data-act="process" data-val="' + it.key + '" data-arg="' + a + '">' + a + "</button>"; }).join("") + (done ? '<button class="btn ghost" data-act="undo" data-val="' + it.key + '">撤销</button>' : "") + "</div>" +
+      (isDec ? '<div class="section"><h3>前提</h3>' + (premisesOf(obj).length ? premisesOf(obj).map(premiseCard).join("") : '<div class="empty">这条决定没有前提。</div>') + "</div>" : '<div class="section"><h3>票</h3><dl class="kv"><dt>工作状态</dt><dd>' + esc(obj ? obj.work : "") + "</dd><dt>拆票理由</dt><dd>" + esc(obj ? obj.splitReason : "") + "</dd></dl></div>") +
+      '<div class="next-row"><span style="font-size:11px;color:var(--muted)">处理完一项，队列里的下一条还等你。系统不会替你改决定。</span><button class="btn" data-act="next-impact">下一条 →</button></div></div>';
+  }
+  function causalPath(){
+    var p = findPremise(D.impact.triggerPremise);
+    return '<div class="causal"><h3>因果路径</h3><svg viewBox="0 0 300 214">' +
+      '<rect x="8" y="6" width="284" height="44" rx="8" fill="#fbeeea" stroke="#e8c9c1"></rect><text x="18" y="24" style="font:10px var(--mono);fill:#a83a2c">P-0001 已破</text><text x="18" y="40" style="font:11px var(--sans);fill:#7a2a20">' + esc(trunc(p ? p.statement : "", 24)) + "</text>" +
+      '<path d="M 150 50 L 150 76" stroke="#c6baa5" stroke-width="1.4"></path><path d="M 146 70 L 150 76 L 154 70" fill="none" stroke="#c6baa5" stroke-width="1.4"></path>' +
+      '<rect x="58" y="78" width="184" height="36" rx="8" fill="#eef1f9" stroke="#c9d3ea"></rect><text x="68" y="100" style="font:10px var(--mono);fill:#22386b">D-0010 数据位置与读写路径</text>' +
+      '<path d="M 150 114 L 150 138" stroke="#c6baa5" stroke-width="1.4"></path>' +
+      '<rect x="8" y="142" width="136" height="30" rx="7" fill="#fbeeea" stroke="#e8c9c1"></rect><text x="17" y="161" style="font:10px var(--sans);fill:#7a2a20">D-0010a…d（4 条子决定）</text>' +
+      '<rect x="156" y="142" width="136" height="30" rx="7" fill="#fbeeea" stroke="#e8c9c1"></rect><text x="165" y="161" style="font:10px var(--sans);fill:#7a2a20">#143 / #145（2 张票）</text>' +
+      '<text x="8" y="196" style="font:10px var(--sans);fill:#a79c8b">从破前提沿因果边向下，只算声明过的边。</text></svg></div>';
+  }
+  function viewC(){
+    return strip() + topbar() + impactHero() +
+      (state.mode === "coverage" ?
+        '<div class="c-body"><aside class="c-queue">' + queueListC() + '</aside><main class="c-main">' + coverageView(true) + '</main><aside class="c-context">' + causalPath() + signalRail() + "</aside></div>" :
+        state.mode === "graph" ?
+          '<div class="c-body"><aside class="c-queue">' + queueListC() + '</aside><main class="c-main"><div class="graph-wrap">' + graphSVG() + "</div>" + legend() + '</main><aside class="c-context">' + causalPath() + signalRail() + "</aside></div>" :
+          '<div class="c-body"><aside class="c-queue">' + queueListC() + '</aside><main class="c-main">' + currentImpact() + '</main><aside class="c-context">' + causalPath() + '<div class="note">这一版把影响案当主界面：先处理，再看图。图的完整排布在 A 版。</div>' + signalRail() + "</aside></div>") +
+      switcher() + (state.modal ? modalView() : "");
+  }
+
+  /* ---------- 弹窗 ---------- */
+  function modalView(){
+    var m = state.modal; if (!m) return "";
+    var kind = m.kind, target = m.target;
+    var d = kind === "add-premise" || kind === "overturn" ? findDecision(target) : null;
+    var t = kind === "edit-ticket" || kind === "comment" || kind === "new-ticket" ? findTicket(target) : null;
+    var p = kind === "judge-premise" ? findPremise(target) : null;
+    var title = { "add-premise":"加前提", "judge-premise":"判前提", "overturn":"推翻决定", "edit-ticket":"改票", "comment":"改评论", "new-ticket":"新建票" }[kind] || "操作";
+    var sub = d ? d.id + " · " + trunc(d.statement, 36) : t ? "#" + t.id + " · " + trunc(t.title, 36) : p ? p.id + " · " + trunc(p.statement, 36) : "";
+    var body = "";
+    if (kind === "add-premise") body = '<label>陈述</label><textarea name="statement" required placeholder="一句可被证伪的话"></textarea><label>证据</label><input name="evidence" placeholder="#142 或 中台/设计.md 或 原话"><p class="note">写一条 premise.add 事件。状态从 未验 开始。</p>';
+    if (kind === "judge-premise") body = '<label>判定</label><div class="radio-row"><label><input type="radio" name="verdict" value="成立" ' + (p && p.state === "成立" ? "checked" : "") + '>成立</label><label><input type="radio" name="verdict" value="已破" ' + (!p || p.state === "已破" ? "checked" : "") + '>已破</label><label><input type="radio" name="verdict" value="未知" ' + (p && p.state === "未知" ? "checked" : "") + '>未知</label></div><label>证据</label><input name="evidence" value="' + esc(p && p.evidence && p.evidence[0] ? p.evidence[0] : "") + '"><label>理由</label><textarea name="reason" required placeholder="三个月后能看懂当时的判断"></textarea><p class="note">写一条 premise.judge 事件。判已破会触发影响案，但系统不会自动改决定。</p>';
+    if (kind === "overturn") body = '<label>新决定的一句话</label><textarea name="statement" required placeholder="写定了什么，不写「见正文」"></textarea><label>来源票</label><input name="sourceTicket" placeholder="#142"><p class="note">旧决定标 superseded，新决定取代它。旧决定不重开。</p>';
+    if (kind === "edit-ticket") body = '<label>标题</label><input name="title" value="' + esc(t ? t.title : "") + '"><label>拆票理由</label><textarea name="splitReason">' + esc(t ? t.splitReason : "") + "</textarea>";
+    if (kind === "comment") body = '<label>评论正文</label><textarea name="body" required placeholder="写给人看的评论"></textarea>';
+    if (kind === "new-ticket") body = '<label>标题</label><input name="title" required><label>票型</label><select name="type"><option value="grilling">grilling</option><option value="research">research</option><option value="prototype">prototype</option><option value="task">task</option></select><label>拆票理由</label><textarea name="splitReason" required placeholder="为什么从这条决定拆出来"></textarea><label>覆盖第几句（逗号隔开）</label><input name="covers" placeholder="8"></label>';
+    return '<div class="modal-wrap"><div class="modal-backdrop" data-act="close-modal"></div><div class="modal"><div class="modal-head"><div><h3>' + title + '</h3><p class="sub">' + esc(sub) + '</p></div><button class="modal-close" data-act="close-modal" aria-label="关闭">×</button></div>' +
+      '<form data-form="' + kind + '" data-target="' + esc(target) + '">' + body + '<div class="modal-actions"><button type="button" class="btn" data-act="close-modal">取消</button><button type="submit" class="btn primary">写入事件</button></div></form></div></div>';
+  }
+
+  /* ---------- 动作 ---------- */
+  function toast(msg){
+    state.toast = msg;
+    var t = el("toast"); if (t){ t.textContent = msg; t.classList.add("on"); }
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ state.toast = ""; var x = el("toast"); if (x) x.classList.remove("on"); }, 2600);
+  }
+  function nextImpact(){
+    var keys = D.impact.items.map(function(i){ return i.key; });
+    var i = keys.indexOf(state.sel);
+    state.sel = keys[(i + 1 + keys.length) % keys.length];
+    render();
+  }
+  function render(){
+    var app = el("app");
+    app.innerHTML = state.variant === "A" ? viewA() : state.variant === "B" ? viewB() : viewC();
+    try {
+      var u = new URL(location.href);
+      u.searchParams.set("variant", state.variant);
+      if (state.sel) u.searchParams.set("sel", state.sel);
+      if (state.mode !== "graph") u.searchParams.set("mode", state.mode); else u.searchParams.delete("mode");
+      if (state.tab !== "impact") u.searchParams.set("tab", state.tab);
+      if (state.expandedOld) u.searchParams.set("old", "1"); else u.searchParams.delete("old");
+      if (state.demo.size) u.searchParams.set("demo", Array.from(state.demo).join(",")); else u.searchParams.delete("demo");
+      if (state.filter) u.searchParams.set("filter", state.filter); else u.searchParams.delete("filter");
+      history.replaceState(null, "", u.toString());
+    } catch (e) { /* file:// 下有的浏览器不让改地址，原型照样能点 */ }
+  }
+  document.addEventListener("click", function(e){
+    var n = e.target.closest("[data-act]");
+    if (!n) return;
+    var act = n.getAttribute("data-act"), val = n.getAttribute("data-val") || "", arg = n.getAttribute("data-arg") || "";
+    if (act === "cycle"){ cycle(Number(val) || 1); return; }
+    if (act === "variant"){ state.variant = val; render(); return; }
+    if (act === "select"){ state.sel = val; if (state.variant === "C" && val.indexOf(":") >= 0) state.mode = "impact"; render(); return; }
+    if (act === "mode"){ state.mode = val; if (state.variant === "C" && val === "impact") state.sel = D.impact.items[0].key; render(); return; }
+    if (act === "tab"){ state.tab = val; render(); return; }
+    if (act === "toggle-old"){ state.expandedOld = !state.expandedOld; render(); if (state.expandedOld){ var m = document.querySelector(".a-main"); if (m) m.scrollTop = m.scrollHeight; } return; }
+    if (act === "signal"){ toggleSignal(val); return; }
+    if (act === "clear-filter"){ state.filter = null; render(); return; }
+    if (act === "process"){ state.processed[val] = arg; toast("已写事件：影响案 I-0001 · " + val + " → " + arg); render(); return; }
+    if (act === "undo"){ delete state.processed[val]; render(); return; }
+    if (act === "next-impact"){ nextImpact(); return; }
+    if (act === "modal"){ state.modal = {kind: val, target: arg}; render(); return; }
+    if (act === "close-modal"){ state.modal = null; render(); return; }
+  });
+  function toggleSignal(key){
+    var s = signalByKey(key); if (!s) return;
+    var n = signalCount(s);
+    if (n === 0 && !state.demo.has(key)){
+      state.demo.add(key); state.filter = key; toast("已造一个示例：" + s.label); render(); return;
+    }
+    if (state.demo.has(key) && n === 1){
+      state.demo.delete(key);
+    }
+    state.filter = state.filter === key ? null : key;
+    render();
+  }
+  document.addEventListener("submit", function(e){
+    var f = e.target.closest("form[data-form]"); if (!f) return;
+    e.preventDefault();
+    var kind = f.getAttribute("data-form"), target = f.getAttribute("data-target");
+    var fd = new FormData(f);
+    if (kind === "add-premise"){
+      var p = { id: "P-" + String(900 + allPremises().length), decision: target, statement: fd.get("statement"), state: "未验", evidence: [fd.get("evidence") || "手工录入"], lastJudge: null };
+      local.premises.push(p); toast("已写 premise.add：" + p.id + " · 未验");
+    } else if (kind === "judge-premise"){
+      var pre = findPremise(target); if (pre){
+        pre.state = fd.get("verdict") || "未知";
+        pre.lastJudge = {verdict: pre.state, by: "human:运营者", at: "2026-11-10 17:30", reason: fd.get("reason") || ""};
+        if (pre.state === "已破") toast("已写 premise.judge：已破。影响案会在下一步重算，决定不会自动改。");
+        else toast("已写 premise.judge：" + pre.state);
+      }
+    } else if (kind === "overturn"){
+      var old = findDecision(target); if (old){
+        local.status[old.id] = "superseded";
+        var nd = { id: "D-" + String(900 + local.decisions.length), statement: fd.get("statement"), status: "active", supersedes: old.id, outputs: [], base: "D-9xx", isBase: true, root: false, layer: "new", sourceTicket: fd.get("sourceTicket") || null, premises: [] };
+        local.decisions.push(nd); state.sel = "decision:" + nd.id;
+        toast("旧决定标 superseded，新决定 " + nd.id + " 已建");
+      }
+    } else if (kind === "edit-ticket"){
+      var tk = findTicket(target); if (tk){ tk.title = fd.get("title") || tk.title; tk.splitReason = fd.get("splitReason") || tk.splitReason; toast("已写 issue.edit v2"); }
+    } else if (kind === "comment"){
+      local.comments[target] = local.comments[target] || []; local.comments[target].push(fd.get("body")); toast("已写 comment.create");
+    } else if (kind === "new-ticket"){
+      var id = "I-" + String(900 + local.tickets.length);
+      var covers = String(fd.get("covers") || "").split(/[,，\s]+/).filter(Boolean).map(Number);
+      local.tickets.push({ id: id, title: fd.get("title"), type: fd.get("type"), state: "open", work: "未领取", mapId: 139, derivedFrom: ["D-ROOT"], produces: [], covers: covers, splitReason: fd.get("splitReason"), url: "#", labels: ["wayfinder:" + fd.get("type")] });
+      state.sel = "ticket:" + id; toast("已写 issue.create：" + id);
+    }
+    state.modal = null; render();
+  });
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape" && state.modal){ state.modal = null; render(); return; }
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (["INPUT","TEXTAREA","SELECT"].indexOf(tag) >= 0) return;
+    if (e.key === "ArrowLeft"){ cycle(-1); e.preventDefault(); }
+    if (e.key === "ArrowRight"){ cycle(1); e.preventDefault(); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
