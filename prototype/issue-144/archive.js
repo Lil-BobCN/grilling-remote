@@ -133,7 +133,7 @@ window.PROTO_ARCHIVE = {
     },
     142: {
       background: {
-        summary: "这张票定前提怎么记、怎么判、判破后怎么触发影响案。根决定要求决定记前提、一变就算影响，所以先定前提本身和命令形状。范围只到前提；影响面算法和屏幕排布不在票里。",
+        summary: "这张票定前提怎么记、怎么判、判破后怎么触发影响清单。根决定要求决定记前提、一变就算影响，所以先定前提本身和命令形状。范围只到前提；影响面算法和屏幕排布不在票里。",
         body: "Part of #139\n\n按《中台 v1：决策看板，GitHub 做镜像》更新（2026-11-10）：前提是影响案的上游，判定结果要能触发范围计算。\n\n## Question\n\n前提模型定清楚：\n\n- P- 编号规则。\n- 初始状态，以及未验 / 成立 / 已破 / 未知四值的含义。\n- 判定四档（仍成立 / 需修改 / 作废 / 要补问）怎么落到状态。\n- 「需修改」是新建前提、新建决定，还是追加事件。\n- 命令行形状：`premise add`、`premise judge`。\n- 证据字段存什么。\n- 前提判破时怎么让影响案知道：直接触发，还是下一次命令触发？\n\n## Type\n\nwayfinder:grilling，HITL\n\n## Direct blockers\n\nNone\n\n## Scope\n\n只定前提本身和它的命令。不定影响面算法，不定屏幕排布。\n\n## Success condition\n\n能给 D-0009 挂 P-9，判 broken，`impact` 能算出受影响面。四档判定各有明确的落点和后续动作。前提判破后，影响案能收到触发。\n\n## Evidence\n\n- 设计初稿 `中台/设计.md`「数据模型·前提」「推翻的时候发生什么」「验收」第 3 条。\n- 现有台账没有前提列。\n- 地图 #139 新 Destination 和 Notes。",
         sourceLabel: "#142 正文",
         sourceUrl: "https://github.com/Lil-BobCN/grilling-remote/issues/142"
@@ -146,7 +146,7 @@ window.PROTO_ARCHIVE = {
         "D-0013d": "谁写、谁审",
         "D-0013e": "判过锁陈述",
         "D-0013f": "证据存引用",
-        "D-0013g": "判破触发影响案",
+        "D-0013g": "判破触发影响清单",
         "D-0013h": "一条前提只挂一条决定",
         "D-0013i": "编号与命令"
       },
@@ -197,12 +197,12 @@ window.PROTO_ARCHIVE = {
         {name:"编号", ids:["D-0013i"]}
       ],
       unresolved: [
-        "无。影响案范围由 #151 定。"
+        "无。影响清单范围由 #151 定。"
       ]
     },
     149: {
       background: {
-        summary: "这张票定地图、票、评论各有哪些字段，靠哪些因果边连起来，哪些 GitHub 功能不搬。根决定要求地图的终点存成根决定、票写拆票理由和 `derived_from`，所以先把实体和边定清楚。范围只到字段、因果边和编辑规则；事件信封、影响案算法、同步机制、屏幕排布都不在票里。",
+        summary: "这张票定地图、票、评论各有哪些字段，靠哪些因果边连起来，哪些 GitHub 功能不搬。根决定要求地图的终点存成根决定、票写拆票理由和 `derived_from`，所以先把实体和边定清楚。范围只到字段、因果边和编辑规则；事件信封、影响清单算法、同步机制、屏幕排布都不在票里。",
         body: "Part of #139\n\n按《中台 v1：决策看板，GitHub 做镜像》新终点更新（2026-11-10）：加入 Destination 主句根决定、覆盖表、拆票理由和因果边。\n\n## Question\n\n图、票和评论定清楚：\n\n- 地图和根决定有哪些字段：地图标题、正文、状态、标签；Destination 主句怎么存成根决定。\n- 覆盖表怎么表达：主句片段 → 票 → 拆票理由。每一句能不能落多张票。\n- 票有哪些字段：标题、正文、状态、标签、作者、时间、父子、阻塞、拆票理由、`derived_from`。\n- 每张票创建时怎么写拆票理由；一张票能不能由多条决定产生；`derived_from` 指向哪些决定。\n- 票产出决定时怎么记 `source_ticket`；决定取代和派生怎么记。\n- 票型是独立字段还是 `wayfinder:` 标签。\n- 评论有哪些字段：作者、时间、正文；能不能编辑、删除。\n- 哪些字段可改，每种修改记成什么动作。\n- 标签是固定集合还是自由文本。\n- 父子、阻塞关系怎么表达，和 GitHub 的 sub-issue、blocked-by 怎么对应。\n- 新建地图和票时，编号怎么分配；和 GitHub issue 编号怎么映射。\n- 哪些 GitHub tracker 功能不做：assignees、milestones、projects、reactions、通知。\n\n## Type\n\nwayfinder:grilling，HITL\n\n## Direct blockers\n\nNone\n\n## Scope\n\n只定实体字段、因果边和编辑规则。不定事件信封，不定影响案算法，不定同步机制，不定屏幕排布。\n\n## Success condition\n\n能列出 v1 的根决定、票、评论、覆盖表字段和每种编辑动作，直接写成数据结构和命令。和事件模型的 op 清单对得上。拆票理由和 `derived_from` 有明确落点。\n\n## Evidence\n\n- 地图 #139 新 Destination 和 Notes。\n- 地图 #117 的 10 张子票、17 条评论、31 条决定、24 句覆盖表。\n- 关票评论的四列表：能重建 `source_ticket`，不能重建决定→票的因果。\n- 设计初稿 `中台/设计.md`「数据模型」。",
         sourceLabel: "#149 正文",
         sourceUrl: "https://github.com/Lil-BobCN/grilling-remote/issues/149"

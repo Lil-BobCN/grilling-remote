@@ -2121,13 +2121,13 @@ window.PROTO_MAP1 = {
     },
     {
       "key": "impact-open",
-      "label": "影响案未清",
+      "label": "影响清单未清",
       "tone": "red",
       "count": 1,
       "targets": [
         "impact:I-0001"
       ],
-      "hint": "P-0001 判破后生成的影响案还有 7 项没处理。"
+      "hint": "P-0001 判破后生成的影响清单还有 7 项没处理。"
     },
     {
       "key": "stuck-ticket",

@@ -126,7 +126,7 @@
 - 注入预算 65536 字节。旧模板 7500 字节，成品 `AGENTS.md` 12415 字节。
 - `subagent` 是新上下文，`subagent_fork` 继承对话。依据：本机 dsh 0.2.1-rc.5 的 `@deepseek-ai/dsh-base` 包，`cordis.patch.yml:380-395`，不在本仓库。另有 `@deepseek-ai/dsh-tool-subagent` 的 `README.zh.md`。客户机版本没测过。
 - 重开新会话能读到 `AGENTS.md`：`customer-kit/测试记录.md`。
-- dsh 的注入文本写明不覆盖用户的直接指令，所以 `AGENTS.md` 只能劝，拦不住。依据：`docs/research/客户澄清改走本机安装（旁支记录）.md`。
+- dsh 的注入文本写明不覆盖客户的直接指令，所以 `AGENTS.md` 只能劝，拦不住。依据：`docs/research/客户澄清改走本机安装（旁支记录）.md`。
 
 ## 没测到
 

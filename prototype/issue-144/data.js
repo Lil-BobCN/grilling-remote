@@ -1772,7 +1772,7 @@ window.PROTO_DATA = {
         "kind": "decision",
         "id": "D-0010",
         "status": "pending",
-        "why": "P-0001 已破：数据只在一台机器上产生的假设不成立"
+        "why": "P-0001 已破：数据只在一台机器上产生的前提不成立"
       },
       {
         "key": "decision:D-0010a",
@@ -1793,7 +1793,7 @@ window.PROTO_DATA = {
         "kind": "decision",
         "id": "D-0010c",
         "status": "pending",
-        "why": "事件日志加锁追加，多机写者假设要重看"
+        "why": "事件日志加锁追加，多机写者前提要重看"
       },
       {
         "key": "decision:D-0010d",
