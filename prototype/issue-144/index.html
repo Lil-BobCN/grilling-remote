@@ -2081,7 +2081,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var items = D.impact.items.map(function(it){
       var done = state.processed[it.key];
       var isDec = it.kind === "decision";
-      var acts = isDec ? ["仍成立","需修改","作废","要补问"] : ["保留","改范围","关掉","重开","新建","合并"];
+      var acts = isDec ? ["仍成立","需修改","作废","要补问"] : ["保留","改范围","关掉","重开","新建"];
       return '<div class="q-item ' + (done ? "done" : "pending") + '">' +
         '<div class="q-top"><span class="kind">' + (isDec ? "决定" : "票") + '</span><span class="id">' + esc(isDec ? it.id : "#" + it.id) + "</span>" +
         (done ? '<span class="chip green">已处理：' + esc(done) + "</span>" : '<span class="chip red">待处理</span>') + "</div>" +
@@ -2090,7 +2090,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
           '<div class="q-actions">' + acts.map(function(a){ return '<button class="btn small" data-act="process" data-val="' + it.key + '" data-arg="' + a + '">' + a + "</button>"; }).join("") + "</div>") +
         "</div>";
     }).join("");
-    return '<div class="queue-head"><div><span class="eyebrow">影响清单 · 逐项处理</span><h2>' + esc(D.impact.id) + '</h2><p style="font-size:11px;color:var(--muted);margin-top:2px">决定四档，票六种。系统只列名单，不改决定。</p></div><div class="progress"><b>' + st.done + "/" + st.total + "</b>已处理<br>" + st.pct + "%</div></div>" + impactTrigger() + '<div class="q-list">' + items + "</div>";
+    return '<div class="queue-head"><div><span class="eyebrow">影响清单 · 逐项处理</span><h2>' + esc(D.impact.id) + '</h2><p style="font-size:11px;color:var(--muted);margin-top:2px">决定四档，票五种。系统只列名单，不改决定。</p></div><div class="progress"><b>' + st.done + "/" + st.total + "</b>已处理<br>" + st.pct + "%</div></div>" + impactTrigger() + '<div class="q-list">' + items + "</div>";
   }
   function impactLayout(){
     return '<div class="impact-layout"><main class="impact-main">' + graphA() + legendA() + '</main><aside class="impact-side">' + impactQueue() + '<div class="section" style="margin-top:18px">' + detailView() + "</div></aside></div>";
