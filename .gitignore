@@ -27,3 +27,7 @@ customers.json
 # 本地工具与 Cloudflare 登录态，含 OAuth 令牌，不进仓库
 .tools/
 .cloudflare/
+
+# Python
+__pycache__/
+*.pyc
