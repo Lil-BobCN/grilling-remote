@@ -57,7 +57,7 @@
 
 ### 任务管理
 
-任务和产品规格放在 GitHub Issues（`Lil-BobCN/grilling-remote`），用 `gh` CLI 操作。详见 `docs/agents/issue-tracker.md`。
+任务和产品规格放在中台（`http://127.0.0.1:8788`，命令行 `中台/dt`），GitHub 是只读镜像。详见 `docs/agents/issue-tracker.md`。
 
 ### 分类标签
 
@@ -67,9 +67,9 @@
 
 采用单一上下文：根目录 `GLOSSARY.md` 记领域词汇，重大决定写进 `docs/adr/`。详见 `docs/agents/domain.md`。
 
-### 地图变动
+### 工作流程
 
-关票、开票、写 spec 之前，先读 `docs/agents/issue-tracker.md` 的「地图上的变动怎么留痕」。会话结束前跑 `/wrap-up`，`to-spec` 之前跑 `/map-gate`，之后跑 `/spec-check`。
+开工前先看三样：地图的 Destination 和覆盖表、开着的影响清单、当前票的前提和状态。建票必填拆票理由和 `derived_from`，先查重。五类检查按 `docs/agents/issue-tracker.md` 做。旧的收尾和门禁技能已删除，不再使用。
 
 ## 冲突处理
 

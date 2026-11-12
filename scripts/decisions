@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 2026-11-12 冻结到 v1 验收：中台是主记录，本脚本只作历史，不再参与日常关票。
 """scripts/decisions：编台账、查八条不变量、查编号链。
 
 build <地图编号>  读带 wayfinder: 标签的已关闭票及评论、地图子票；写 docs/decisions.md、
