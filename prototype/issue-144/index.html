@@ -372,7 +372,7 @@ body.dragging-a *{cursor:grabbing!important;user-select:none}
 .empty{font-size:12px;color:var(--muted);padding:8px 0}
 .note{font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px}
 
-/* 票档案：内容层 */
+/* 票侧边栏：内容层 */
 .archive-focus{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;padding:8px 11px;margin-top:12px}
 .archive-focus .id-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px}
 .archive-focus-stmt{margin:0;white-space:pre-wrap;font:12.5px/1.6 var(--sans);color:var(--accent2)}
@@ -1272,7 +1272,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var tspans = lines.map(function(line, i){ return '<tspan x="14" dy="' + (i === 0 ? 0 : lineH) + '">' + esc(line) + "</tspan>"; }).join("");
     var meta = root
       ? "根决定 · " + (D.map.fragments || []).length + " 句拆句 · " + ticketsOfMap(D.map.id).length + " 张票 · " + ticketsOfMap(D.map.id).filter(function(t){ return t.state === "open"; }).length + " 张开放"
-      : (ps.length ? ps.length + " 条前提" : "无前提");
+      : (ps.length ? ps.length + " 条前提" : "没有记录前提");
     var badge = root ? "" : (decisionStatus(d) === "superseded" ? "已被取代" : decisionStatus(d) === "void" ? "已作废" : ps.length ? (tone === "red" ? "前提已破" : tone === "green" ? "前提全成立" : "前提未验 / 未知") : "");
     var cls = "node-a " + tone + (root ? " root" : "") + nodeImpactClsA("decision:" + d.id) + nodeSelClsA("decision:" + d.id);
     return '<g class="' + cls + '" data-act="select" data-val="decision:' + esc(d.id) + '" transform="translate(' + p.x + ',' + p.y + ')" title="' + esc(decisionStatement(d)) + '">' +
@@ -1339,8 +1339,8 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var lines = wrapLines(decisionStatement(d), lineChars(p.w, 12.5, 24));
     var tspans = lines.map(function(line, i){ return '<tspan x="12" dy="' + (i === 0 ? 0 : 17.5) + '">' + esc(line) + "</tspan>"; }).join("");
     var metaY = Math.round(44 + lines.length * 17.5 + 14);
-    var meta = "由 #" + (d.sourceTicket || "?") + " 产出 · " + (ps.length ? ps.length + " 条前提" : "无前提");
-    var badge = d.partlySuperseded ? "部分已废" : decisionStatus(d) === "superseded" ? "已被取代" : decisionStatus(d) === "void" ? "已作废" : ps.length ? (tone === "red" ? "前提已破" : tone === "green" ? "前提全成立" : "前提未验 / 未知") : "";
+    var meta = "由 #" + (d.sourceTicket || "?") + " 产出 · " + (ps.length ? ps.length + " 条前提" : "没有记录前提");
+    var badge = d.partlySuperseded ? "部分被取代" : decisionStatus(d) === "superseded" ? "已被取代" : decisionStatus(d) === "void" ? "已作废" : ps.length ? (tone === "red" ? "前提已破" : tone === "green" ? "前提全成立" : "前提未验 / 未知") : "";
     var cls = "node-a dec-group-a " + tone + nodeImpactClsA("decision:" + d.id) + nodeSelClsA("decision:" + d.id);
     var out = '<g class="' + cls + '" data-act="select" data-val="decision:' + esc(d.id) + '" transform="translate(' + p.x + ',' + p.y + ')" title="' + esc(decisionStatement(d)) + '">' +
       '<rect class="nrect-a" width="' + p.w + '" height="' + p.h + '" rx="11"></rect>' +
@@ -1650,7 +1650,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var pc = ad && ad.premiseContext && ad.premiseContext[p.id];
     var fact = pc && pc.fact ? pc.fact : p.statement;
     return '<ol class="p-timeline">' +
-      '<li><span class="step-label">原假设</span><p>' + esc(fact) + "</p></li>" +
+      '<li><span class="step-label">原前提</span><p>' + esc(fact) + "</p></li>" +
       '<li><span class="step-label">新事实</span><p>' + esc(premiseNewFact(p, arch)) + '</p><p class="step-source">来源：' + esc(premiseSource(p, arch)) + "</p></li>" +
       '<li><span class="step-label">判定</span><p>' + esc(premiseJudgment(p)) + "</p></li>" +
       '<li><span class="step-label">影响</span><p>' + esc(premiseImpactText(p)) + "</p></li>" +
@@ -1676,7 +1676,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     return '<div class="sb-head">' +
       '<div class="sb-idrow"><span class="id">' + esc(d.id) + "</span>" +
       (d.root ? '<span class="chip accent">根决定</span>' : d.isBase ? '<span class="chip accent">主决定</span>' : '<span class="chip">补充决定</span>') +
-      stateChip(st) + (d.partlySuperseded ? '<span class="chip amber">部分已废</span>' : "") + (d.layer === "old" ? '<span class="chip gray">旧图</span>' : "") + signalBadges("decision", d.id) + "</div>" +
+      stateChip(st) + (d.partlySuperseded ? '<span class="chip amber">部分被取代</span>' : "") + (d.layer === "old" ? '<span class="chip gray">旧图</span>' : "") + signalBadges("decision", d.id) + "</div>" +
       "<h2>" + esc(decisionStatement(d)) + "</h2>" +
       '<div class="sb-meta">' +
       (t ? '<button class="id-link" data-act="select" data-val="ticket:' + t.id + '">来源票 #' + t.id + "</button>"
@@ -2139,7 +2139,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     return '<header class="topbar">' +
       '<div class="brand"><span class="logo">中</span><b>中台</b></div>' +
       '<span class="tb-sep"></span>' +
-      '<div class="map-title"><b>#' + esc(D.map.id) + " " + esc(D.map.title) + '</b><span>决策是节点，票是边</span></div>' + mapSwitch() +
+      '<div class="map-title"><b>#' + esc(D.map.id) + " " + esc(D.map.title) + '</b><span>决定是节点，票是边</span></div>' + mapSwitch() +
       '<div class="top-counts"><span><b>' + c.bases + "</b> 组决定</span><span><b>" + c.tickets + "</b> 张票</span>" +
       (c.open ? '<span><b>' + c.open + "</b> 开放</span>" : "") + "</div>" +
       '<div class="seg"><button class="' + (state.mode === "graph" ? "active" : "") + '" data-act="mode" data-val="graph">决策图</button>' +
