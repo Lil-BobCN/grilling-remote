@@ -658,7 +658,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
 .filter-banner{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent2);border-radius:9px;padding:7px 10px;font-size:12px;margin-bottom:10px}
 .filter-banner b{font-weight:600}
 
-/* 影响案 */
+/* 影响清单 */
 .impact-banner{display:flex;align-items:center;gap:12px;padding:9px 20px;background:linear-gradient(90deg,var(--red-soft),var(--surface));border-bottom:1px solid var(--red-line);font-size:12px;color:var(--red-ink)}
 .impact-banner .pulse{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(168,58,44,.13);animation:pulse 1.8s infinite}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(168,58,44,.12)}50%{box-shadow:0 0 0 7px rgba(168,58,44,.04)}}
@@ -1641,9 +1641,9 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
   }
   function premiseImpactText(p){
     if (D.impact && D.impact.triggerPremise === p.id){
-      return "影响案 " + D.impact.id + "：" + D.impact.decisions.length + " 条决定、" + D.impact.tickets.length + " 张票（#" + D.impact.tickets.join(" / #") + "）。";
+      return "影响清单 " + D.impact.id + "：" + D.impact.decisions.length + " 条决定、" + D.impact.tickets.length + " 张票（#" + D.impact.tickets.join(" / #") + "）。";
     }
-    return p.state === "已破" ? "这条前提判破后没有登记影响案。" : "没有触发影响案。";
+    return p.state === "已破" ? "这条前提判破后没有登记影响清单。" : "没有触发影响清单。";
   }
   function premiseTimelineHtml(p, arch){
     var ad = archiveDecisionOf(arch, p.decision);
@@ -1682,7 +1682,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
       (t ? '<button class="id-link" data-act="select" data-val="ticket:' + t.id + '">来源票 #' + t.id + "</button>"
          : d.root ? '<a class="id-link" href="' + esc(D.map.url || "#") + '" target="_blank" rel="noreferrer">地图 #' + esc(D.map.id) + " 正文</a>"
          : '<span>没有来源票</span>') +
-      '<span class="sb-dot">·</span><span>' + (D.impact && D.impact.decisions.indexOf(d.id) >= 0 ? "在影响案 " + D.impact.id + " 里" : "不在影响案里") + "</span>" +
+      '<span class="sb-dot">·</span><span>' + (D.impact && D.impact.decisions.indexOf(d.id) >= 0 ? "在影响清单 " + D.impact.id + " 里" : "不在影响清单里") + "</span>" +
       '<span class="sb-dot">·</span><span>' + (ps.length ? ps.length + " 条前提" : "没有记录前提") + "</span>" +
       (d.supersedes && d.supersedes !== "无" ? '<span class="sb-dot">·</span><span>取代 ' + esc(d.supersedes) + "</span>" : "") +
       "</div>" +
@@ -1805,14 +1805,14 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var group = allDecisions().filter(function(x){ return x.base === baseId; }).map(function(x){ return x.id; });
     if (!D.impact || D.impact.decisions.indexOf(d.id) < 0){
       var done = D.impact && D.impact.decisions.filter(function(id){ return group.indexOf(id) < 0; });
-      return '<div class="sb-empty">没有影响案。这条决定没被任何已破前提扫到' + (done && done.length ? "。" : "。") + '</div>';
+      return '<div class="sb-empty">没有影响清单。这条决定没被任何已破前提扫到' + (done && done.length ? "。" : "。") + '</div>';
     }
     var items = D.impact.items.filter(function(it){ return it.kind === "decision" && it.id === d.id; })[0];
     var processed = state.processed[items ? items.key : ""];
-    return '<div class="impact-line hot"><span class="il-k">影响案</span><div class="il-v"><b>' + esc(D.impact.id) + "</b> 由 " + esc(D.impact.triggerPremise) + " 判破触发。这条在名单里，" +
+    return '<div class="impact-line hot"><span class="il-k">影响清单</span><div class="il-v"><b>' + esc(D.impact.id) + "</b> 由 " + esc(D.impact.triggerPremise) + " 判破触发。这条在名单里，" +
       (processed ? "已处理：" + esc(processed) : "还没处理") + "。</div></div>" +
       '<div class="impact-line"><span class="il-k">同组</span><div class="il-v">' + group.length + " 条决定一起看；受影响票 #" + D.impact.tickets.join(" / #") + "。</div></div>" +
-      (processed ? "" : '<div class="sb-actions"><button class="btn small" data-act="mode" data-val="impact">去影响案处理</button></div>');
+      (processed ? "" : '<div class="sb-actions"><button class="btn small" data-act="mode" data-val="impact">去影响清单处理</button></div>');
   }
 
   function decisionSidebarHtml(d){
@@ -2066,7 +2066,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
       '<div class="sb-h"><span class="sb-n">02</span>这张票产出了什么</div>' + (produces || '<div class="sb-empty">这张票还没有产出决定。</div>');
   }
 
-  /* ---------- 影响案 ---------- */
+  /* ---------- 影响清单 ---------- */
   function impactStats(){
     var total = D.impact.items.length, done = Object.keys(state.processed).length;
     return {total: total, done: done, pct: total ? Math.round(done / total * 100) : 0};
@@ -2090,7 +2090,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
           '<div class="q-actions">' + acts.map(function(a){ return '<button class="btn small" data-act="process" data-val="' + it.key + '" data-arg="' + a + '">' + a + "</button>"; }).join("") + "</div>") +
         "</div>";
     }).join("");
-    return '<div class="queue-head"><div><span class="eyebrow">影响案 · 逐项处理</span><h2>' + esc(D.impact.id) + '</h2><p style="font-size:11px;color:var(--muted);margin-top:2px">决定四档，票六种。系统只列名单，不改决定。</p></div><div class="progress"><b>' + st.done + "/" + st.total + "</b>已处理<br>" + st.pct + "%</div></div>" + impactTrigger() + '<div class="q-list">' + items + "</div>";
+    return '<div class="queue-head"><div><span class="eyebrow">影响清单 · 逐项处理</span><h2>' + esc(D.impact.id) + '</h2><p style="font-size:11px;color:var(--muted);margin-top:2px">决定四档，票六种。系统只列名单，不改决定。</p></div><div class="progress"><b>' + st.done + "/" + st.total + "</b>已处理<br>" + st.pct + "%</div></div>" + impactTrigger() + '<div class="q-list">' + items + "</div>";
   }
   function impactLayout(){
     return '<div class="impact-layout"><main class="impact-main">' + graphA() + legendA() + '</main><aside class="impact-side">' + impactQueue() + '<div class="section" style="margin-top:18px">' + detailView() + "</div></aside></div>";
@@ -2143,7 +2143,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
       '<div class="top-counts"><span><b>' + c.bases + "</b> 组决定</span><span><b>" + c.tickets + "</b> 张票</span>" +
       (c.open ? '<span><b>' + c.open + "</b> 开放</span>" : "") + "</div>" +
       '<div class="seg"><button class="' + (state.mode === "graph" ? "active" : "") + '" data-act="mode" data-val="graph">决策图</button>' +
-      (D.impact && D.impact.items && D.impact.items.length ? '<button class="' + (state.mode === "impact" ? "active" : "") + '" data-act="mode" data-val="impact">影响案</button>' : "") +
+      (D.impact && D.impact.items && D.impact.items.length ? '<button class="' + (state.mode === "impact" ? "active" : "") + '" data-act="mode" data-val="impact">影响清单</button>' : "") +
       (D.coverage && D.coverage.length ? '<button class="' + (state.mode === "coverage" ? "active" : "") + '" data-act="mode" data-val="coverage">覆盖表</button>' : "") + "</div>" +
       '<button class="tb-btn" data-act="top" data-val="toggle" aria-expanded="' + (state.top !== "closed") + '" title="信号与快照">' +
         ICON.panel + '<span class="tb-signal"><span class="live-dot"></span><b>' + selCount + "</b></span></button>" +
@@ -2156,7 +2156,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
       '<div class="tbp-block"><span class="tbp-label">信号</span>' + signalChips() + "</div>" +
       '<div class="tbp-block"><span class="tbp-label">主句</span><span class="sb-quiet" style="max-width:46ch">' + esc(rootId()) + " " + (D.map.fragments || []).length + ' 句拆句，覆盖表由拆句、票和拆票理由联接算出。</span></div>' +
       '<div class="tbp-block" style="margin-left:auto"><span class="tbp-label">快照</span><span class="tb-signal">' + esc(D.generatedAt) + "</span>" +
-      '<span class="tbp-label" style="margin-left:8px">原型</span><span class="sb-quiet">真数据来自 GitHub；前提和影响案是示例。← → 换地图</span>' +
+      '<span class="tbp-label" style="margin-left:8px">原型</span><span class="sb-quiet">真数据来自 GitHub；前提和影响清单是示例。← → 换地图</span>' +
       '<button class="tb-btn" data-act="top" data-val="close" title="收起" aria-label="收起顶部栏">' + ICON.close + "</button></div>" +
       "</div></div></div>";
   }
@@ -2207,7 +2207,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     var sub = d ? d.id + " · " + trunc(decisionStatement(d), 36) : t ? "#" + t.id + " · " + trunc(ticketTitle(t), 36) : p ? p.id + " · " + trunc(p.statement, 36) : "";
     var body = "";
     if (kind === "add-premise") body = '<label>陈述</label><textarea name="statement" required placeholder="一句可被证伪的话"></textarea><label>证据</label><input name="evidence" placeholder="#142 或 中台/设计.md 或 原话"><p class="note">写一条 premise.add 事件。状态从 未验 开始。</p>';
-    if (kind === "judge-premise") body = '<label>判定</label><div class="radio-row"><label><input type="radio" name="verdict" value="成立" ' + (p && p.state === "成立" ? "checked" : "") + '>成立</label><label><input type="radio" name="verdict" value="已破" ' + (!p || p.state === "已破" ? "checked" : "") + '>已破</label><label><input type="radio" name="verdict" value="未知" ' + (p && p.state === "未知" ? "checked" : "") + '>未知</label></div><label>证据</label><input name="evidence" value="' + esc(p && p.evidence && p.evidence[0] ? p.evidence[0] : "") + '"><label>理由</label><textarea name="reason" required placeholder="三个月后能看懂当时的判断"></textarea><p class="note">写一条 premise.judge 事件。判已破会触发影响案，但系统不会自动改决定。</p>';
+    if (kind === "judge-premise") body = '<label>判定</label><div class="radio-row"><label><input type="radio" name="verdict" value="成立" ' + (p && p.state === "成立" ? "checked" : "") + '>成立</label><label><input type="radio" name="verdict" value="已破" ' + (!p || p.state === "已破" ? "checked" : "") + '>已破</label><label><input type="radio" name="verdict" value="未知" ' + (p && p.state === "未知" ? "checked" : "") + '>未知</label></div><label>证据</label><input name="evidence" value="' + esc(p && p.evidence && p.evidence[0] ? p.evidence[0] : "") + '"><label>理由</label><textarea name="reason" required placeholder="三个月后能看懂当时的判断"></textarea><p class="note">写一条 premise.judge 事件。判已破会触发影响清单，但系统不会自动改决定。</p>';
     if (kind === "overturn") body = '<label>新决定的一句话</label><textarea name="statement" required placeholder="写定了什么，不写「见正文」"></textarea><label>来源票</label><input name="sourceTicket" placeholder="#142"><p class="note">旧决定标 superseded，新决定取代它。旧决定不重开。</p>';
     if (kind === "edit-ticket") body = '<label>标题</label><input name="title" value="' + esc(t ? t.title : "") + '"><label>拆票理由</label><textarea name="splitReason">' + esc(t ? t.splitReason : "") + "</textarea>";
     if (kind === "comment") body = '<label>评论正文</label><textarea name="body" required placeholder="写给人看的评论"></textarea>';
@@ -2304,7 +2304,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
     }
     if (act === "signal"){ toggleSignal(val); return; }
     if (act === "clear-filter"){ state.filter = null; render(); return; }
-    if (act === "process"){ state.processed[val] = arg; toast("已写事件：影响案 I-0001 · " + val + " → " + arg); render(); return; }
+    if (act === "process"){ state.processed[val] = arg; toast("已写事件：影响清单 I-0001 · " + val + " → " + arg); render(); return; }
     if (act === "undo"){ delete state.processed[val]; render(); return; }
     if (act === "next-impact"){ nextImpact(); return; }
     if (act === "modal"){ state.modal = {kind: val, target: arg}; render(); return; }
@@ -2384,7 +2384,7 @@ button.relation-sub{width:100%;text-align:left;font:inherit;color:inherit}
       var pre = findPremise(target); if (pre){
         pre.state = fd.get("verdict") || "未知";
         pre.lastJudge = {verdict: pre.state, by: "human:运营者", at: "2026-11-10 17:30", reason: fd.get("reason") || ""};
-        if (pre.state === "已破") toast("已写 premise.judge：已破。影响案会在下一步重算，决定不会自动改。");
+        if (pre.state === "已破") toast("已写 premise.judge：已破。影响清单会在下一步重算，决定不会自动改。");
         else toast("已写 premise.judge：" + pre.state);
       }
     } else if (kind === "overturn"){
