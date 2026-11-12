@@ -47,7 +47,7 @@
 
 ### 地图变动
 
-关票、开票、写 spec 之前，先读 `docs/agents/issue-tracker.md` 的「地图上的变动怎么留痕」。会话结束前跑 `/wrap-up`，`to-spec` 之前跑 `/map-gate`，之后跑 `/spec-check`。
+关票、开票、写 spec 之前，先读 `docs/agents/issue-tracker.md` 的「地图上的变动怎么留痕」。2026-11-12 起，`wrap-up`、`map-gate`、`spec-check`、`next` 已删除，旧流程暂停；新流程等 #158《工作流程：中台接管后，地图、票、决定、会话怎么走》定稿。
 
 ## 冲突处理
 
