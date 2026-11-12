@@ -1,5 +1,5 @@
 window.PROTO_DATA = {
-  "generatedAt": "2026-11-10 17:10",
+  "generatedAt": "2026-11-12 14:20",
   "map": {
     "id": 139,
     "title": "中台 v1：决策看板，GitHub 做镜像",
@@ -11,10 +11,10 @@ window.PROTO_DATA = {
       "地图的 Destination 是一句主句，存成根决定。",
       "根决定产生第一批票。每张票写拆票理由和 `derived_from`。",
       "票产出决定，或推翻决定。决定记来源票、取代关系、派生关系、前提。",
-      "决定一变，中台沿因果边算出受影响的决定和票，画出一个范围，生成影响案。",
-      "影响案逐项处理：决定四档，票六种，运营者确认，确认记事件。",
+      "决定一变，中台沿因果边算出受影响的决定和票，画出一个范围，生成影响清单。",
+      "影响清单逐项处理：决定四档，票五种，运营者确认，确认记事件。",
       "GitHub 是只读镜像；orca 是执行现场，票的工作状态实时同步回中台。",
-      "屏幕先做原型，原型定稿后实现。屏幕要能看决策图、影响案、覆盖表和九类视觉信号。",
+      "屏幕先做原型，原型定稿后实现。屏幕要能看决策图、影响清单、覆盖表和九类视觉信号。",
       "复刻 GitHub tracker 的核心编辑功能，作为支撑。"
     ]
   },
@@ -833,7 +833,7 @@ window.PROTO_DATA = {
     },
     {
       "id": "D-0013g",
-      "statement": "判破写 `premise.judge`，状态立刻变，决定标红，触发影响案；系统只列名单，不自动改决定",
+      "statement": "判破写 `premise.judge`，状态立刻变，决定标红，触发影响清单；系统只列名单，不自动改决定",
       "status": "active",
       "supersedes": "无",
       "outputs": [
@@ -1399,7 +1399,7 @@ window.PROTO_DATA = {
     },
     {
       "id": 144,
-      "title": "屏幕原型：决策图、影响案与视觉信号",
+      "title": "屏幕原型：决策图、影响清单与视觉信号",
       "type": "prototype",
       "state": "open",
       "work": "进行中",
@@ -1519,7 +1519,7 @@ window.PROTO_DATA = {
     },
     {
       "id": 151,
-      "title": "影响案模型：范围、处理动作与生命周期",
+      "title": "影响清单模型：范围、处理动作与生命周期",
       "type": "grilling",
       "state": "open",
       "work": "未领取",
@@ -1532,7 +1532,7 @@ window.PROTO_DATA = {
         5,
         6
       ],
-      "splitReason": "决定一变要算出范围，影响案怎么算、怎么处理要先定。",
+      "splitReason": "决定一变要算出范围，影响清单怎么算、怎么处理要先定。",
       "url": "https://github.com/Lil-BobCN/grilling-remote/issues/151",
       "labels": [
         "wayfinder:grilling"
@@ -1574,6 +1574,24 @@ window.PROTO_DATA = {
       "url": "https://github.com/Lil-BobCN/grilling-remote/issues/153",
       "labels": [
         "wayfinder:task"
+      ]
+    },
+    {
+      "id": 158,
+      "title": "工作流程：中台接管后，地图、票、决定、会话怎么走",
+      "type": "grilling",
+      "state": "open",
+      "work": "未领取",
+      "mapId": 139,
+      "derivedFrom": [
+        "D-ROOT"
+      ],
+      "produces": [],
+      "covers": [],
+      "splitReason": "Map #139 是对工作流程的整体更新，旧技能删掉后要重新设计整条流程。",
+      "url": "https://github.com/Lil-BobCN/grilling-remote/issues/158",
+      "labels": [
+        "wayfinder:grilling"
       ]
     }
   ],
@@ -1659,7 +1677,7 @@ window.PROTO_DATA = {
         146,
         147
       ],
-      "status": "进行中"
+      "status": "待做"
     },
     {
       "frag": 2,
@@ -1688,20 +1706,20 @@ window.PROTO_DATA = {
     },
     {
       "frag": 5,
-      "text": "决定一变，中台沿因果边算出受影响的决定和票，画出一个范围，生成影响案。",
+      "text": "决定一变，中台沿因果边算出受影响的决定和票，画出一个范围，生成影响清单。",
       "tickets": [
         151
       ],
-      "status": "进行中"
+      "status": "待做"
     },
     {
       "frag": 6,
-      "text": "影响案逐项处理：决定四档，票六种，运营者确认，确认记事件。",
+      "text": "影响清单逐项处理：决定四档，票五种，运营者确认，确认记事件。",
       "tickets": [
         151,
         146
       ],
-      "status": "进行中"
+      "status": "待做"
     },
     {
       "frag": 7,
@@ -1710,11 +1728,11 @@ window.PROTO_DATA = {
         143,
         152
       ],
-      "status": "进行中"
+      "status": "待做"
     },
     {
       "frag": 8,
-      "text": "屏幕先做原型，原型定稿后实现。屏幕要能看决策图、影响案、覆盖表和九类视觉信号。",
+      "text": "屏幕先做原型，原型定稿后实现。屏幕要能看决策图、影响清单、覆盖表和九类视觉信号。",
       "tickets": [
         144,
         146
@@ -1729,7 +1747,7 @@ window.PROTO_DATA = {
         145,
         146
       ],
-      "status": "进行中"
+      "status": "待做"
     }
   ],
   "impact": {
@@ -1866,13 +1884,13 @@ window.PROTO_DATA = {
     },
     {
       "key": "impact-open",
-      "label": "影响案未清",
+      "label": "影响清单未清",
       "tone": "red",
       "count": 1,
       "targets": [
         "impact:I-0001"
       ],
-      "hint": "P-0001 判破后生成的影响案还有 7 项没处理。"
+      "hint": "P-0001 判破后生成的影响清单还有 7 项没处理。"
     },
     {
       "key": "stuck-ticket",
