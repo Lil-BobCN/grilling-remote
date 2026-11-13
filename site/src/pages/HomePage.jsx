@@ -3,22 +3,22 @@ import RiseChars from '../components/RiseChars.jsx'
 import '../styles/home.css'
 
 const titleSegments = [
-  { text: '把需求说清楚。', bold: true },
-  { text: '剩下的交给我们。' },
+  { text: '不用写代码，' },
+  { text: '把需求说清楚就行。' },
 ]
 
 const reasons = [
   {
-    title: '不用写代码',
-    text: '工作区里装好九个技能和一套规则，说人话就行。',
+    title: '工具都装好了',
+    text: '九个技能和一套规则都装好了。你只管说需求。',
   },
   {
     title: '文件在你本机',
-    text: '需求写在本地文件夹里，官网只负责交接。',
+    text: '文件一直在你电脑上。官网只负责把包发给你，再收回来。',
   },
   {
     title: '卡住有人接',
-    text: '每一步都有说明；卡住了截图给客服。',
+    text: '每一步都告诉你该看到什么。卡住了，截图发给我们。',
   },
 ]
 
@@ -26,7 +26,7 @@ const steps = [
   {
     n: '01',
     title: '下载两样',
-    text: '工作区 zip 和 dsh 安装包。两个都下好，再往下走。',
+    text: '工作区 zip 和 dsh 安装包，都下好再继续。',
     check: '你会看到：下载列表里有两个文件',
   },
   {
@@ -131,7 +131,7 @@ export default function HomePage() {
             <h1
               id="home-title"
               className="home-hero-title"
-              aria-label="把需求说清楚。剩下的交给我们。"
+              aria-label="不用写代码，把需求说清楚就行。"
               style={{ '--motion-delay': '60ms' }}
             >
               <RiseChars segments={titleSegments} />
@@ -140,7 +140,9 @@ export default function HomePage() {
               className="home-hero-lede motion-rise"
               style={{ '--motion-delay': '260ms' }}
             >
-              下载一份客户工作区，按三步装好，跟 agent 说一句话就开始。做完把整个文件夹传回来。
+              下载一份客户工作区，按三步装好，跟 agent 说一句话就开始。
+              <br className="home-lede-break" />
+              做完把整个文件夹传回来。
             </p>
           </div>
           <p
@@ -207,10 +209,10 @@ export default function HomePage() {
         <div className="home-intro-grid">
           <div>
             <h2 id="home-intro-title" className="home-section-title">
-              从这里开始，<br className="home-intro-break" />到交付结束，只有一条路。
+              从下载到交付，<br className="home-intro-break" />只有一条路。
             </h2>
             <p className="home-section-lede">
-              客户不写代码，不管工单。网站负责把下载、安装、上传和进度接起来。
+              从下载工作区到交回成品，中间不用换地方，也不用记流程。
             </p>
           </div>
           <div className="home-points">
@@ -256,7 +258,7 @@ export default function HomePage() {
               九个技能，<br />装好就能用。
             </h2>
             <p className="home-section-lede">
-              不用挑，也不用记名字。agent 会在合适的时候自己用上。
+              不用挑，也不用记名字。agent 会自己判断。
             </p>
             <a className="home-skills-link" href="/skills">
               看完整清单 →
@@ -282,11 +284,11 @@ export default function HomePage() {
         <div className="home-band-grid">
           <div>
             <h2 id="home-band-title">做完了，传回来。</h2>
-            <p>整个文件夹压成 zip，登录上传。勾「已问完」，剩下的交给我们。</p>
+            <p>整个文件夹压成 zip，登录后传回来。勾上「已问完」，剩下的我们来。</p>
           </div>
           <div>
             <h2>进度随时看。</h2>
-            <p>五档状态，每一步都写清楚。不用问人到哪了。</p>
+            <p>五档状态，走到哪一步都写清楚。不用追着问。</p>
           </div>
           <div className="home-band-actions">
             <a className="home-band-action" href="/app/upload">
