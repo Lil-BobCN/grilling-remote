@@ -69,7 +69,7 @@
 
 ### 工作流程
 
-开工前先看三样：地图的 Destination 和覆盖表、开着的影响清单、当前票的前提和状态。建票必填拆票理由和 `derived_from`，先查重。五类检查按 `docs/agents/issue-tracker.md` 做。旧的收尾和门禁技能已删除，不再使用。
+开工前先看三样：运营者看地图的 Destination 和覆盖表、开着的影响清单；agent 看当前票的前提和状态，开场汇报。运营者的日常动作和信号处置见 `docs/agents/operator-daily.md`。建票必填拆票理由和 `derived_from`，先查重。五类检查按 `docs/agents/issue-tracker.md` 做。旧的收尾和门禁技能已删除，不再使用。
 
 ## 冲突处理
 
