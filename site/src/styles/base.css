@@ -47,7 +47,7 @@ a {
   position: fixed;
   top: var(--space-16);
   left: var(--space-16);
-  z-index: 20;
+  z-index: 60;
   padding: var(--space-10) var(--space-14);
   border-radius: var(--radius-control);
   background: var(--ink);
@@ -64,7 +64,11 @@ a {
 /* 顶栏 */
 
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   padding: 0 var(--gutter);
+  background: var(--paper);
 }
 
 .site-nav {
@@ -86,6 +90,8 @@ a {
 }
 
 .brand {
+  display: inline-grid;
+  place-items: center;
   font-size: var(--text-brand);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -95,6 +101,43 @@ a {
 
 .brand:hover {
   opacity: 0.72;
+}
+
+.brand-full,
+.brand-mark {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  transition:
+    opacity 200ms var(--ease-fade) var(--brand-delay, 0ms),
+    transform var(--motion-morph) var(--ease-rise) var(--brand-delay, 0ms),
+    filter 200ms ease var(--brand-delay, 0ms);
+}
+
+/* 展开时：先收 AF，再放全称，避免两行字叠在一起。 */
+.brand-full {
+  --brand-delay: 100ms;
+}
+
+.brand-mark {
+  --brand-delay: 0ms;
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(0.35em) scale(0.94);
+}
+
+/* 收起时反过来：先收全称，再放 AF。 */
+.site-header[data-collapsed] .brand-full {
+  --brand-delay: 0ms;
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(-0.28em) scale(0.97);
+}
+
+.site-header[data-collapsed] .brand-mark {
+  --brand-delay: 130ms;
+  opacity: 1;
+  filter: none;
+  transform: none;
 }
 
 .pill {
@@ -233,6 +276,7 @@ a {
 
 @media (max-width: 900px) {
   .site-header {
+    position: static;
     padding: 0 var(--gutter-narrow);
   }
 
@@ -245,8 +289,6 @@ a {
   }
 
   .brand {
-    display: inline-flex;
-    align-items: center;
     order: 1;
     min-height: 44px;
     font-size: 18px;

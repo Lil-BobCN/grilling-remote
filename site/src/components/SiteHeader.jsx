@@ -1,6 +1,35 @@
+import { useEffect, useState } from 'react'
+
 export default function SiteHeader({ current }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    let frame = 0
+
+    const update = () => {
+      frame = 0
+      setCollapsed((wasCollapsed) => {
+        const y = window.scrollY
+        return wasCollapsed ? y > 10 : y > 28
+      })
+    }
+
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(update)
+    }
+
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
   return (
-    <header className="site-header">
+    <header className="site-header" data-collapsed={collapsed ? '' : undefined}>
       <nav className="site-nav" aria-label="主导航">
         <div className="nav-left">
           <a
@@ -31,7 +60,12 @@ export default function SiteHeader({ current }) {
           aria-label="afkfactory 首页"
           aria-current={current === 'home' ? 'page' : undefined}
         >
-          AFKFACTORY
+          <span className="brand-full" aria-hidden="true">
+            AFKFACTORY
+          </span>
+          <span className="brand-mark" aria-hidden="true">
+            AF
+          </span>
         </a>
         <div className="nav-right">
           <a

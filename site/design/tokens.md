@@ -119,6 +119,7 @@
 | `--motion-fade` | `500ms` | 淡入 |
 | `--motion-fade-reduced` | `200ms` | 减少动态时只留淡入 |
 | `--motion-rise` | `800ms` | 上浮和逐字入场 |
+| `--motion-morph` | `520ms` | 顶栏字标从全称收成 `AF` |
 | `--motion-reveal` | `700ms` | 滚动出现的位移和淡入 |
 | `--motion-reveal-short` | `450ms` | 滚动出现时的去模糊 |
 | `--motion-reveal-distance` | `18px` | 滚动出现的位移 |

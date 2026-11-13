@@ -110,6 +110,7 @@
   --motion-fade: 500ms;
   --motion-fade-reduced: 200ms;
   --motion-rise: 800ms;
+  --motion-morph: 520ms;
   --motion-reveal: 700ms;
   --motion-reveal-short: 450ms;
   --motion-reveal-distance: 18px;

@@ -100,4 +100,11 @@ html.js-motion [data-reveal].is-revealed {
     transition: opacity var(--motion-fade-reduced) var(--ease-fade);
     transition-delay: 0ms;
   }
+
+  .brand-full,
+  .brand-mark {
+    filter: none;
+    transform: none;
+    transition: opacity var(--motion-fade-reduced) var(--ease-fade);
+  }
 }

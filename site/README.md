@@ -63,6 +63,7 @@ npm run preview
 首屏只有一段编排好的入场：标题逐字上浮、去模糊、淡入，说明和版本信息随后，视频面板带着内容最后落定。其余动效只做两件事：滚动出现，以及悬停、焦点、按钮的即时反馈。
 
 - 页面加载入场：给元素加 `motion-rise`（文字块）或 `motion-panel`（大面），用内联 `--motion-delay` 排顺序。
+- 顶栏吸附：桌面端滚动超过 28px，字标从 `AFKFACTORY` 收成 `AF`；回到顶部附近再展开。手机上顶栏不吸附。
 - 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
 - 循环动效：给容器加 `data-motion-loop`，离开视口自动暂停。
 - 标题逐字：用 `src/components/RiseChars.jsx`，标题本体用 `aria-label` 给读屏完整句子。
