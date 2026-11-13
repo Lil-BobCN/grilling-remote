@@ -1,35 +1,63 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 export default function SiteHeader({ current }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const headerRef = useRef(null)
 
   useEffect(() => {
+    const header = headerRef.current
+    if (!header) return
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const narrow = window.matchMedia('(max-width: 900px)')
     let frame = 0
+    let last = ''
+
+    const setProgress = (value) => {
+      if (value === last) return
+      last = value
+      header.style.setProperty('--hp', value)
+    }
 
     const update = () => {
       frame = 0
-      setCollapsed((wasCollapsed) => {
-        const y = window.scrollY
-        return wasCollapsed ? y > 10 : y > 28
-      })
+
+      if (reduced.matches || narrow.matches) {
+        setProgress('0')
+        return
+      }
+
+      const maxScroll = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      )
+      const end = Math.min(120, maxScroll)
+      const raw = Math.min(1, Math.max(0, window.scrollY / end))
+      setProgress((raw * raw * (3 - 2 * raw)).toFixed(4))
     }
 
-    const onScroll = () => {
+    const schedule = () => {
       if (frame) return
       frame = requestAnimationFrame(update)
     }
 
     update()
-    window.addEventListener('scroll', onScroll, { passive: true })
+
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    reduced.addEventListener('change', schedule)
+    narrow.addEventListener('change', schedule)
 
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+      reduced.removeEventListener('change', schedule)
+      narrow.removeEventListener('change', schedule)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [])
 
   return (
-    <header className="site-header" data-collapsed={collapsed ? '' : undefined}>
+    <header ref={headerRef} className="site-header">
       <nav className="site-nav" aria-label="主导航">
         <div className="nav-left">
           <a
@@ -64,7 +92,7 @@ export default function SiteHeader({ current }) {
             AFKFACTORY
           </span>
           <span className="brand-mark" aria-hidden="true">
-            AF
+            AFK
           </span>
         </a>
         <div className="nav-right">

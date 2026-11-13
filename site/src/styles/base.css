@@ -64,11 +64,30 @@ a {
 /* 顶栏 */
 
 .site-header {
+  --hp: 0;
+  --hp-full: clamp(0, calc(var(--hp) / 0.5), 1);
+  --hp-mark: clamp(0, calc((var(--hp) - 0.35) / 0.55), 1);
+  --hp-line: clamp(0, calc((var(--hp) - 0.05) / 0.85), 1);
+  --hp-chrome: clamp(0, calc(var(--hp) / 0.8), 1);
   position: sticky;
   top: 0;
   z-index: 40;
   padding: 0 var(--gutter);
   background: var(--paper);
+}
+
+/* 滚动时从字标下方长出一条细线，向左右两组导航铺过去。 */
+.site-header::after {
+  content: "";
+  position: absolute;
+  right: var(--gutter);
+  bottom: 0;
+  left: var(--gutter);
+  height: var(--line-width);
+  background: var(--line);
+  transform: scaleX(var(--hp-line));
+  transform-origin: center;
+  pointer-events: none;
 }
 
 .site-nav {
@@ -107,37 +126,21 @@ a {
 .brand-mark {
   grid-area: 1 / 1;
   white-space: nowrap;
-  transition:
-    opacity 200ms var(--ease-fade) var(--brand-delay, 0ms),
-    transform var(--motion-morph) var(--ease-rise) var(--brand-delay, 0ms),
-    filter 200ms ease var(--brand-delay, 0ms);
 }
 
-/* 展开时：先收 AF，再放全称，避免两行字叠在一起。 */
+/* 字标跟着滚动进度收：全称先退，AFK 再落位。 */
 .brand-full {
-  --brand-delay: 100ms;
+  opacity: calc(1 - var(--hp-full));
+  filter: blur(calc(var(--hp-full) * 3px));
+  transform: translateY(calc(var(--hp-full) * -0.28em))
+    scale(calc(1 - var(--hp-full) * 0.03));
 }
 
 .brand-mark {
-  --brand-delay: 0ms;
-  opacity: 0;
-  filter: blur(3px);
-  transform: translateY(0.35em) scale(0.94);
-}
-
-/* 收起时反过来：先收全称，再放 AF。 */
-.site-header[data-collapsed] .brand-full {
-  --brand-delay: 0ms;
-  opacity: 0;
-  filter: blur(3px);
-  transform: translateY(-0.28em) scale(0.97);
-}
-
-.site-header[data-collapsed] .brand-mark {
-  --brand-delay: 130ms;
-  opacity: 1;
-  filter: none;
-  transform: none;
+  opacity: var(--hp-mark);
+  filter: blur(calc((1 - var(--hp-mark)) * 3px));
+  transform: translateY(calc((1 - var(--hp-mark)) * 0.35em))
+    scale(calc(0.94 + var(--hp-mark) * 0.06));
 }
 
 .pill {
@@ -145,30 +148,53 @@ a {
   align-items: center;
   padding: 7px 15px;
   border: var(--rule-pill);
+  border-color: color-mix(
+    in srgb,
+    var(--line-pill) calc((1 - var(--hp-chrome)) * 100%),
+    transparent
+  );
   border-radius: var(--radius-pill);
-  background: var(--pill-wash);
+  background-color: var(--pill-wash);
+  background-color: color-mix(
+    in srgb,
+    var(--pill-wash) calc((1 - var(--hp-chrome)) * 100%),
+    transparent
+  );
+  background-image: linear-gradient(var(--pill-hover), var(--pill-hover));
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0% 100%;
   color: var(--ink-soft);
   font-size: var(--text-ui);
   line-height: 1.2;
   transition:
-    background-color var(--motion-fast) ease-out,
-    border-color var(--motion-fast) ease-out,
-    color var(--motion-fast) ease-out;
+    background-size 240ms var(--ease-ui),
+    background-color 200ms var(--ease-ui),
+    border-color 200ms var(--ease-ui),
+    color 200ms var(--ease-ui),
+    transform var(--motion-fast) var(--ease-ui);
 }
 
 .pill:hover {
-  background: var(--pill-hover);
+  background-size: 100% 100%;
+  border-color: var(--line-soft);
+  color: var(--ink);
+}
+
+.pill:active {
+  transform: scale(0.97);
 }
 
 .pill-dark {
   border-color: var(--ink);
-  background: var(--ink);
+  background-color: var(--ink);
+  background-image: linear-gradient(var(--night-hover), var(--night-hover));
   color: var(--on-night);
 }
 
 .pill-dark:hover {
   border-color: var(--night-hover);
-  background: var(--night-hover);
+  color: var(--on-night);
 }
 
 .pill[aria-current="page"] {
@@ -280,6 +306,10 @@ a {
     padding: 0 var(--gutter-narrow);
   }
 
+  .site-header::after {
+    display: none;
+  }
+
   .site-nav {
     display: flex;
     flex-wrap: wrap;
@@ -347,5 +377,35 @@ a {
   .footer-meta {
     width: 100%;
     margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header::after {
+    display: none;
+  }
+
+  .pill:not([aria-current="page"]) {
+    background-image: none;
+    transition:
+      background-color var(--motion-fast) var(--ease-fade),
+      border-color var(--motion-fast) var(--ease-fade),
+      color var(--motion-fast) var(--ease-fade);
+  }
+
+  .pill:not([aria-current="page"]):hover {
+    border-color: var(--line-soft);
+    background-color: var(--pill-hover);
+    color: var(--ink);
+  }
+
+  .pill-dark:not([aria-current="page"]):hover {
+    border-color: var(--night-hover);
+    background-color: var(--night-hover);
+    color: var(--on-night);
+  }
+
+  .pill:active {
+    transform: none;
   }
 }

@@ -119,7 +119,6 @@
 | `--motion-fade` | `500ms` | 淡入 |
 | `--motion-fade-reduced` | `200ms` | 减少动态时只留淡入 |
 | `--motion-rise` | `800ms` | 上浮和逐字入场 |
-| `--motion-morph` | `520ms` | 顶栏字标从全称收成 `AF` |
 | `--motion-reveal` | `700ms` | 滚动出现的位移和淡入 |
 | `--motion-reveal-short` | `450ms` | 滚动出现时的去模糊 |
 | `--motion-reveal-distance` | `18px` | 滚动出现的位移 |
@@ -132,6 +131,10 @@
 | `--ease-ui` | `cubic-bezier(0.165, 0.84, 0.44, 1)` | 悬停和焦点 |
 
 动画规则写在 `src/styles/motion.css`。`prefers-reduced-motion: reduce` 时去掉位移和模糊，只保留淡入；视频占位的循环也停掉。
+
+首屏视频的横向拉伸用运行时变量 `--hero-stretch`（0–1），由 `HomePage.jsx` 按滚动写入，不放进基础变量表。它只改 `clip-path`，不改布局尺寸。
+
+顶栏联动用运行时变量 `--hp`（0–1），由 `SiteHeader.jsx` 按滚动写入；`--hp-full`、`--hp-mark`、`--hp-line`、`--hp-chrome` 在 `base.css` 里从它派生，也不进基础变量表。
 
 ## 还没定的
 

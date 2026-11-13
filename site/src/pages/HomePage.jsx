@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import RiseChars from '../components/RiseChars.jsx'
 import '../styles/home.css'
 
@@ -7,6 +8,72 @@ const titleSegments = [
 ]
 
 export default function HomePage() {
+  const heroRef = useRef(null)
+
+  useEffect(() => {
+    const hero = heroRef.current
+    if (!hero) return
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let frame = 0
+    let start = 1
+    let last = ''
+
+    const setStretch = (value) => {
+      if (value === last) return
+      last = value
+      hero.style.setProperty('--hero-stretch', value)
+    }
+
+    const measure = () => {
+      start = Math.max(1, hero.getBoundingClientRect().top + window.scrollY)
+    }
+
+    const update = () => {
+      frame = 0
+
+      if (reduced.matches) {
+        setStretch('1')
+        return
+      }
+
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight
+      if (maxScroll <= 0) {
+        setStretch('1')
+        return
+      }
+
+      // 页面还没铺满时，先把可滚的距离用完；下半页做出来后按面板顶部收口。
+      const end = Math.max(1, Math.min(start, maxScroll))
+      const progress = Math.min(1, Math.max(0, window.scrollY / end))
+      setStretch(progress.toFixed(4))
+    }
+
+    const schedule = () => {
+      if (frame) return
+      frame = requestAnimationFrame(update)
+    }
+
+    const onResize = () => {
+      measure()
+      schedule()
+    }
+
+    measure()
+    update()
+
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', onResize)
+    reduced.addEventListener('change', onResize)
+
+    return () => {
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', onResize)
+      reduced.removeEventListener('change', onResize)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
   return (
     <main id="main" className="home">
       <section className="home-hero" aria-labelledby="home-title">
@@ -44,10 +111,13 @@ export default function HomePage() {
         className="hero-video motion-panel"
         aria-labelledby="hero-video-title"
         data-motion-loop
+        ref={heroRef}
         style={{ '--motion-delay': '120ms' }}
       >
-        <div className="hero-video-placeholder" aria-hidden="true" />
-        <div className="hero-video-fade" aria-hidden="true" />
+        <div className="hero-video-frame">
+          <div className="hero-video-placeholder" aria-hidden="true" />
+          <div className="hero-video-fade" aria-hidden="true" />
+        </div>
         <div className="hero-video-copy">
           <div className="hero-video-bottom">
             <div>

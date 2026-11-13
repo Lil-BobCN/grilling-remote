@@ -59,29 +59,56 @@
   line-height: 1.65;
 }
 
-/* 视频面板：直角，上缘用纸色渐变化进暗部。 */
+/* 视频面板：满宽舞台，左右先留出页边距，往下滚时裁切收拢到 0，
+   画面横向铺满视口。文字固定在页面的阅读位置上，不跟着拉伸。 */
 
 .hero-video {
+  --hero-stretch: 1;
+  --hero-gutter: var(--gutter);
+  --hero-copy-inset: calc(var(--hero-gutter) + var(--space-40));
   position: relative;
   height: var(--video-height);
-  margin: 0 var(--gutter);
+  background: var(--paper);
+}
+
+html.js-motion .hero-video {
+  --hero-stretch: 0;
+}
+
+.hero-video-frame {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: var(--night-video);
+  clip-path: inset(0 calc((1 - var(--hero-stretch)) * var(--hero-gutter)));
 }
 
 .hero-video-placeholder {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 72% 58%, rgba(70, 96, 112, 0.65), transparent 60%),
+    radial-gradient(
+      ellipse 90% 58% at 50% 62%,
+      rgba(95, 115, 133, 0.52) 0%,
+      rgba(95, 115, 133, 0.16) 46%,
+      transparent 76%
+    ),
+    radial-gradient(
+      ellipse 100% 16% at 50% 64%,
+      rgba(126, 150, 164, 0.22) 0%,
+      transparent 70%
+    ),
     linear-gradient(
       180deg,
       #f0eee6 0%,
-      #d8c8ad 12%,
-      #a38f72 26%,
-      #4a4a43 48%,
-      #1a1c1d 72%,
-      #0a0b0c 100%
+      #ded0b6 10%,
+      #b9a382 24%,
+      #7d7261 40%,
+      #5f5c55 48%,
+      #46545d 56%,
+      #33454f 72%,
+      #2a3d47 88%,
+      #243741 100%
     );
   animation: hero-drift 18s ease-in-out infinite alternate;
 }
@@ -96,7 +123,7 @@
       rgba(240, 238, 230, 0.6) 8%,
       rgba(240, 238, 230, 0) 24%
     ),
-    linear-gradient(180deg, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.5));
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.28));
   pointer-events: none;
 }
 
@@ -107,7 +134,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: var(--space-32) var(--space-40);
+  padding: var(--space-32) var(--hero-copy-inset);
   color: var(--on-night);
 }
 
@@ -193,6 +220,10 @@
   .hero-video-placeholder {
     animation: none;
   }
+
+  html.js-motion .hero-video {
+    --hero-stretch: 1;
+  }
 }
 
 @media (max-width: 900px) {
@@ -215,12 +246,13 @@
   }
 
   .hero-video {
+    --hero-gutter: var(--gutter-narrow);
+    --hero-copy-inset: calc(var(--hero-gutter) + var(--space-20));
     height: var(--video-height-narrow);
-    margin: 0 var(--gutter-narrow);
   }
 
   .hero-video-copy {
-    padding: var(--space-20);
+    padding: var(--space-20) var(--hero-copy-inset);
   }
 
   .hero-video-bottom {
