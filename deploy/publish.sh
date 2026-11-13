@@ -30,8 +30,17 @@ scp -q -i "$key" "customer-kit/dist/$file" "customer-kit/dist/$file.sha256" \
 # 服务器上按 .sha256 复核，传坏了在这里就报出来
 ssh -i "$key" "$server" "cd '$remote_dir/downloads' && sha256sum -c '$file.sha256'"
 
+# 官网下载页读这份记录；发布成功后写，保证页面数字和线上文件一致
+sha=$(cut -d' ' -f1 "customer-kit/dist/$file.sha256")
+date=$(jq -r '.date' customer-kit/manifest.json)
+jq -n --arg version "$version" --arg date "$date" --arg file "$file" \
+  --argjson size "$size" --arg sha256 "$sha" \
+  '{version: $version, date: $date, file: $file, size: $size, sha256: $sha256}' \
+  > customer-kit/release.json
+
 echo
 echo "包名：$file"
 echo "大小：$size 字节"
-echo "SHA256：$(cut -d' ' -f1 "customer-kit/dist/$file.sha256")"
+echo "SHA256：$sha"
 echo "下载：https://afkfactory.dev/downloads/$file"
+echo "官网数据：customer-kit/release.json（记得提交）"

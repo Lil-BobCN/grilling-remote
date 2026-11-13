@@ -5,7 +5,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | `Caddyfile` | 服务器上 `/etc/caddy/Caddyfile` 的源。裸域改成静态托管，`upload.` 子域暂回 `ok` |
-| `publish.sh` | 重打包客户工作区，传到服务器，按 `.sha256` 复核 |
+| `publish.sh` | 重打包客户工作区，传到服务器，按 `.sha256` 复核，写 `customer-kit/release.json` |
 
 ## 一次性设置（要 sudo 密码，运营者跑）
 
@@ -31,7 +31,7 @@ Caddyfile 现在要求客户端证书。第一次装之前，先把 AOP CA 证�
 AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
 ```
 
-脚本会重打包、`scp` 两个文件、在服务器上 `sha256sum -c`，最后打出大小、SHA256 和下载地址。
+脚本会重打包、`scp` 两个文件、在服务器上 `sha256sum -c`，最后打出大小、SHA256 和下载地址。发布成功后它把同一组数字写进 `customer-kit/release.json`，官网下载页从这里读，记得一起提交。
 
 ## 验收
 
