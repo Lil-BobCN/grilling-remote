@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | `--paper` | `#f0eee6` | 页面底色，暖白纸 |
 | `--paper-raised` | `#f7f5ef` | 浅一级的纸，按钮上的字 |
+| `--paper-press` | `#e6e2d6` | 浅色按钮悬停 |
 | `--ink` | `#141413` | 正文、标题、粗线 |
 | `--ink-soft` | `#3d3d3a` | 胶囊文字 |
 | `--body` | `#4a4843` | 说明文字 |
@@ -57,6 +58,7 @@
 | `--text-section-narrow` | `32px` | 手机区块标题 |
 | `--text-subhead` | `26px` | 步骤标题 |
 | `--text-lead` | `16.5px` | 标题下的说明 |
+| `--text-control` | `16px` | 按钮和链接动作 |
 | `--text-body` | `15px` | 正文 |
 | `--text-ui` | `14px` | 导航、页脚、按钮 |
 | `--text-pill-narrow` | `12.5px` | 手机胶囊 |
@@ -108,6 +110,31 @@
 ## 断点
 
 手机断点是 `900px`，写在 `base.css` 的媒体查询里。CSS 变量不能用在媒体查询条件中，所以这个值不进 `tokens.css`。
+
+## 动效
+
+| 变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--motion-fast` | `160ms` | 悬停、焦点、按钮反馈 |
+| `--motion-fade` | `500ms` | 淡入 |
+| `--motion-fade-reduced` | `200ms` | 减少动态时只留淡入 |
+| `--motion-rise` | `800ms` | 上浮和逐字入场 |
+| `--motion-reveal` | `700ms` | 滚动出现的位移和淡入 |
+| `--motion-reveal-short` | `450ms` | 滚动出现时的去模糊 |
+| `--motion-reveal-distance` | `18px` | 滚动出现的位移 |
+| `--motion-stagger` | `24ms` | 标题逐字间隔 |
+
+| 缓动变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--ease-fade` | `cubic-bezier(0.2, 0.7, 0.1, 1)` | 透明度 |
+| `--ease-rise` | `cubic-bezier(0.16, 1, 0.3, 1)` | 上浮 |
+| `--ease-ui` | `cubic-bezier(0.165, 0.84, 0.44, 1)` | 悬停和焦点 |
+
+动画规则写在 `src/styles/motion.css`。`prefers-reduced-motion: reduce` 时去掉位移和模糊，只保留淡入；视频占位的循环也停掉。
+
+首屏视频的横向拉伸用运行时变量 `--hero-stretch`（0–1），由 `HomePage.jsx` 按滚动写入，不放进基础变量表。它只改 `clip-path`，不改布局尺寸。
+
+顶栏联动用运行时变量 `--hp`（0–1），由 `SiteHeader.jsx` 按滚动写入；`--hp-full`、`--hp-mark`、`--hp-line`、`--hp-chrome` 在 `base.css` 里从它派生，也不进基础变量表。
 
 ## 还没定的
 

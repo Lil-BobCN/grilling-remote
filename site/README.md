@@ -45,6 +45,10 @@ npm run preview
 | `src/pages/` | 各页面的壳。页面票在这里填内容 |
 | `src/styles/tokens.css` | 色值、字体、字号、间距、线宽变量 |
 | `src/styles/base.css` | 全站版式和响应式 |
+| `src/styles/home.css` | 首页首屏：标题区、视频面板、手机档 |
+| `src/styles/motion.css` | 入场、滚动出现、减少动态 |
+| `src/motion.js` | 滚动出现的观察器、离开视口暂停循环 |
+| `src/components/RiseChars.jsx` | 标题逐字入场 |
 | `design/tokens.md` | 变量清单，和 `tokens.css` 对应 |
 | `design/refined-v1-anthropic-top.html` | 选定草图，设计参考，不参与构建 |
 | `public/favicon.svg` | AF 字标图标 |
@@ -53,6 +57,22 @@ npm run preview
 ## 设计
 
 方向契约在 `.impeccable/surfaces/site-index-html.md`，草图在 `design/refined-v1-anthropic-top.html`。页面里的颜色、字号、间距从 `tokens.css` 取，不写零散数值。新增变量时同时改 `tokens.css` 和 `design/tokens.md`。
+
+## 动效
+
+首屏只有一段编排好的入场：标题逐字上浮、去模糊、淡入，说明和版本信息随后，视频面板带着内容最后落定。其余动效只做两件事：滚动出现，以及悬停、焦点、按钮的即时反馈。
+
+- 页面加载入场：给元素加 `motion-rise`（文字块）或 `motion-panel`（大面），用内联 `--motion-delay` 排顺序。
+- 顶栏联动：桌面端滚动时，字标从 `AFKFACTORY` 收到 `AFK`；一条细线从字标下方长到两侧，胶囊的底色和描边随之退掉，只剩文字。停下来后悬停，胶囊会重新长回来。手机上顶栏不吸附，也不做这套联动；减少动态时保持展开状态。
+- 胶囊悬停：悬停色从中间向两侧铺开，描边和文字同时收紧；按下缩到 97%，松开回弹。减少动态时只换底色。
+- 首屏视频拉伸：面板在页面里按满宽铺开，左右先用 `--gutter` 裁切；往下滚时 `--hero-stretch` 从 0 走到 1，`clip-path` 收到 0，画面横向铺满视口。进度按面板顶部和可滚距离取小值，页面还不够长时先用完可滚距离。
+- 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
+- 循环动效：给容器加 `data-motion-loop`，离开视口自动暂停。
+- 标题逐字：用 `src/components/RiseChars.jsx`，标题本体用 `aria-label` 给读屏完整句子。
+- 默认内容可见。`index.html` 等五个 HTML 在 `<head>` 里加 `js-motion` 类，只在 JS 接上后才收起待出现的元素；2.5 秒内没接上就撤掉这个类，避免脚本失败时页面空着。
+- `prefers-reduced-motion: reduce` 时去掉位移和模糊，只留淡入；视频直接满宽，不跟随滚动；视频占位的循环停掉。
+
+后面的页面照这套加。滚动出现不要做成每段都错开，只在成组出现时用。
 
 ## 检测器
 
@@ -64,5 +84,6 @@ npm run preview
 
 - 标题宋体先用系统字体。锁定字形后自托管中文子集，控制在 50–130 KB。来源：票 I-0061 评论 C-0375。
 - Windows 上宋体标题的回退字形还没验证。来源同上。
-- 首屏视频、各页正文、账号区接口都留给后面的页面票。
+- 首屏视频还是动态渐变占位，真实素材到位再换。来源：地图 I-0058 的 Not yet specified、票 I-0062 评论 C-0374。
+- 各页正文、账号区接口都留给后面的页面票。
 - `impeccable` 的 finish review 和 `DESIGN.md` 在全站页面完成后做，票 I-0069。

@@ -47,13 +47,14 @@ a {
   position: fixed;
   top: var(--space-16);
   left: var(--space-16);
-  z-index: 20;
+  z-index: 60;
   padding: var(--space-10) var(--space-14);
   border-radius: var(--radius-control);
   background: var(--ink);
   color: var(--paper);
   font-size: var(--text-ui);
   transform: translateY(-200%);
+  transition: transform var(--motion-fast) var(--ease-ui);
 }
 
 .skip-link:focus-visible {
@@ -63,7 +64,30 @@ a {
 /* 顶栏 */
 
 .site-header {
+  --hp: 0;
+  --hp-full: clamp(0, calc(var(--hp) / 0.5), 1);
+  --hp-mark: clamp(0, calc((var(--hp) - 0.35) / 0.55), 1);
+  --hp-line: clamp(0, calc((var(--hp) - 0.05) / 0.85), 1);
+  --hp-chrome: clamp(0, calc(var(--hp) / 0.8), 1);
+  position: sticky;
+  top: 0;
+  z-index: 40;
   padding: 0 var(--gutter);
+  background: var(--paper);
+}
+
+/* 滚动时从字标下方长出一条细线，向左右两组导航铺过去。 */
+.site-header::after {
+  content: "";
+  position: absolute;
+  right: var(--gutter);
+  bottom: 0;
+  left: var(--gutter);
+  height: var(--line-width);
+  background: var(--line);
+  transform: scaleX(var(--hp-line));
+  transform-origin: center;
+  pointer-events: none;
 }
 
 .site-nav {
@@ -85,10 +109,38 @@ a {
 }
 
 .brand {
+  display: inline-grid;
+  place-items: center;
   font-size: var(--text-brand);
   font-weight: var(--weight-bold);
   line-height: 1;
   letter-spacing: 0.16em;
+  transition: opacity var(--motion-fast) var(--ease-ui);
+}
+
+.brand:hover {
+  opacity: 0.72;
+}
+
+.brand-full,
+.brand-mark {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+/* 字标跟着滚动进度收：全称先退，AFK 再落位。 */
+.brand-full {
+  opacity: calc(1 - var(--hp-full));
+  filter: blur(calc(var(--hp-full) * 3px));
+  transform: translateY(calc(var(--hp-full) * -0.28em))
+    scale(calc(1 - var(--hp-full) * 0.03));
+}
+
+.brand-mark {
+  opacity: var(--hp-mark);
+  filter: blur(calc((1 - var(--hp-mark)) * 3px));
+  transform: translateY(calc((1 - var(--hp-mark)) * 0.35em))
+    scale(calc(0.94 + var(--hp-mark) * 0.06));
 }
 
 .pill {
@@ -96,29 +148,53 @@ a {
   align-items: center;
   padding: 7px 15px;
   border: var(--rule-pill);
+  border-color: color-mix(
+    in srgb,
+    var(--line-pill) calc((1 - var(--hp-chrome)) * 100%),
+    transparent
+  );
   border-radius: var(--radius-pill);
-  background: var(--pill-wash);
+  background-color: var(--pill-wash);
+  background-color: color-mix(
+    in srgb,
+    var(--pill-wash) calc((1 - var(--hp-chrome)) * 100%),
+    transparent
+  );
+  background-image: linear-gradient(var(--pill-hover), var(--pill-hover));
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0% 100%;
   color: var(--ink-soft);
   font-size: var(--text-ui);
   line-height: 1.2;
   transition:
-    background-color 160ms ease-out,
-    border-color 160ms ease-out;
+    background-size 240ms var(--ease-ui),
+    background-color 200ms var(--ease-ui),
+    border-color 200ms var(--ease-ui),
+    color 200ms var(--ease-ui),
+    transform var(--motion-fast) var(--ease-ui);
 }
 
 .pill:hover {
-  background: var(--pill-hover);
+  background-size: 100% 100%;
+  border-color: var(--line-soft);
+  color: var(--ink);
+}
+
+.pill:active {
+  transform: scale(0.97);
 }
 
 .pill-dark {
   border-color: var(--ink);
-  background: var(--ink);
+  background-color: var(--ink);
+  background-image: linear-gradient(var(--night-hover), var(--night-hover));
   color: var(--on-night);
 }
 
 .pill-dark:hover {
   border-color: var(--night-hover);
-  background: var(--night-hover);
+  color: var(--on-night);
 }
 
 .pill[aria-current="page"] {
@@ -196,12 +272,25 @@ a {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 4px;
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.footer-help:hover {
+  color: var(--slate);
 }
 
 .footer-links {
   display: flex;
   gap: var(--space-20);
   margin-left: auto;
+}
+
+.footer-links a {
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.footer-links a:hover {
+  color: var(--ink);
 }
 
 .footer-meta {
@@ -213,7 +302,12 @@ a {
 
 @media (max-width: 900px) {
   .site-header {
+    position: static;
     padding: 0 var(--gutter-narrow);
+  }
+
+  .site-header::after {
+    display: none;
   }
 
   .site-nav {
@@ -225,8 +319,6 @@ a {
   }
 
   .brand {
-    display: inline-flex;
-    align-items: center;
     order: 1;
     min-height: 44px;
     font-size: 18px;
@@ -285,5 +377,35 @@ a {
   .footer-meta {
     width: 100%;
     margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header::after {
+    display: none;
+  }
+
+  .pill:not([aria-current="page"]) {
+    background-image: none;
+    transition:
+      background-color var(--motion-fast) var(--ease-fade),
+      border-color var(--motion-fast) var(--ease-fade),
+      color var(--motion-fast) var(--ease-fade);
+  }
+
+  .pill:not([aria-current="page"]):hover {
+    border-color: var(--line-soft);
+    background-color: var(--pill-hover);
+    color: var(--ink);
+  }
+
+  .pill-dark:not([aria-current="page"]):hover {
+    border-color: var(--night-hover);
+    background-color: var(--night-hover);
+    color: var(--on-night);
+  }
+
+  .pill:active {
+    transform: none;
   }
 }

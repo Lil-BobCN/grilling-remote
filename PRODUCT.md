@@ -47,7 +47,7 @@ React + Vite。公开页面构建时预渲染成静态 HTML；账号区客户端
 
 ## Brand Commitments
 
-- 品牌名 `afkfactory`，域名 `afkfactory.dev`；顶栏字标 `AF`。
+- 品牌名 `afkfactory`，域名 `afkfactory.dev`；顶栏字标 `AFK`。
 - 产品名「需求澄清」，服务对象叫「客户工作区」。
 - 文案中文，短句；遵守仓库 `AGENTS.md` 的用词和写法规则。
 - 受众是不懂技术的客户，不要开发者工具的视觉语言。

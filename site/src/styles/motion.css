@@ -1,0 +1,110 @@
+/*
+ * 动效：纸面先落字，画面后呼吸。
+ * 首屏是唯一一段编排好的入场，其余动效只做状态反馈和滚动出现。
+ * 全部走 transform、opacity、filter；不改布局尺寸。
+ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-block {
+  from {
+    transform: translateY(var(--motion-reveal-distance));
+  }
+}
+
+@keyframes rise-char {
+  from {
+    transform: translateY(0.42em);
+  }
+}
+
+@keyframes unblur {
+  from {
+    filter: blur(4px);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    transform: translateY(10px) scale(0.995);
+  }
+}
+
+/* 首屏标题：逐字上浮、去模糊、淡入。 */
+
+html.js-motion .rise-char {
+  display: inline-block;
+  animation:
+    fade-in var(--motion-fade) var(--ease-fade) both,
+    rise-char var(--motion-rise) var(--ease-rise) both,
+    unblur var(--motion-fade) ease both;
+  animation-delay: calc(var(--motion-stagger) * var(--char-index, 0) + var(--motion-delay, 0ms));
+}
+
+/* 首屏里成块的文字和视频里的内容。 */
+
+html.js-motion .motion-rise {
+  animation:
+    fade-in var(--motion-fade) var(--ease-fade) both,
+    rise-block var(--motion-rise) var(--ease-rise) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+html.js-motion .motion-panel {
+  animation:
+    fade-in var(--motion-fade) var(--ease-fade) both,
+    panel-in var(--motion-rise) var(--ease-rise) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* 滚动到视口再出现。默认可见，js-motion 在场时才收起来。 */
+
+html.js-motion [data-reveal] {
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(var(--motion-reveal-distance));
+  transition:
+    opacity var(--motion-reveal) var(--ease-fade),
+    filter var(--motion-reveal-short) ease,
+    transform var(--motion-reveal) var(--ease-rise);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+html.js-motion [data-reveal].is-revealed {
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+
+/* 不在视口里的循环停掉。 */
+
+[data-motion-loop].is-paused * {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.js-motion .rise-char,
+  html.js-motion .motion-rise,
+  html.js-motion .motion-panel {
+    animation: fade-in var(--motion-fade-reduced) var(--ease-fade) both;
+    animation-delay: 0ms;
+  }
+
+  html.js-motion [data-reveal] {
+    filter: none;
+    transform: none;
+    transition: opacity var(--motion-fade-reduced) var(--ease-fade);
+    transition-delay: 0ms;
+  }
+
+  .brand-full,
+  .brand-mark {
+    filter: none;
+    transform: none;
+    transition: opacity var(--motion-fade-reduced) var(--ease-fade);
+  }
+}
