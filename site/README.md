@@ -45,6 +45,7 @@ npm run preview
 | `src/pages/` | 各页面的壳。页面票在这里填内容 |
 | `src/styles/tokens.css` | 色值、字体、字号、间距、线宽变量 |
 | `src/styles/base.css` | 全站版式和响应式 |
+| `src/styles/home.css` | 首页首屏：标题区、视频面板、手机档 |
 | `design/tokens.md` | 变量清单，和 `tokens.css` 对应 |
 | `design/refined-v1-anthropic-top.html` | 选定草图，设计参考，不参与构建 |
 | `public/favicon.svg` | AF 字标图标 |
@@ -64,5 +65,6 @@ npm run preview
 
 - 标题宋体先用系统字体。锁定字形后自托管中文子集，控制在 50–130 KB。来源：票 I-0061 评论 C-0375。
 - Windows 上宋体标题的回退字形还没验证。来源同上。
-- 首屏视频、各页正文、账号区接口都留给后面的页面票。
+- 首屏视频还是动态渐变占位，真实素材到位再换。来源：地图 I-0058 的 Not yet specified、票 I-0062 评论 C-0374。
+- 各页正文、账号区接口都留给后面的页面票。
 - `impeccable` 的 finish review 和 `DESIGN.md` 在全站页面完成后做，票 I-0069。

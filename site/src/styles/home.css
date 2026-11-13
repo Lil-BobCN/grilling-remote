@@ -1,0 +1,220 @@
+/* 首页首屏。参照草图 design/refined-v1-anthropic-top.html 的前两段。 */
+
+.home {
+  flex: 1 0 auto;
+}
+
+.home-hero {
+  padding: var(--space-32) var(--gutter) var(--space-24);
+}
+
+.home-hero-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 0.65fr;
+  gap: var(--space-64);
+  align-items: end;
+}
+
+.home-hero-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-display);
+  font-weight: var(--weight-regular);
+  line-height: 1.24;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.home-hero-title b {
+  font-weight: var(--weight-bold);
+}
+
+.home-hero-lede {
+  max-width: 640px;
+  margin: var(--space-12) 0 0;
+  color: var(--body);
+  font-size: var(--text-lead);
+  line-height: 1.65;
+}
+
+.home-hero-meta {
+  margin: 0;
+  padding-top: var(--space-10);
+  border-top: var(--rule-soft);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  line-height: 1.65;
+}
+
+/* 视频面板：直角，上缘用纸色渐变化进暗部。 */
+
+.hero-video {
+  position: relative;
+  height: var(--video-height);
+  margin: 0 var(--gutter);
+  overflow: hidden;
+  background: var(--night-video);
+}
+
+.hero-video-placeholder {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 72% 58%, rgba(70, 96, 112, 0.65), transparent 60%),
+    linear-gradient(
+      180deg,
+      #f0eee6 0%,
+      #d8c8ad 12%,
+      #a38f72 26%,
+      #4a4a43 48%,
+      #1a1c1d 72%,
+      #0a0b0c 100%
+    );
+  animation: hero-drift 18s ease-in-out infinite alternate;
+}
+
+.hero-video-fade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      var(--paper) 0%,
+      rgba(240, 238, 230, 0.6) 8%,
+      rgba(240, 238, 230, 0) 24%
+    ),
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.5));
+  pointer-events: none;
+}
+
+.hero-video-copy {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-32) var(--space-40);
+  color: var(--on-night);
+}
+
+.hero-video-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-28);
+}
+
+.hero-video-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-section);
+  font-weight: var(--weight-regular);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.hero-video-note {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-body);
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+.hero-video-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-20);
+}
+
+.hero-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-14) var(--space-24);
+  border-radius: var(--radius-control);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  transition: background-color 160ms ease-out;
+}
+
+.hero-download:hover {
+  background: var(--paper-press);
+}
+
+.hero-tutorial {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--on-night);
+  font-size: var(--text-control);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.hero-video :focus-visible {
+  outline-color: var(--on-night);
+}
+
+@keyframes hero-drift {
+  from {
+    transform: scale(1.03);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-video-placeholder {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .home-hero {
+    padding: var(--space-24) var(--gutter-narrow) var(--space-20);
+  }
+
+  .home-hero-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-20);
+  }
+
+  .home-hero-title {
+    font-size: var(--text-display-narrow);
+  }
+
+  .home-hero-lede {
+    max-width: none;
+    font-size: 16px;
+  }
+
+  .hero-video {
+    height: var(--video-height-narrow);
+    margin: 0 var(--gutter-narrow);
+  }
+
+  .hero-video-copy {
+    padding: var(--space-20);
+  }
+
+  .hero-video-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-18);
+  }
+
+  .hero-video-title {
+    font-size: 28px;
+  }
+
+  .hero-video-actions {
+    flex-wrap: wrap;
+  }
+}

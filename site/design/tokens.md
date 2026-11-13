@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | `--paper` | `#f0eee6` | 页面底色，暖白纸 |
 | `--paper-raised` | `#f7f5ef` | 浅一级的纸，按钮上的字 |
+| `--paper-press` | `#e6e2d6` | 浅色按钮悬停 |
 | `--ink` | `#141413` | 正文、标题、粗线 |
 | `--ink-soft` | `#3d3d3a` | 胶囊文字 |
 | `--body` | `#4a4843` | 说明文字 |
@@ -57,6 +58,7 @@
 | `--text-section-narrow` | `32px` | 手机区块标题 |
 | `--text-subhead` | `26px` | 步骤标题 |
 | `--text-lead` | `16.5px` | 标题下的说明 |
+| `--text-control` | `16px` | 按钮和链接动作 |
 | `--text-body` | `15px` | 正文 |
 | `--text-ui` | `14px` | 导航、页脚、按钮 |
 | `--text-pill-narrow` | `12.5px` | 手机胶囊 |
