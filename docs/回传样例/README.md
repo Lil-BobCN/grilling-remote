@@ -22,5 +22,5 @@
 
 - 五个来源都能在样例里找到，条目和 `父工单.md` 一致。
 - `验收场景.md` 开头有「客户确认：2026-11-13」。
-- `issues/` 下四张票都是 `Status: resolved`。
+- `issues/` 下五张票都是 `Status: resolved`，四类票各一张以上：`grilling`、`research`、`prototype`、`task`。
 - `map.md` 的「接下来」和「Not yet specified」为空，「Out of scope」有内容。
