@@ -269,3 +269,314 @@ html.js-motion .hero-video {
     flex-wrap: wrap;
   }
 }
+
+/* 首屏以下：三个理由、三步装法、九个技能、黑底回传。 */
+
+.home-intro,
+.home-steps,
+.home-skills {
+  padding: var(--space-96) var(--gutter);
+}
+
+.home-intro,
+.home-skills {
+  background: var(--paper);
+}
+
+.home-steps {
+  background: var(--paper-raised);
+}
+
+.home-section-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-display);
+  font-weight: var(--weight-regular);
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.home-section-lede {
+  max-width: 560px;
+  margin: var(--space-14) 0 0;
+  color: var(--body);
+  font-size: var(--text-lead);
+  line-height: 1.75;
+}
+
+.home-intro-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: var(--space-64);
+}
+
+.home-points {
+  border-top: var(--rule-ink);
+}
+
+.home-point {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: var(--space-20);
+  align-items: baseline;
+  padding: var(--space-18) 0;
+  border-bottom: var(--rule);
+}
+
+.home-point b {
+  font-size: var(--text-lead);
+  font-weight: var(--weight-semibold);
+}
+
+.home-point p {
+  margin: 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.65;
+}
+
+.home-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: var(--space-32);
+  border-top: var(--rule-ink);
+}
+
+.home-step {
+  padding: var(--space-24) var(--space-28) 0 0;
+  border-right: var(--rule);
+}
+
+.home-step:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.home-step b {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+}
+
+.home-step h3 {
+  margin: var(--space-10) 0 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.home-step p {
+  max-width: 330px;
+  margin: var(--space-8) 0 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.home-step span {
+  display: block;
+  margin-top: var(--space-14);
+  padding-top: var(--space-10);
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+
+.home-skills-grid {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: var(--space-64);
+}
+
+.home-skills-link {
+  display: inline-block;
+  margin-top: var(--space-18);
+  color: var(--ink);
+  font-size: var(--text-body);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.home-skills-link:hover {
+  color: var(--slate);
+}
+
+.home-skill-list {
+  margin: 0;
+  padding: 0;
+  border-top: var(--rule-ink);
+  list-style: none;
+}
+
+.home-skill-list li {
+  display: grid;
+  grid-template-columns: 44px 170px 1fr;
+  gap: var(--space-16);
+  align-items: baseline;
+  padding: var(--space-14) 0;
+  border-bottom: var(--rule);
+}
+
+.home-skill-list b {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+}
+
+.home-skill-list span {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.home-skill-list p {
+  margin: 0;
+  color: var(--body-soft);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+
+.home-band {
+  padding: var(--space-80) var(--gutter);
+  background: var(--night);
+  color: var(--on-night);
+}
+
+.home-band-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-56);
+}
+
+.home-band h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-section);
+  font-weight: var(--weight-regular);
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+}
+
+.home-band p {
+  max-width: 480px;
+  margin: var(--space-12) 0 0;
+  color: var(--on-night-soft);
+  font-size: var(--text-control);
+  line-height: 1.7;
+}
+
+.home-band-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: var(--space-14);
+  margin-top: var(--space-24);
+}
+
+.home-band-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-14) var(--space-24);
+  border: var(--line-width) solid var(--on-night);
+  border-radius: var(--radius-control);
+  background: var(--on-night);
+  color: var(--ink);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  transition:
+    background-color var(--motion-fast) var(--ease-ui),
+    border-color var(--motion-fast) var(--ease-ui),
+    color var(--motion-fast) var(--ease-ui);
+}
+
+.home-band-action:hover {
+  border-color: var(--paper-press);
+  background: var(--paper-press);
+}
+
+.home-band-action-outline {
+  border-color: var(--night-line);
+  background: transparent;
+  color: var(--on-night);
+}
+
+.home-band-action-outline:hover {
+  border-color: var(--night-hover);
+  background: var(--night-hover);
+}
+
+.home-band :focus-visible {
+  outline-color: var(--on-night);
+}
+
+@media (max-width: 900px) {
+  .home-intro,
+  .home-steps,
+  .home-skills {
+    padding: var(--space-56) var(--gutter-narrow);
+  }
+
+  .home-intro-grid,
+  .home-skills-grid,
+  .home-band-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-32);
+  }
+
+  .home-section-title {
+    font-size: var(--text-display-narrow);
+  }
+
+  .home-intro-break {
+    display: none;
+  }
+
+  .home-section-lede {
+    font-size: 16px;
+  }
+
+  .home-point {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    padding: var(--space-14) 0;
+  }
+
+  .home-step-grid {
+    grid-template-columns: 1fr;
+    border-top: 0;
+  }
+
+  .home-step {
+    padding: var(--space-18) 0 0;
+    border-top: var(--rule-ink);
+    border-right: 0;
+  }
+
+  .home-skill-list li {
+    grid-template-columns: 36px 1fr;
+    gap: var(--space-10);
+  }
+
+  .home-skill-list li p {
+    grid-column: 2;
+  }
+
+  .home-band {
+    padding: var(--space-56) var(--gutter-narrow);
+  }
+
+  .home-band h2 {
+    font-size: var(--text-display-narrow);
+  }
+
+  .home-band-actions {
+    flex-wrap: wrap;
+  }
+}
