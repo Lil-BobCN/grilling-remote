@@ -1,3 +1,5 @@
+import release from '../../../customer-kit/release.json'
+
 export default function SiteFooter({ help = true }) {
   return (
     <footer className="site-footer" data-reveal>
@@ -13,7 +15,9 @@ export default function SiteFooter({ help = true }) {
         <a href="/app/upload">上传</a>
         <a href="/app/orders">我的订单</a>
       </div>
-      <p className="footer-meta">v1 · 2026-11-07 · afkfactory.dev</p>
+      <p className="footer-meta">
+        {release.version} · {release.date} · afkfactory.dev
+      </p>
     </footer>
   )
 }

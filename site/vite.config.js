@@ -56,6 +56,12 @@ function cleanUrls() {
 export default defineConfig({
   appType: 'mpa',
   plugins: [react(), cleanUrls()],
+  // 下载页要读仓库根的 customer-kit/release.json，开发服务器放行上一级
+  server: {
+    fs: {
+      allow: [resolve(root, '..')],
+    },
+  },
   build: {
     rollupOptions: {
       input: {
