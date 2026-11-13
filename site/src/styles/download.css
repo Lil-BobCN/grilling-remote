@@ -29,6 +29,19 @@
   white-space: nowrap;
 }
 
+/* 手机上先提醒去电脑，再让下载按钮出现。桌面不显示。 */
+.download-device-note {
+  display: none;
+  margin: var(--space-20) 0 0;
+  padding: var(--space-12) var(--space-14);
+  border: var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--paper-raised);
+  color: var(--body);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+
 .download-spec {
   margin: 0;
 }
@@ -114,6 +127,33 @@
   text-wrap: pretty;
 }
 
+.download-action-note a,
+.download-sha-body p a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.download-action-note a:hover,
+.download-sha-body p a:hover {
+  color: var(--slate);
+}
+
+.download-inline-next {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--text-ui);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.download-inline-next:hover {
+  color: var(--slate);
+}
+
 .download-sha {
   margin-top: var(--space-64);
   padding-top: var(--space-32);
@@ -141,6 +181,21 @@
   font-family: var(--font-sans);
   font-size: var(--text-micro);
   letter-spacing: 0.04em;
+}
+
+.download-sha-turn {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  letter-spacing: 0.04em;
+}
+
+.download-sha-turn::before {
+  content: "展开";
+}
+
+.download-sha[open] .download-sha-turn::before {
+  content: "收起";
 }
 
 @media (max-width: 520px) {
@@ -206,6 +261,7 @@
 
 .download-copy {
   flex: none;
+  min-width: 128px;
   min-height: 44px;
   padding: 0 var(--space-16);
   border: var(--rule-ink);
@@ -317,6 +373,16 @@
   line-height: 1.6;
 }
 
+.download-systems .download-dsh-link {
+  margin-top: var(--space-8);
+}
+
+.download-dsh-link a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .download-next {
   display: flex;
   align-items: center;
@@ -359,6 +425,10 @@
 }
 
 @media (max-width: 900px) {
+  .download-device-note {
+    display: block;
+  }
+
   .download-file {
     grid-template-columns: 1fr;
     gap: var(--space-32);

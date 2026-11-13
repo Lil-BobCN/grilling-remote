@@ -39,7 +39,7 @@ export default function DownloadPage() {
     selection.removeAllRanges()
     selection.addRange(range)
     const copied = document.execCommand('copy')
-    showStatus(copied ? '已复制' : '已选中，按 Ctrl/⌘ + C 复制')
+    showStatus(copied ? '已复制' : '已选中，按 Ctrl/⌘ + C 或长按复制')
   }
 
   return (
@@ -61,6 +61,10 @@ export default function DownloadPage() {
             {release.file}
           </h2>
 
+          <p className="download-device-note">
+            这一步要在电脑上做。把本页链接发到电脑上，再下载。
+          </p>
+
           <div className="download-action">
             <a
               className="download-button"
@@ -69,18 +73,25 @@ export default function DownloadPage() {
             >
               下载 zip
               <span className="download-button-size" aria-hidden="true">
-                {size} 字节
+                {sizeKb} KB
               </span>
             </a>
             <p className="download-action-note">
-              没下完时，浏览器会给文件名加一个后缀。等后缀消失，再解压。
+              没下完时，浏览器会给文件名加一个后缀。
+              <span className="download-nowrap">等后缀消失，再解压。</span>
+              <span className="download-nowrap">
+                下不动？<a href="/tutorial#support">找客服</a>。
+              </span>
             </p>
+            <a className="download-inline-next" href="/tutorial">
+              下好了，按教程装 →
+            </a>
           </div>
         </div>
 
         <dl className="download-spec">
           <div className="download-spec-item">
-            <dt>版本</dt>
+            <dt>当前版本</dt>
             <dd>{release.version}</dd>
           </div>
           <div className="download-spec-item">
@@ -99,6 +110,7 @@ export default function DownloadPage() {
       <details className="download-sha">
         <summary>
           SHA256 与校验
+          <span className="download-sha-turn" aria-hidden="true" />
           <span className="download-sha-note">客服核对文件用</span>
         </summary>
         <div className="download-sha-body">
@@ -110,7 +122,7 @@ export default function DownloadPage() {
               {release.sha256}
             </code>
             <button className="download-copy" type="button" onClick={copyHash}>
-              复制 SHA256
+              {copyStatus === '已复制' ? '已复制' : '复制 SHA256'}
             </button>
           </div>
           <p className="download-copy-status" role="status" aria-live="polite">
@@ -125,7 +137,9 @@ export default function DownloadPage() {
             <p>Windows 在命令提示符里跑：</p>
             <code>{`certutil -hashfile "%USERPROFILE%\\Downloads\\${release.file}" SHA256`}</code>
           </div>
-          <p>对不上，先确认下的是最新版，再找客服。</p>
+          <p>
+            对不上，先确认下的是最新版，再<a href="/tutorial#support">找客服</a>。
+          </p>
         </div>
       </details>
 
@@ -140,11 +154,25 @@ export default function DownloadPage() {
             <p className="download-hint">
               不知道 Mac 是哪种芯片：左上角苹果菜单 → 关于本机 → 看「芯片」那一行。
             </p>
+            <p className="download-hint">
+              不知道 Windows 是不是 64 位：设置 → 系统 → 关于 → 看「系统类型」那一行。
+            </p>
           </div>
-          <p>
-            工作区要用 dsh 打开。还没装，先去{' '}
-            <a href="https://www.deepseek.com/harness">DeepSeek 官网下载</a>。
-          </p>
+          <div>
+            <p>工作区要用 dsh 打开。dsh 是 DeepSeek 的桌面智能体软件。</p>
+            <p className="download-dsh-link">
+              <a
+                href="https://www.deepseek.com/harness"
+                target="_blank"
+                rel="noreferrer"
+              >
+                还没装？去 DeepSeek 官网下载 dsh →
+              </a>
+            </p>
+            <p className="download-hint">
+              装不上，或工作区打不开：<a href="/tutorial#support">找客服</a>。
+            </p>
+          </div>
         </div>
       </section>
 
