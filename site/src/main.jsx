@@ -4,6 +4,7 @@ import App from './App.jsx'
 import AccountApp from './pages/AccountApp.jsx'
 import './styles/tokens.css'
 import './styles/base.css'
+import './styles/motion.css'
 
 const container = document.getElementById('root')
 const page = container.dataset.page

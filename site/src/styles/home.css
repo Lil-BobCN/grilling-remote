@@ -29,6 +29,18 @@
   font-weight: var(--weight-bold);
 }
 
+/* 窄屏在句号处断行，不让逐字拆分后的断点落在句子中间。
+   标题一行要 519px，留 520px 作断点。 */
+.rise-break {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .rise-break {
+    display: revert;
+  }
+}
+
 .home-hero-lede {
   max-width: 640px;
   margin: var(--space-12) 0 0;
@@ -140,7 +152,9 @@
   font-size: var(--text-control);
   font-weight: var(--weight-semibold);
   line-height: 1.4;
-  transition: background-color 160ms ease-out;
+  transition:
+    background-color var(--motion-fast) var(--ease-ui),
+    color var(--motion-fast) var(--ease-ui);
 }
 
 .hero-download:hover {
@@ -155,6 +169,11 @@
   font-size: var(--text-control);
   text-decoration: underline;
   text-underline-offset: var(--space-4);
+  transition: opacity var(--motion-fast) var(--ease-ui);
+}
+
+.hero-tutorial:hover {
+  opacity: 0.78;
 }
 
 .hero-video :focus-visible {

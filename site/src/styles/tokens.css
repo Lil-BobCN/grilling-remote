@@ -104,4 +104,17 @@
   --nav-height: 80px;
   --video-height: 640px;
   --video-height-narrow: 420px;
+
+  /* 动效：时长、缓动、位移、逐字间隔 */
+  --motion-fast: 160ms;
+  --motion-fade: 500ms;
+  --motion-fade-reduced: 200ms;
+  --motion-rise: 800ms;
+  --motion-reveal: 700ms;
+  --motion-reveal-short: 450ms;
+  --motion-reveal-distance: 18px;
+  --motion-stagger: 24ms;
+  --ease-fade: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --ease-rise: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ui: cubic-bezier(0.165, 0.84, 0.44, 1);
 }

@@ -54,6 +54,7 @@ a {
   color: var(--paper);
   font-size: var(--text-ui);
   transform: translateY(-200%);
+  transition: transform var(--motion-fast) var(--ease-ui);
 }
 
 .skip-link:focus-visible {
@@ -89,6 +90,11 @@ a {
   font-weight: var(--weight-bold);
   line-height: 1;
   letter-spacing: 0.16em;
+  transition: opacity var(--motion-fast) var(--ease-ui);
+}
+
+.brand:hover {
+  opacity: 0.72;
 }
 
 .pill {
@@ -102,8 +108,9 @@ a {
   font-size: var(--text-ui);
   line-height: 1.2;
   transition:
-    background-color 160ms ease-out,
-    border-color 160ms ease-out;
+    background-color var(--motion-fast) ease-out,
+    border-color var(--motion-fast) ease-out,
+    color var(--motion-fast) ease-out;
 }
 
 .pill:hover {
@@ -196,12 +203,25 @@ a {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 4px;
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.footer-help:hover {
+  color: var(--slate);
 }
 
 .footer-links {
   display: flex;
   gap: var(--space-20);
   margin-left: auto;
+}
+
+.footer-links a {
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.footer-links a:hover {
+  color: var(--ink);
 }
 
 .footer-meta {

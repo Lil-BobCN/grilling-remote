@@ -111,6 +111,27 @@
 
 手机断点是 `900px`，写在 `base.css` 的媒体查询里。CSS 变量不能用在媒体查询条件中，所以这个值不进 `tokens.css`。
 
+## 动效
+
+| 变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--motion-fast` | `160ms` | 悬停、焦点、按钮反馈 |
+| `--motion-fade` | `500ms` | 淡入 |
+| `--motion-fade-reduced` | `200ms` | 减少动态时只留淡入 |
+| `--motion-rise` | `800ms` | 上浮和逐字入场 |
+| `--motion-reveal` | `700ms` | 滚动出现的位移和淡入 |
+| `--motion-reveal-short` | `450ms` | 滚动出现时的去模糊 |
+| `--motion-reveal-distance` | `18px` | 滚动出现的位移 |
+| `--motion-stagger` | `24ms` | 标题逐字间隔 |
+
+| 缓动变量 | 值 | 用途 |
+| --- | --- | --- |
+| `--ease-fade` | `cubic-bezier(0.2, 0.7, 0.1, 1)` | 透明度 |
+| `--ease-rise` | `cubic-bezier(0.16, 1, 0.3, 1)` | 上浮 |
+| `--ease-ui` | `cubic-bezier(0.165, 0.84, 0.44, 1)` | 悬停和焦点 |
+
+动画规则写在 `src/styles/motion.css`。`prefers-reduced-motion: reduce` 时去掉位移和模糊，只保留淡入；视频占位的循环也停掉。
+
 ## 还没定的
 
 - 标题宋体先用系统字体。锁定字形后要自托管中文子集，控制在 50–130 KB。来源：票 I-0061 评论 C-0375。

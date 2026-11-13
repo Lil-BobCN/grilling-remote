@@ -46,6 +46,9 @@ npm run preview
 | `src/styles/tokens.css` | 色值、字体、字号、间距、线宽变量 |
 | `src/styles/base.css` | 全站版式和响应式 |
 | `src/styles/home.css` | 首页首屏：标题区、视频面板、手机档 |
+| `src/styles/motion.css` | 入场、滚动出现、减少动态 |
+| `src/motion.js` | 滚动出现的观察器、离开视口暂停循环 |
+| `src/components/RiseChars.jsx` | 标题逐字入场 |
 | `design/tokens.md` | 变量清单，和 `tokens.css` 对应 |
 | `design/refined-v1-anthropic-top.html` | 选定草图，设计参考，不参与构建 |
 | `public/favicon.svg` | AF 字标图标 |
@@ -54,6 +57,19 @@ npm run preview
 ## 设计
 
 方向契约在 `.impeccable/surfaces/site-index-html.md`，草图在 `design/refined-v1-anthropic-top.html`。页面里的颜色、字号、间距从 `tokens.css` 取，不写零散数值。新增变量时同时改 `tokens.css` 和 `design/tokens.md`。
+
+## 动效
+
+首屏只有一段编排好的入场：标题逐字上浮、去模糊、淡入，说明和版本信息随后，视频面板带着内容最后落定。其余动效只做两件事：滚动出现，以及悬停、焦点、按钮的即时反馈。
+
+- 页面加载入场：给元素加 `motion-rise`（文字块）或 `motion-panel`（大面），用内联 `--motion-delay` 排顺序。
+- 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
+- 循环动效：给容器加 `data-motion-loop`，离开视口自动暂停。
+- 标题逐字：用 `src/components/RiseChars.jsx`，标题本体用 `aria-label` 给读屏完整句子。
+- 默认内容可见。`index.html` 等五个 HTML 在 `<head>` 里加 `js-motion` 类，只在 JS 接上后才收起待出现的元素；2.5 秒内没接上就撤掉这个类，避免脚本失败时页面空着。
+- `prefers-reduced-motion: reduce` 时去掉位移和模糊，只留淡入；视频占位的循环停掉。
+
+后面的页面照这套加。滚动出现不要做成每段都错开，只在成组出现时用。
 
 ## 检测器
 

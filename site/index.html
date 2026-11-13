@@ -3,6 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      document.documentElement.classList.add('js-motion')
+      setTimeout(function () {
+        if (!window.__afkMotionReady) document.documentElement.classList.remove('js-motion')
+      }, 2500)
+    </script>
     <meta name="theme-color" content="#f0eee6" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>afkfactory · 需求澄清</title>
