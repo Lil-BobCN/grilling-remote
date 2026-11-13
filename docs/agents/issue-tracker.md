@@ -5,6 +5,7 @@
 - 中台服务：`http://127.0.0.1:8788`。命令行：`中台/dt`。数据：`~/.grilling/中台/`。
 - 看现状：`dt show <编号>`、`dt coverage <地图编号>`、`dt status`。
 - 同步：运营者按地图触发。先 `dt sync --check <地图编号>` 看计划，再 `dt sync <地图编号>`。
+- 运营者看什么、信号亮了做什么：`docs/agents/operator-daily.md`。
 
 ## 开工前先选方法
 
