@@ -3,8 +3,57 @@ import RiseChars from '../components/RiseChars.jsx'
 import '../styles/home.css'
 
 const titleSegments = [
-  { text: '把需求说清楚。', bold: true },
-  { text: '剩下的交给我们。' },
+  { text: '不用写代码，' },
+  { text: '把需求说清楚就行。' },
+]
+
+const reasons = [
+  {
+    title: '工具都装好了',
+    text: '九个技能和一套规则都装好了。你只管说需求。',
+  },
+  {
+    title: '文件在你本机',
+    text: '文件一直在你电脑上。官网只负责把包发给你，再收回来。',
+  },
+  {
+    title: '卡住有人接',
+    text: '每一步都告诉你该看到什么。卡住了，截图发给我们。',
+  },
+]
+
+const steps = [
+  {
+    n: '01',
+    title: '下载两样',
+    text: '工作区 zip 和 dsh 安装包，都下好再继续。',
+    check: '你会看到：下载列表里有两个文件',
+  },
+  {
+    n: '02',
+    title: '解压到空文件夹',
+    text: '右键解压，不要直接在压缩包里打开。',
+    check: '你会看到：AGENTS.md 和 .scratch/ 在文件夹里',
+  },
+  {
+    n: '03',
+    title: '用 dsh 打开，说一句话',
+    text: '选这个文件夹，输入「开始需求澄清」。',
+    check: '你会看到：agent 开始问你第一个问题',
+  },
+]
+
+// 来源：customer-kit/manifest.json。清单页 I-0065 会直接读 manifest。
+const skills = [
+  { name: 'grilling', summary: '一次问一件事，把模糊的想法问清楚。' },
+  { name: 'domain-modeling', summary: '把需求里的词定清楚，写进词表。' },
+  { name: 'wayfinder', summary: '把大需求拆成一张张小议题，一次做一张。' },
+  { name: 'prototype', summary: '先做个粗糙的样子给你看，边看边改。' },
+  { name: 'research', summary: '去查资料，把查到的结论写成文件。' },
+  { name: 'wait-what', summary: '你没听懂时，把刚才那段重新讲一遍。' },
+  { name: 'next', summary: '看进度，说下一张做哪张，并给出可复制的一行。' },
+  { name: 'map-gate', summary: '写结论前查一遍，有没有推翻前面定过的事。' },
+  { name: 'wrap-up', summary: '收尾时列出新想法和冲突，核对进度。' },
 ]
 
 export default function HomePage() {
@@ -82,7 +131,7 @@ export default function HomePage() {
             <h1
               id="home-title"
               className="home-hero-title"
-              aria-label="把需求说清楚。剩下的交给我们。"
+              aria-label="不用写代码，把需求说清楚就行。"
               style={{ '--motion-delay': '60ms' }}
             >
               <RiseChars segments={titleSegments} />
@@ -91,7 +140,9 @@ export default function HomePage() {
               className="home-hero-lede motion-rise"
               style={{ '--motion-delay': '260ms' }}
             >
-              下载一份客户工作区，按三步装好，跟 agent 说一句话就开始。做完把整个文件夹传回来。
+              下载一份客户工作区，按三步装好，跟 agent 说一句话就开始。
+              <br className="home-lede-break" />
+              做完把整个文件夹传回来。
             </p>
           </div>
           <p
@@ -146,6 +197,109 @@ export default function HomePage() {
                 先看教程
               </a>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="home-intro"
+        aria-labelledby="home-intro-title"
+        data-reveal
+      >
+        <div className="home-intro-grid">
+          <div>
+            <h2 id="home-intro-title" className="home-section-title">
+              从下载到交付，<br className="home-intro-break" />只有一条路。
+            </h2>
+            <p className="home-section-lede">
+              从下载工作区到交回成品，中间不用换地方，也不用记流程。
+            </p>
+          </div>
+          <div className="home-points">
+            {reasons.map((reason) => (
+              <div className="home-point" key={reason.title}>
+                <b>{reason.title}</b>
+                <p>{reason.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="home-steps" aria-labelledby="home-steps-title">
+        <h2 id="home-steps-title" className="home-section-title" data-reveal>
+          三步装好
+        </h2>
+        <div className="home-step-grid">
+          {steps.map((step, index) => (
+            <div
+              className="home-step"
+              key={step.n}
+              data-reveal
+              style={{ '--reveal-delay': `${index * 90}ms` }}
+            >
+              <b>{step.n}</b>
+              <h3>{step.title}</h3>
+              <p>{step.text}</p>
+              <span>{step.check}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section
+        className="home-skills"
+        aria-labelledby="home-skills-title"
+        data-reveal
+      >
+        <div className="home-skills-grid">
+          <div>
+            <h2 id="home-skills-title" className="home-section-title">
+              九个技能，<br />装好就能用。
+            </h2>
+            <p className="home-section-lede">
+              不用挑，也不用记名字。agent 会自己判断。
+            </p>
+            <a className="home-skills-link" href="/skills">
+              看完整清单 →
+            </a>
+          </div>
+          <ol className="home-skill-list">
+            {skills.map((skill, index) => (
+              <li key={skill.name}>
+                <b>{String(index + 1).padStart(2, '0')}</b>
+                <span>{skill.name}</span>
+                <p>{skill.summary}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section
+        className="home-band"
+        aria-labelledby="home-band-title"
+        data-reveal
+      >
+        <div className="home-band-grid">
+          <div>
+            <h2 id="home-band-title">做完了，传回来。</h2>
+            <p>整个文件夹压成 zip，登录后传回来。勾上「已问完」，剩下的我们来。</p>
+          </div>
+          <div>
+            <h2>进度随时看。</h2>
+            <p>五档状态，走到哪一步都写清楚。不用追着问。</p>
+          </div>
+          <div className="home-band-actions">
+            <a className="home-band-action" href="/app/upload">
+              上传工作区
+            </a>
+            <a
+              className="home-band-action home-band-action-outline"
+              href="/app/orders"
+            >
+              我的订单
+            </a>
           </div>
         </div>
       </section>
