@@ -11,6 +11,26 @@
     board.groups.forEach(function (g) {
       g.decisions.forEach(function (id) { map[id] = g.key; });
     });
+    /* 根决定被换掉后，老票的 derived_from 还指着旧根。沿取代链找到现行决定，
+       让这些票仍然接在现行根（或现行决定）下面，而不是全掉到最底层。 */
+    var decisions = {};
+    board.decisions.forEach(function (d) { decisions[d.id] = d; });
+    var superseder = {};
+    board.decisions.forEach(function (d) {
+      (d.supersedes || []).forEach(function (old) { superseder[old] = d.id; });
+    });
+    function resolve(id, seen) {
+      if (map[id]) return id;
+      var next = superseder[id];
+      if (!next || seen[id]) return id;
+      seen[id] = true;
+      return resolve(next, seen);
+    }
+    Object.keys(decisions).forEach(function (id) {
+      if (map[id]) return;
+      var active = resolve(id, {});
+      if (map[active]) map[id] = map[active];
+    });
     return map;
   }
 
@@ -142,7 +162,7 @@
     /* 根直接拆出的票不逐条拉线，改用一条水平母线加短竖线。 */
     var rootSource = rootGroup.main;
     var rootTicketKeys = board.tickets.filter(function (t) {
-      return primary[t.id] === rootSource;
+      return primaryKey[t.id] === rootKey;
     }).map(function (t) {
       return "ticket:" + t.id;
     }).sort(function (a, b) {
