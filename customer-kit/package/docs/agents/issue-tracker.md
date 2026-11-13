@@ -26,6 +26,43 @@
 
 地图是一个文件，每张子票是一个文件。
 
+### 建图与拆票
+
+终点定完、验收场景确认后，在同一次对话里建图和拆票。
+
+1. 建目录：`.scratch/<需求名>/` 和 `.scratch/<需求名>/issues/`。
+2. 写 `map.md`，六段照下面的骨架。Destination 写终点那一句；Notes 记客户说的约束；接下来先空着；Decisions so far 先空着；Not yet specified 放还问不清的；Out of scope 放客户明确不做的。
+3. 拆票：一个决定或一件可演示的事一个文件，文件名 `NN-<简短任务名>.md`，从 `01` 编号。一张票一次对话能定完；定不完就再拆一张，把后半张写进「接下来」。不要按代码层、页面、接口拆。
+4. 写票头：`Type:` 写 `grilling`、`prototype`、`research`、`task` 之一；有先后写 `Blocked by:`；没人领不写 `Status:`。
+5. 排顺序：把开放票按客户定的顺序写进「接下来」，一行一张。被挡的写「（等 NN 做完）」。
+6. 给继续行：先跑 `next`，把第一张和「继续：<需求名> <编号> <票名>」给客户。
+7. 开工：客户发来继续行，先把票头 `Status:` 改成 `claimed`，再做。
+
+地图骨架：
+
+```markdown
+# <需求名> 地图
+
+## Destination
+
+<终点一句话>
+
+## Notes
+
+- <客户说的约束>
+
+## 接下来
+
+- 01 <票名> —— <这次怎么做>
+
+## Decisions so far
+
+## Not yet specified
+
+## Out of scope
+
+```
+
 - **地图**：`.scratch/<需求名>/map.md`，含六段：Destination、Notes、接下来、Decisions so far、Not yet specified、Out of scope。
 - **接下来**：按客户定的顺序列开放票，一行一张。每行写编号、票名、这次怎么做。被挡住的，行末写“（等 03 做完）”。做完的票，这一行由 `wrap-up` 核对后删掉。
 - **子票**：`.scratch/<需求名>/issues/NN-<任务名>.md`，从 `01` 编号，骨架见下。
