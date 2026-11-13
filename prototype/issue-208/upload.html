@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上传工作区 · 客户回传（#208 样品）</title>
+<meta name="description" content="登录后上传客户工作区 zip：已问完勾选、隐私提示、50 MB 上限。">
+<style>
+:root{
+  --bg:#f2eee3;
+  --paper:#fbf8f1;
+  --paper-2:#fffdf8;
+  --ink:#24211b;
+  --ink-2:#4c463b;
+  --muted:#736b5d;
+  --faint:#a39a89;
+  --line:#ddd5c4;
+  --line-2:#cec4b0;
+  --accent:#3b4a9e;
+  --accent-2:#2c3879;
+  --accent-soft:#eef0fb;
+  --accent-line:#cfd5ef;
+  --green:#2f6b4d;
+  --green-soft:#edf5ef;
+  --green-line:#c8ddce;
+  --amber:#8a5a12;
+  --amber-soft:#fbf3e2;
+  --amber-line:#e7d3ab;
+  --mark:#8a2c21;
+  --mark-soft:#fbeeea;
+  --mark-line:#ecc6be;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --r:14px;
+  --r-sm:9px;
+  --shadow:0 22px 54px -38px rgba(36,33,27,.5),0 1px 2px rgba(36,33,27,.05);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0;
+  background:
+    radial-gradient(circle at 8% 4%,rgba(59,74,158,.05),transparent 30rem),
+    radial-gradient(circle at 94% 0%,rgba(138,90,18,.05),transparent 24rem),
+    var(--bg);
+  color:var(--ink);
+  font:16px/1.75 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+p{margin:0}
+h1,h2,h3,h4{margin:0}
+a{color:var(--accent);text-underline-offset:3px}
+code{font-family:var(--mono);font-size:.92em}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+::selection{background:var(--accent-soft)}
+[hidden]{display:none !important}
+
+.skip-link{
+  position:fixed;left:12px;top:-60px;z-index:200;
+  padding:9px 14px;background:var(--ink);border-radius:6px;
+  color:var(--paper);font-size:14px;text-decoration:none;
+}
+.skip-link:focus{top:12px}
+
+.sample-note{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:5px 10px;
+  padding:8px 16px;background:var(--ink);color:#efeadd;
+  font-size:12px;line-height:1.5;text-align:center;
+}
+.sample-note .tag{
+  display:inline-block;padding:1px 7px;border:1px solid #6d6658;border-radius:99px;
+  color:#fffdf8;font-weight:600;letter-spacing:.04em;
+}
+.sample-note .sep{color:#8d8575}
+.sample-actions{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sample-actions button{
+  padding:3px 9px;border:1px solid #6d6658;border-radius:99px;
+  background:transparent;color:#efeadd;font:12px/1.6 var(--sans);cursor:pointer;
+}
+.sample-actions button:hover{background:#3a352a;border-color:#8d8575}
+
+.topbar{
+  position:sticky;top:0;z-index:100;
+  background:var(--bg);
+  border-bottom:1px solid var(--line-2);
+}
+.topbar-inner{display:flex;align-items:center;gap:18px;max-width:1120px;margin:0 auto;padding:12px 24px}
+.brand{display:flex;align-items:baseline;gap:9px;color:var(--ink);text-decoration:none;white-space:nowrap}
+.brand-mark{
+  display:grid;place-items:center;width:28px;height:28px;border-radius:7px;
+  background:var(--ink);color:var(--paper);font:600 12px/1 var(--mono);
+  letter-spacing:.02em;transform:translateY(4px);
+}
+.brand-text{font:600 15px/1.3 var(--sans)}
+.brand-sub{color:var(--muted);font-size:12px;letter-spacing:.08em}
+.topnav{display:flex;align-items:center;gap:2px;margin-left:auto}
+.topnav a{
+  padding:6px 10px;border-radius:7px;color:var(--ink-2);
+  font-size:13.5px;text-decoration:none;white-space:nowrap;
+}
+.topnav a:hover{background:var(--paper-2);color:var(--ink)}
+.topnav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+
+.page{max-width:1120px;margin:0 auto;padding:30px 24px 72px}
+.card{
+  padding:38px 42px 36px;background:var(--paper);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+}
+.card + .card{margin-top:20px}
+
+h1{margin-bottom:16px;font:600 clamp(33px,4.8vw,50px)/1.22 var(--serif);letter-spacing:-.012em}
+h1 .soft{color:var(--muted);font-weight:400}
+.lede{max-width:40em;color:var(--ink-2);font-size:16.5px;line-height:1.8}
+.lede strong{color:var(--ink);font-weight:600}
+h2{font:600 clamp(24px,3vw,30px)/1.35 var(--serif);letter-spacing:-.008em}
+h3{font:600 17px/1.5 var(--sans)}
+.section-lead{max-width:40em;margin-top:8px;color:var(--ink-2);font-size:15px;line-height:1.8}
+
+.hero{position:relative;overflow:hidden}
+.hero::before{
+  content:"";position:absolute;right:-70px;top:-90px;width:300px;height:300px;
+  border:1px solid rgba(59,74,158,.12);border-radius:50%;pointer-events:none;
+}
+.hero::after{
+  content:"";position:absolute;right:34px;top:-36px;width:150px;height:150px;
+  border:1px solid rgba(59,74,158,.1);border-radius:50%;pointer-events:none;
+}
+.hero > *{position:relative;z-index:1}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:44px;padding:11px 17px;border:1px solid transparent;border-radius:9px;
+  font:600 14.5px/1.2 var(--sans);text-decoration:none;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,transform .15s ease;
+}
+.btn:hover{transform:translateY(-1px)}
+@media (prefers-reduced-motion:reduce){.btn{transition:none}.btn:hover{transform:none}}
+.btn-primary{background:var(--accent);color:#fffdf8;box-shadow:0 8px 18px -12px rgba(59,74,158,.7)}
+.btn-primary:hover{background:var(--accent-2)}
+.btn-primary:disabled{
+  background:#e8e9f5;border-color:#d3d6ea;color:#5b5f7d;
+  box-shadow:none;cursor:not-allowed;transform:none;
+}
+.btn-secondary{background:var(--paper-2);border-color:var(--line-2);color:var(--ink)}
+.btn-secondary:hover{border-color:var(--faint);background:var(--paper-2)}
+.btn .sub{font-weight:400;font-size:12.5px;opacity:.8}
+
+.workspace-card{padding:30px 32px 32px}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.85fr);gap:0}
+.workspace-main{padding-right:34px;min-width:0}
+.workspace-side{padding-left:30px;border-left:1px solid var(--line);min-width:0}
+.workspace-title{margin:0 0 14px;font:600 22px/1.35 var(--serif);color:var(--ink)}
+
+.account-row{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;
+  padding:0 0 14px;border-bottom:1px solid var(--line);
+}
+.avatar{
+  display:grid;place-items:center;width:34px;height:34px;border-radius:50%;
+  background:var(--accent-soft);border:1px solid var(--accent-line);
+  color:var(--accent-2);font:600 14px/1 var(--sans);flex:none;
+}
+.account-main{display:flex;flex-direction:column;line-height:1.4;min-width:0}
+.account-main b{font-size:14.5px}
+.account-main span{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.account-badge{
+  padding:1px 8px;border-radius:99px;background:var(--green-soft);
+  border:1px solid var(--green-line);color:var(--green);
+  font-size:11px;font-weight:600;white-space:nowrap;
+}
+.account-note{margin-left:auto;color:var(--muted);font-size:13px;line-height:1.5}
+
+.dropzone{
+  display:grid;place-items:center;gap:3px;width:100%;margin-top:14px;
+  padding:32px 20px 30px;background:var(--paper-2);
+  border:2px dashed var(--line-2);border-radius:12px;
+  font:inherit;color:inherit;text-align:center;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+  transition:border-color .15s ease,background .15s ease;
+}
+.dropzone:hover,.dropzone.is-drag{border-color:var(--accent);background:var(--accent-soft)}
+.drop-icon{
+  display:grid;place-items:center;width:44px;height:44px;margin-bottom:7px;border-radius:10px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);
+  color:var(--accent-2);font:700 11px/1 var(--mono);letter-spacing:.04em;
+}
+.dropzone b{font-size:16px;line-height:1.5}
+.drop-sub{color:var(--ink-2);font-size:13.5px;line-height:1.6}
+.drop-limit{margin-top:5px;color:var(--muted);font:12.5px/1.6 var(--mono)}
+
+.file-row{
+  display:flex;align-items:center;gap:11px;margin-top:10px;
+  padding:11px 13px;background:var(--paper-2);border:1px solid var(--line-2);border-radius:9px;
+}
+.file-badge{
+  display:grid;place-items:center;width:34px;height:34px;border-radius:7px;
+  background:var(--green-soft);border:1px solid var(--green-line);
+  color:var(--green);font:700 9.5px/1 var(--mono);letter-spacing:.04em;flex:none;
+}
+.file-info{display:flex;flex-direction:column;min-width:0;line-height:1.45}
+.file-info b{font-size:13.5px;overflow-wrap:anywhere}
+.file-info span{color:var(--muted);font-size:13px}
+.file-remove{
+  margin-left:auto;padding:5px 10px;border:1px solid var(--line-2);border-radius:6px;
+  background:transparent;color:var(--ink-2);font:600 13px/1.5 var(--sans);cursor:pointer;flex:none;
+}
+.file-remove:hover{background:var(--bg);border-color:var(--faint)}
+
+.form-error{
+  margin-top:10px;padding:10px 12px;
+  background:var(--mark-soft);border:1px solid var(--mark-line);border-radius:8px;
+  color:var(--mark);font-size:14px;line-height:1.65;
+}
+
+.check-block{
+  margin-top:18px;padding-top:16px;border-top:1px solid var(--line);
+}
+.check-line{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.check-line input{
+  width:18px;height:18px;margin:3px 0 0;flex:none;
+  accent-color:var(--accent);cursor:pointer;
+}
+.check-line b{display:block;font-size:14.5px;line-height:1.5}
+.check-line small{display:block;margin-top:2px;color:var(--ink-2);font-size:13.5px;line-height:1.6}
+.check-note{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);color:var(--muted);font-size:13.5px;line-height:1.65}
+
+.note{
+  margin-top:16px;padding:14px 16px;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  font-size:14px;line-height:1.7;
+}
+.note strong{font-weight:600}
+.note-amber{background:var(--amber-soft);border-color:var(--amber-line);color:#5b4318}
+.note-amber strong{color:#4a340f}
+.note-amber span{display:block;margin-top:6px;color:#6a5427;font-size:13px;line-height:1.65}
+
+.submit-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:20px}
+.submit-hint{color:var(--muted);font-size:13.5px;line-height:1.6}
+
+.success-panel{padding:14px 0 2px;text-align:center}
+.success-mark{
+  display:grid;place-items:center;width:48px;height:48px;margin:0 auto 14px;
+  border-radius:50%;background:var(--green-soft);border:1px solid var(--green-line);
+  color:var(--green);font:700 22px/1 var(--sans);
+}
+.success-panel h2{margin-bottom:8px}
+.success-panel > p{max-width:34em;margin:0 auto;color:var(--ink-2);font-size:15px;line-height:1.8}
+.success-meta{
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;
+  max-width:420px;margin:20px auto 0;padding:13px 0 0;text-align:left;
+  border-top:1px solid var(--line);
+  font-size:13.5px;
+}
+.success-meta dt{color:var(--muted)}
+.success-meta dd{margin:0;color:var(--ink-2);overflow-wrap:anywhere}
+.success-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:20px}
+
+.side-section + .side-section{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.side-section h3{font-size:15.5px;margin-bottom:4px}
+.side-section > p{color:var(--ink-2);font-size:14px;line-height:1.7}
+.side-list{margin:12px 0 0;padding:0;list-style:none}
+.side-list li{
+  display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;
+  padding-bottom:10px;
+  color:var(--ink-2);font-size:13.5px;line-height:1.65;
+}
+.side-list li + li{padding-top:10px;border-top:1px solid var(--line)}
+.side-list .num{
+  display:grid;place-items:center;width:22px;height:22px;border-radius:50%;
+  border:1px solid var(--line-2);background:var(--paper-2);
+  color:var(--muted);font:600 10.5px/1 var(--mono);transform:translateY(1px);
+}
+.stage-line{margin-top:12px;color:var(--ink-2);font-size:13px;line-height:1.9}
+.stage-line span{white-space:nowrap}
+.stage-line i{color:var(--muted);font-style:normal;padding:0 2px}
+.side-section .small{margin-top:11px;color:var(--muted);font-size:13px;line-height:1.65}
+
+.footer{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;
+  margin-top:26px;padding:0 4px;color:var(--muted);font-size:13px;
+}
+.footer .foot-links{display:flex;flex-wrap:wrap;gap:14px;margin-left:auto}
+.footer a{color:var(--muted);text-decoration:none}
+.footer a:hover{color:var(--ink);text-decoration:underline}
+
+@media (max-width:900px){
+  .workspace-grid{grid-template-columns:1fr}
+  .workspace-main{padding-right:0}
+  .workspace-side{border-left:0;border-top:1px solid var(--line);padding-left:0;padding-top:22px;margin-top:22px}
+}
+@media (max-width:760px){
+  .topbar-inner{flex-wrap:wrap;gap:8px 12px;padding:10px 16px}
+  .topnav{margin-left:0;width:100%;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .topnav::-webkit-scrollbar{display:none}
+  .topnav a{white-space:nowrap;min-height:44px;display:inline-flex;align-items:center}
+  .page{padding:20px 16px 56px}
+  .card{padding:24px 20px 22px}
+  .workspace-card{padding:22px 20px}
+  h1{font-size:clamp(30px,9vw,40px)}
+  .account-note{margin-left:0;width:100%}
+  .submit-row .btn{width:100%}
+  .submit-hint{width:100%}
+  .file-remove{min-height:44px;padding:8px 12px}
+}
+@media print{.sample-note,.topbar{display:none}}
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">跳到正文</a>
+
+<div class="sample-note">
+  <span class="tag">样品</span>
+  <span>#208 · 官网上传页</span>
+  <span class="sep">·</span>
+  <span>不会真的上传</span>
+  <span class="sep">·</span>
+  <span class="sample-actions">试一下：
+    <button type="button" data-demo="ok">正常包 11.8 MB</button>
+    <button type="button" data-demo="big">超限包 62 MB</button>
+    <button type="button" data-demo="wrong">不是 zip</button>
+  </span>
+</div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">AF</span>
+      <span>
+        <span class="brand-text">需求澄清</span>
+        <span class="brand-sub">&nbsp;客户工作区</span>
+      </span>
+    </a>
+    <nav class="topnav" aria-label="站点导航">
+      <a href="index.html">下载</a>
+      <a href="skills.html">技能清单</a>
+      <a href="../issue-31/tutorial.html">教程</a>
+      <a href="upload.html" aria-current="page">上传</a>
+      <a href="../issue-109/index.html">我的订单</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page" id="main">
+
+  <section class="card hero" aria-labelledby="hero-title">
+    <h1 id="hero-title">把整个工作区传回来。</h1>
+    <p class="lede">全部问完，就把整个文件夹压成一个 zip。拖进来，勾上「已问完」，<strong>剩下的交给我们。</strong></p>
+  </section>
+
+  <section class="card workspace-card" aria-labelledby="upload-title">
+    <div class="workspace-grid">
+
+      <div class="workspace-main">
+        <h2 id="upload-title" class="workspace-title">上传工作区</h2>
+
+        <div class="account-row">
+          <span class="avatar" aria-hidden="true">王</span>
+          <div class="account-main">
+            <b>王秀兰</b>
+            <span>wangxiulan@example.com</span>
+          </div>
+          <span class="account-badge">已登录</span>
+          <span class="account-note">客户简称和邮箱由账号带出，不用填</span>
+        </div>
+
+        <div id="upload-form">
+          <button type="button" class="dropzone" id="dropzone">
+            <span class="drop-icon" aria-hidden="true">ZIP</span>
+            <b>把 zip 拖到这里</b>
+            <span class="drop-sub">或点这里选择文件</span>
+            <span class="drop-limit">只收 .zip · 50 MB 以内</span>
+          </button>
+          <input type="file" id="file-input" accept=".zip,application/zip" hidden>
+
+          <div class="file-row" id="file-row" aria-live="polite" hidden>
+            <span class="file-badge" aria-hidden="true">ZIP</span>
+            <span class="file-info">
+              <b id="file-name"></b>
+              <span id="file-size"></span>
+            </span>
+            <button type="button" class="file-remove" id="file-remove">换一个</button>
+          </div>
+
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+
+          <div class="check-block">
+            <label class="check-line" for="done-check">
+              <input type="checkbox" id="done-check">
+              <span>
+                <b>已问完</b>
+                <small>全部问完、agent 说没有下一张票了，再勾。</small>
+              </span>
+            </label>
+            <p class="check-note">没问完也可以先传，只存快照，不会建单。勾了「已问完」，我们才开始处理。</p>
+          </div>
+
+          <div class="note note-amber">
+            <strong>文件夹里的所有文件都会上传，请只放本项目的资料。</strong>
+            <span>对话记录在 <code>~/.dsh/sessions/</code>，不在工作区里，不会跟着上传。</span>
+          </div>
+
+          <div class="submit-row">
+            <button type="button" class="btn btn-primary" id="submit-btn" disabled>上传</button>
+            <p class="submit-hint" id="submit-hint">选一个 zip，勾上「已问完」。</p>
+          </div>
+        </div>
+
+        <div class="success-panel" id="success-panel" tabindex="-1" hidden>
+          <span class="success-mark" aria-hidden="true">✓</span>
+          <h2>传上来了。</h2>
+          <p>我们在校验，接下来会安排处理。进度在「我的订单」看，不用再传一次。</p>
+          <dl class="success-meta">
+            <dt>文件</dt>
+            <dd id="success-file"></dd>
+            <dt>状态</dt>
+            <dd>已收到 · 校验中</dd>
+          </dl>
+          <div class="success-actions">
+            <a class="btn btn-secondary" href="../issue-109/index.html">打开我的订单</a>
+            <button type="button" class="btn btn-secondary" id="upload-again">再传一个</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="workspace-side" aria-label="上传前后要注意的事">
+        <section class="side-section" aria-labelledby="before-title">
+          <h3 id="before-title">传之前，检查三件事</h3>
+          <p>压错了，我们会让你补传。</p>
+          <ol class="side-list">
+            <li><span class="num" aria-hidden="true">1</span><span>压的是整个工作区文件夹，不是只压 <code>.scratch/</code>。</span></li>
+            <li><span class="num" aria-hidden="true">2</span><span>文件夹里有 <code>AGENTS.md</code> 和 <code>.scratch/</code>。</span></li>
+            <li><span class="num" aria-hidden="true">3</span><span>压缩包在 50 MB 以内。超了就删掉不需要的文件再压。</span></li>
+          </ol>
+        </section>
+
+        <section class="side-section" aria-labelledby="after-title">
+          <h3 id="after-title">传上来之后</h3>
+          <p>我们先校验，再建单、安排处理。进度一直在这里看，不用催。</p>
+          <p class="stage-line">
+            <span>已收到 <i aria-hidden="true">→</i></span>
+            <span>安排中 <i aria-hidden="true">→</i></span>
+            <span>开发中 <i aria-hidden="true">→</i></span>
+            <span>待客户验收 <i aria-hidden="true">→</i></span>
+            <span>已完成</span>
+          </p>
+          <p class="small">进度页的样子见 <a href="../issue-109/index.html">我的订单样品</a>。实现和上线归 to-spec。</p>
+        </section>
+
+        <section class="side-section" aria-labelledby="help-title">
+          <h3 id="help-title">卡在这一步</h3>
+          <p>截一张屏幕，把窗口边框和报错带上，发给客服。微信为主，电话兜底。不要重复传很多次。</p>
+        </section>
+      </aside>
+
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>客户工作区 v1 · 2026-11-07</span>
+    <span>afkfactory.dev</span>
+    <span class="foot-links">
+      <a href="index.html">下载</a>
+      <a href="skills.html">技能清单</a>
+      <a href="../issue-31/tutorial.html">教程</a>
+      <a href="upload.html">上传页</a>
+    </span>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var MAX = 50 * 1024 * 1024;
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var current = null;
+
+  var dropzone = document.getElementById("dropzone");
+  var input = document.getElementById("file-input");
+  var fileRow = document.getElementById("file-row");
+  var fileName = document.getElementById("file-name");
+  var fileSize = document.getElementById("file-size");
+  var fileRemove = document.getElementById("file-remove");
+  var errorEl = document.getElementById("form-error");
+  var doneCheck = document.getElementById("done-check");
+  var submitBtn = document.getElementById("submit-btn");
+  var submitHint = document.getElementById("submit-hint");
+  var uploadForm = document.getElementById("upload-form");
+  var successPanel = document.getElementById("success-panel");
+  var successFile = document.getElementById("success-file");
+  var uploadAgain = document.getElementById("upload-again");
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " 字节";
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + " KB";
+    return (kb / 1024).toFixed(1) + " MB";
+  }
+
+  function showError(text) {
+    errorEl.textContent = text;
+    errorEl.hidden = false;
+  }
+
+  function hideError() {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+
+  function updateSubmit() {
+    submitBtn.disabled = !current || !doneCheck.checked;
+    if (!current) {
+      submitHint.textContent = "先选一个 zip。";
+    } else if (!doneCheck.checked) {
+      submitHint.textContent = "勾上「已问完」才能提交。";
+    } else {
+      submitHint.textContent = "可以传了。";
+    }
+  }
+
+  function clearFile() {
+    current = null;
+    fileRow.hidden = true;
+    fileName.textContent = "";
+    fileSize.textContent = "";
+    updateSubmit();
+  }
+
+  function validate(name, size) {
+    if (!/\.zip$/i.test(name)) {
+      return "只收 .zip。把整个文件夹压成一个 zip 再传。";
+    }
+    if (size === 0) {
+      return "这个文件是空的。重新压一次再传。";
+    }
+    if (size > MAX) {
+      return "这个包 " + formatSize(size) + "，超过 50 MB 上限。删掉不需要的文件再压一次，或找客服。";
+    }
+    return "";
+  }
+
+  function setFile(name, size) {
+    var error = validate(name, size);
+    if (error) {
+      clearFile();
+      showError(error);
+      return;
+    }
+    hideError();
+    current = { name: name, size: size };
+    fileName.textContent = name;
+    fileSize.textContent = formatSize(size);
+    fileRow.hidden = false;
+    updateSubmit();
+  }
+
+  dropzone.addEventListener("click", function () {
+    input.click();
+  });
+
+  ["dragenter", "dragover"].forEach(function (type) {
+    dropzone.addEventListener(type, function (event) {
+      event.preventDefault();
+      dropzone.classList.add("is-drag");
+    });
+  });
+  ["dragleave", "dragend", "drop"].forEach(function (type) {
+    dropzone.addEventListener(type, function (event) {
+      event.preventDefault();
+      dropzone.classList.remove("is-drag");
+    });
+  });
+  dropzone.addEventListener("drop", function (event) {
+    var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+    if (file) setFile(file.name, file.size);
+  });
+
+  input.addEventListener("change", function () {
+    var file = input.files && input.files[0];
+    if (file) setFile(file.name, file.size);
+    input.value = "";
+  });
+
+  fileRemove.addEventListener("click", function (event) {
+    event.stopPropagation();
+    clearFile();
+    hideError();
+    dropzone.focus();
+  });
+
+  doneCheck.addEventListener("change", updateSubmit);
+  updateSubmit();
+
+  submitBtn.addEventListener("click", function () {
+    if (!current || !doneCheck.checked) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "上传中…";
+    submitHint.textContent = "正在上传，别关页面。";
+    uploadForm.setAttribute("aria-busy", "true");
+    window.setTimeout(function () {
+      successFile.textContent = current.name + " · " + formatSize(current.size);
+      uploadForm.hidden = true;
+      uploadForm.removeAttribute("aria-busy");
+      successPanel.hidden = false;
+      submitBtn.textContent = "上传";
+      successPanel.focus();
+      successPanel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    }, 900);
+  });
+
+  function resetForm(shouldFocus) {
+    clearFile();
+    hideError();
+    doneCheck.checked = false;
+    submitBtn.textContent = "上传";
+    submitBtn.disabled = true;
+    uploadForm.hidden = false;
+    successPanel.hidden = true;
+    updateSubmit();
+    if (shouldFocus) dropzone.focus();
+  }
+
+  uploadAgain.addEventListener("click", function () {
+    resetForm(true);
+  });
+
+  document.querySelectorAll("[data-demo]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var kind = btn.getAttribute("data-demo");
+      resetForm(false);
+      if (kind === "ok") {
+        setFile("客户工作区-v1.zip", 12400000);
+      } else if (kind === "big") {
+        setFile("客户工作区-v1.zip", 62 * 1024 * 1024);
+      } else if (kind === "wrong") {
+        setFile("需求澄清.rar", 3000000);
+      }
+      document.getElementById("upload-title").scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start"
+      });
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
