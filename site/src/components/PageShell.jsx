@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n/index.jsx'
+
 export default function PageShell({
   path,
   title,
@@ -6,6 +8,8 @@ export default function PageShell({
   className = '',
   children,
 }) {
+  const { copy } = useI18n()
+
   return (
     <main id="main" className={`page ${className}`.trim()}>
       <header className="page-head" data-reveal style={{ '--reveal-delay': '40ms' }}>
@@ -14,7 +18,7 @@ export default function PageShell({
       </header>
       {scaffold ? (
         <p className="scaffold-note" data-reveal style={{ '--reveal-delay': '140ms' }}>
-          {`页面骨架 · ${path} · 内容待补`}
+          {copy.site.scaffold(path)}
         </p>
       ) : null}
       {children ? (

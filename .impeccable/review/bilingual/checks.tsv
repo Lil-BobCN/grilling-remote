@@ -1,0 +1,101 @@
+width	route	lang	theme	htmlLang	dataLang	title	description	overflow	consoleErrors	failedRequests	fontRequests	file
+390	/	en	dark	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-home-en-dark.png
+390	/app	en	dark	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)		SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-login-en-dark.png
+390	/app/orders	en	dark	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-orders-en-dark.png
+390	/app/upload	en	dark	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-upload-en-dark.png
+390	/download	en	dark	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-download-en-dark.png
+390	/help	en	dark	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-help-en-dark.png
+390	/skills	en	dark	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-skills-en-dark.png
+390	/tutorial	en	dark	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-tutorial-en-dark.png
+390	/	en	light	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-home-en-light.png
+390	/app	en	light	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)		SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-login-en-light.png
+390	/app/orders	en	light	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-orders-en-light.png
+390	/app/orders/ord-1	en	light	en	en	Barbershop booking mini-app · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-order-detail-en-light.png
+390	/app/upload	en	light	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-app-upload-en-light.png
+390	/download	en	light	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-download-en-light.png
+390	/help	en	light	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-help-en-light.png
+390	/skills	en	light	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-skills-en-light.png
+390	/tutorial	en	light	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	390-tutorial-en-light.png
+390	/	zh	dark	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False				390-home-zh-dark.png
+390	/app	zh	dark	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			390-app-login-zh-dark.png
+390	/app/orders	zh	dark	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False				390-app-orders-zh-dark.png
+390	/app/upload	zh	dark	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False				390-app-upload-zh-dark.png
+390	/download	zh	dark	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False				390-download-zh-dark.png
+390	/help	zh	dark	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False				390-help-zh-dark.png
+390	/skills	zh	dark	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False				390-skills-zh-dark.png
+390	/tutorial	zh	dark	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False				390-tutorial-zh-dark.png
+390	/	zh	light	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		390-home-zh-light.png
+390	/app	zh	light	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			390-app-login-zh-light.png
+390	/app/orders	zh	light	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False				390-app-orders-zh-light.png
+390	/app/orders/ord-1	zh	light	zh-CN		Barbershop booking mini-app · afkfactory	登录后上传工作区，查看订单进度。	False				390-app-order-detail-zh-light.png
+390	/app/upload	zh	light	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False				390-app-upload-zh-light.png
+390	/download	zh	light	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False				390-download-zh-light.png
+390	/help	zh	light	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		390-help-zh-light.png
+390	/skills	zh	light	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		390-skills-zh-light.png
+390	/tutorial	zh	light	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False				390-tutorial-zh-light.png
+1100	/	en	dark	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-home-en-dark.png
+1100	/app	en	dark	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)	http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-login-en-dark.png
+1100	/app/orders	en	dark	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-orders-en-dark.png
+1100	/app/upload	en	dark	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-upload-en-dark.png
+1100	/download	en	dark	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-download-en-dark.png
+1100	/help	en	dark	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-help-en-dark.png
+1100	/skills	en	dark	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-skills-en-dark.png
+1100	/tutorial	en	dark	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-tutorial-en-dark.png
+1100	/	en	light	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-home-en-light.png
+1100	/app	en	light	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)		SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-login-en-light.png
+1100	/app/orders	en	light	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-orders-en-light.png
+1100	/app/upload	en	light	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-app-upload-en-light.png
+1100	/download	en	light	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-download-en-light.png
+1100	/help	en	light	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-help-en-light.png
+1100	/skills	en	light	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-skills-en-light.png
+1100	/tutorial	en	light	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1100-tutorial-en-light.png
+1100	/	zh	dark	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False				1100-home-zh-dark.png
+1100	/app	zh	dark	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			1100-app-login-zh-dark.png
+1100	/app/orders	zh	dark	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False				1100-app-orders-zh-dark.png
+1100	/app/upload	zh	dark	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-app-upload-zh-dark.png
+1100	/download	zh	dark	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False				1100-download-zh-dark.png
+1100	/help	zh	dark	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-help-zh-dark.png
+1100	/skills	zh	dark	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False				1100-skills-zh-dark.png
+1100	/tutorial	zh	dark	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-tutorial-zh-dark.png
+1100	/	zh	light	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-home-zh-light.png
+1100	/app	zh	light	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			1100-app-login-zh-light.png
+1100	/app/orders	zh	light	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-app-orders-zh-light.png
+1100	/app/upload	zh	light	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False				1100-app-upload-zh-light.png
+1100	/download	zh	light	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-download-zh-light.png
+1100	/help	zh	light	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-help-zh-light.png
+1100	/skills	zh	light	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False				1100-skills-zh-light.png
+1100	/tutorial	zh	light	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1100-tutorial-zh-light.png
+1440	/	en	dark	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-home-en-dark.png
+1440	/app	en	dark	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)		SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-login-en-dark.png
+1440	/app/orders	en	dark	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-orders-en-dark.png
+1440	/app/upload	en	dark	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-upload-en-dark.png
+1440	/download	en	dark	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-download-en-dark.png
+1440	/help	en	dark	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-help-en-dark.png
+1440	/skills	en	dark	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-skills-en-dark.png
+1440	/tutorial	en	dark	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-tutorial-en-dark.png
+1440	/	en	light	en	en	afkfactory · Requirement Clarification	Download the client workspace, set it up in three steps, explain what you need, and send it back when you are done.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-home-en-light.png
+1440	/app	en	light	en	en	Log in · afkfactory	Log in to upload your workspace and check order progress.	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)		SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-login-en-light.png
+1440	/app/orders	en	light	en	en	My orders · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-orders-en-light.png
+1440	/app/orders/ord-1	en	light	en	en	Barbershop booking mini-app · afkfactory	Log in to upload your workspace and check order progress.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-order-detail-en-light.png
+1440	/app/upload	en	light	en	en	Upload workspace · afkfactory	Log in to upload your workspace and check order progress.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-app-upload-en-light.png
+1440	/download	en	light	en	en	Download the client workspace · afkfactory	Download the client workspace zip and check its version, date, and SHA256.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-download-en-light.png
+1440	/help	en	light	en	en	Help & support · afkfactory	What to do when you are stuck, and what to send support.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-help-en-light.png
+1440	/skills	en	light	en	en	Skills · afkfactory	What each of the seven skills does and when to use it.	False		http://localhost:4174/favicon.svg net::ERR_ABORTED	SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-skills-en-light.png
+1440	/tutorial	en	light	en	en	Guide · afkfactory	Set up the client workspace in three steps, start your first conversation with the agent, and send it back.	False			SourceSerif4-Variable.woff2 | InstrumentSans-Variable.woff2	1440-tutorial-en-light.png
+1440	/	zh	dark	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False				1440-home-zh-dark.png
+1440	/app	zh	dark	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			1440-app-login-zh-dark.png
+1440	/app/orders	zh	dark	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1440-app-orders-zh-dark.png
+1440	/app/upload	zh	dark	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1440-app-upload-zh-dark.png
+1440	/download	zh	dark	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False				1440-download-zh-dark.png
+1440	/help	zh	dark	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False				1440-help-zh-dark.png
+1440	/skills	zh	dark	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False				1440-skills-zh-dark.png
+1440	/tutorial	zh	dark	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False				1440-tutorial-zh-dark.png
+1440	/	zh	light	zh-CN		afkfactory · 需求澄清	下载客户工作区，按三步装好，把需求说清楚，做完传回来。	False				1440-home-zh-light.png
+1440	/app	zh	light	zh-CN		登录 · afkfactory	登录后上传工作区，查看订单进度。	False	Failed to load resource: the server responded with a status of 401 (Unauthorized)			1440-app-login-zh-light.png
+1440	/app/orders	zh	light	zh-CN		我的订单 · afkfactory	登录后上传工作区，查看订单进度。	False				1440-app-orders-zh-light.png
+1440	/app/orders/ord-1	zh	light	zh-CN		Barbershop booking mini-app · afkfactory	登录后上传工作区，查看订单进度。	False				1440-app-order-detail-zh-light.png
+1440	/app/upload	zh	light	zh-CN		上传工作区 · afkfactory	登录后上传工作区，查看订单进度。	False				1440-app-upload-zh-light.png
+1440	/download	zh	light	zh-CN		下载客户工作区 · afkfactory	下载客户工作区 zip，核对版本、日期和 SHA256。	False				1440-download-zh-light.png
+1440	/help	zh	light	zh-CN		帮助与客服 · afkfactory	卡住了怎么办，发哪三样给客服。	False		http://localhost:4174/favicon.svg net::ERR_ABORTED		1440-help-zh-light.png
+1440	/skills	zh	light	zh-CN		技能清单 · afkfactory	七个技能各做什么，什么时候用。	False				1440-skills-zh-light.png
+1440	/tutorial	zh	light	zh-CN		教程 · afkfactory	三步装好客户工作区，和 agent 说第一句话，再传回来。	False				1440-tutorial-zh-light.png

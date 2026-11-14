@@ -808,3 +808,8 @@
     transition: none;
   }
 }
+
+/* 英文标题较长：让右栏标题均衡断行。 */
+html[data-lang="en"] .upload-side-title {
+  text-wrap: balance;
+}

@@ -1,10 +1,12 @@
 # 全站验收截图
 
+> 2026-11-14 晚：加入中英双语后的当前截图在 `bilingual/`（README、checks.tsv、110 张图）。`desktop.png` 和 `mobile.png` 已换成当前双语版；本目录其余 PNG 是 18:32 的中文版历史记录，不代表当前页面。
+
 来源：issue #254「全站验收与设计定稿」。截图在 2026-11-14 用本地开发服务（`npm run dev`，端口 5175）和 Chromium 1440×900、1920×1080、390×844 三个视口拍。
 
 长页截图先撤掉 `js-motion` 并给 `[data-reveal]` 补 `is-revealed`，让滚动出现的段落一次显示完；这不改页面源码，只影响截图。
 
-`desktop.png` 和 `mobile.png` 是 finish reviewer 要的标准文件名，内容分别等于 `1440-home.png` 和 `390-home.png`。
+`desktop.png` 和 `mobile.png` 是 finish reviewer 要的标准文件名，2026-11-14 晚已换成双语版的当前首页（等于 `bilingual/desktop.png` 和 `bilingual/mobile.png`）。原来中文版的同名文件保留为 `pre-bilingual-desktop.png` 和 `pre-bilingual-mobile.png`。
 
 ## 全站三档
 

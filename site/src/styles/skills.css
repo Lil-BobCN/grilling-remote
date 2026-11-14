@@ -215,3 +215,8 @@ html[data-theme="dark"] .skills-list li:nth-child(n + 4):nth-child(-n + 6) {
 html[data-theme="dark"] .skills-list li:nth-child(n + 7) {
   background: color-mix(in srgb, var(--olive) 9%, transparent);
 }
+
+/* 英文标题较长：让下一步标题均衡断行。 */
+html[data-lang="en"] .skills-next h2 {
+  text-wrap: balance;
+}

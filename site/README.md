@@ -42,8 +42,10 @@ npm run preview
 
 | 路径 | 内容 |
 | --- | --- |
-| `src/components/` | 顶栏、页脚、页面壳 |
+| `src/components/` | 顶栏、页脚、页面壳、语言切换 |
 | `src/pages/` | 各页面的壳。页面票在这里填内容 |
+| `src/content/` | 中英文文案，两份结构相同 |
+| `src/i18n/` | 语言状态、`useI18n`、页面标题和富文本渲染 |
 | `src/styles/tokens.css` | 色值、字体、字号、间距、线宽变量 |
 | `src/styles/base.css` | 全站版式和响应式 |
 | `src/styles/home.css` | 首页：首屏、三理由、三步、技能清单、黑底回传、手机档 |
@@ -53,6 +55,7 @@ npm run preview
 | `design/tokens.md` | 变量清单，和 `tokens.css` 对应 |
 | `design/refined-v1-anthropic-top.html` | 选定草图，设计参考，不参与构建 |
 | `public/favicon.svg` | AF 字标图标 |
+| `public/fonts/` | 英文两种字体和 OFL 许可证 |
 | `scripts/prerender.mjs` | 构建时写静态 HTML |
 
 ## 设计
@@ -61,7 +64,7 @@ npm run preview
 
 两处用色由 live 审阅定下：
 
-- 首页「三步装好」是深色带，步骤号底用陶土、燕麦、薄荷三色循环，见 `home.css` 的 `.home-steps--night`。
+- 首页「三步装好」是暖纸带，上下各一条墨线，步骤号底用陶土、燕麦、薄荷三色循环，见 `home.css` 的 `.home-steps--paper`。
 - 下载页文件区是燕麦色纸面，右下有一枚陶土落款章，旋转 -2.5 度，版本和日期和数据栏一致，见 `download.css` 的 `.download-seal`。
 - 技能清单的序号、细线和很浅的底色每三行换一组陶土、天蓝、橄榄，见 `skills.css`。
 
@@ -90,6 +93,14 @@ npm run preview
 - 六个 HTML 在 `<head>` 里先读存储或系统偏好，再画页面，避免闪白。
 - 夜间色值在 `src/styles/tokens.css` 的 `html[data-theme="dark"]`，清单见 `design/tokens.md`。
 - 切换时同步更新 `<meta name="theme-color">`；首屏视频的渐变从 `--paper` 起，夜间不会露出浅色边。
+
+## 中英文
+
+- 顶栏右侧第二枚胶囊切语言，`LanguageToggle.jsx` 调 `useI18n`，选择存 `localStorage` 的 `afk-lang`。中文页写 EN，英文页写中文。
+- 文案在 `src/content/zh.js` 和 `src/content/en.js`，结构相同；页面、账号区和 `src/progress.js` 都从 `copy` 取显示文字。进度行的解析仍用中文键名，显示文字按语言取。
+- 切换后给 `<html>` 设 `lang="en"` 和 `data-lang="en"`，切回中文时移除 `data-lang`。页面标题和 description 一起换。
+- 公开页预渲染的始终是中文。六个 HTML 的 `<head>` 先读 `afk-lang`；英文时预加载 `public/fonts/` 里的两种字体、加 `lang-pending`，脚本接上前不画中文正文。`main.jsx` 看到英文就不做水合，直接 `createRoot` 渲染，避免预渲染中文和英文组件对不上。
+- 英文标题用 Source Serif 4，正文用 Instrument Sans，等宽仍用 SF Mono；中文字符回退到宋体和苹方。字体是 Anthropic 官网风格的开源近似，OFL 许可证在 `public/fonts/`。
 
 ## 检测器
 

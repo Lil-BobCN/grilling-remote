@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AccountBar from '../components/AccountBar.jsx'
+import { Rich, useI18n } from '../i18n/index.jsx'
 import { getOrder, readOrder } from '../api/account.js'
 import {
   TIERS,
@@ -8,6 +9,7 @@ import {
   historyRounds,
   stageCopy,
   substepRows,
+  tierName,
 } from '../progress.js'
 
 function CheckIcon() {
@@ -44,13 +46,6 @@ function AlertIcon() {
   )
 }
 
-const STATE_WORDS = {
-  done: '已走过',
-  current: '当前在这',
-  pending: '还没到',
-  warn: '有问题',
-}
-
 function stateTone(view) {
   if (view.invalid) return 'warn'
   if (view.tierLabel === '已完成') return 'done'
@@ -66,23 +61,28 @@ function listItems(items) {
     .filter(Boolean)
 }
 
-function stageDate(view, index, state) {
-  if (state === 'pending') return '还没到'
+function stageDate(view, index, state, copy) {
+  const words = copy.account.detail.stageDate
+  if (state === 'pending') return words.pending
   if (view.justRejected && index === view.currentIndex) {
-    return view.lastAt ? `驳回 ${formatAt(view.lastAt)}` : '等你补完'
+    return view.lastAt ? words.rejected(formatAt(view.lastAt)) : words.waitFix
   }
   if (index === 0 && view.invalid) {
     const invalidAt = [...view.transitions]
       .reverse()
       .find((transition) => transition.tier === '校验未通过')?.at
-    return invalidAt ? `${formatAt(invalidAt)} 更新` : '要补传'
+    return invalidAt ? words.updated(formatAt(invalidAt)) : words.fixUpload
   }
   const at = view.arrivals[index]
-  if (!at) return state === 'current' ? '正在这里' : '时间未记录'
-  return state === 'current' ? `${formatAt(at)} 到达` : formatAt(at)
+  if (!at) return state === 'current' ? words.current : words.unknown
+  return state === 'current' ? words.arrived(formatAt(at)) : formatAt(at)
 }
 
 function Stepper({ view, selected, onSelect, tabsRef }) {
+  const { lang, copy } = useI18n()
+  const d = copy.account.detail
+  const stateWords = d.stateWords
+
   const move = (event, index) => {
     const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End']
     if (!keys.includes(event.key)) return
@@ -104,7 +104,7 @@ function Stepper({ view, selected, onSelect, tabsRef }) {
   }
 
   return (
-    <div className="order-steps" role="tablist" aria-label="五档进度">
+    <div className="order-steps" role="tablist" aria-label={d.panel.stepperAria}>
       {TIERS.map((tier, index) => {
         const state = view.states[index]
         const isSelected = selected === index
@@ -135,17 +135,21 @@ function Stepper({ view, selected, onSelect, tabsRef }) {
             </span>
             <span className="order-step-body">
               <span className="order-step-label">
-                <span className="sr-only">{STATE_WORDS[state]}，</span>
-                {tier.key}
+                <span className="sr-only">{stateWords[state]}，</span>
+                {tierName(lang, tier.key)}
                 {index === view.currentIndex && view.round > 1 ? (
-                  <span className="order-step-round">第 {view.round} 轮</span>
+                  <span className="order-step-round">
+                    {copy.account.orders.round(view.round)}
+                  </span>
                 ) : null}
                 {index === 0 && view.invalid ? (
-                  <span className="order-step-branch">校验未通过</span>
+                  <span className="order-step-branch">
+                    {copy.account.orders.checkFailed}
+                  </span>
                 ) : null}
               </span>
               <span className="order-step-date">
-                {stageDate(view, index, state)}
+                {stageDate(view, index, state, copy)}
               </span>
             </span>
           </button>
@@ -156,8 +160,10 @@ function Stepper({ view, selected, onSelect, tabsRef }) {
 }
 
 function StagePanel({ view, selected }) {
-  const copy = stageCopy(view, selected)
-  const rows = substepRows(view, selected)
+  const { lang, copy } = useI18n()
+  const d = copy.account.detail
+  const copyText = stageCopy(view, selected, lang)
+  const rows = substepRows(view, selected, lang)
 
   return (
     <div
@@ -170,10 +176,10 @@ function StagePanel({ view, selected }) {
     >
       <div className="order-stage-head">
         <div>
-          <h3>{copy.title}</h3>
-          <p className="order-stage-intro">{copy.intro}</p>
+          <h3>{copyText.title}</h3>
+          <p className="order-stage-intro">{copyText.intro}</p>
         </div>
-        {copy.tag ? <span className="order-stage-tag">{copy.tag}</span> : null}
+        {copyText.tag ? <span className="order-stage-tag">{copyText.tag}</span> : null}
       </div>
 
       <ol className="order-subs">
@@ -189,8 +195,10 @@ function StagePanel({ view, selected }) {
             <span className="order-substep-time">
               {row.time ? (
                 <>
-                  <span>到达 {row.time}</span>
-                  {row.updated ? <span>更新 {row.updated}</span> : null}
+                  <span>{d.stageDate.arrived(row.time)}</span>
+                  {row.updated ? (
+                    <span>{d.stageDate.updated(row.updated)}</span>
+                  ) : null}
                 </>
               ) : null}
             </span>
@@ -198,16 +206,19 @@ function StagePanel({ view, selected }) {
         ))}
       </ol>
 
-      {copy.next ? <p className="order-stage-next">{copy.next}</p> : null}
+      {copyText.next ? <p className="order-stage-next">{copyText.next}</p> : null}
     </div>
   )
 }
 
 function NowBlock({ view }) {
+  const { copy } = useI18n()
+  const n = copy.account.detail.now
+
   if (!view.hasTransitions) {
     return (
       <section className="order-now order-now-quiet">
-        <p>这一单还没写进度。过一会儿再打开看看。有问题，微信找客服。</p>
+        <p>{n.empty}</p>
       </section>
     )
   }
@@ -217,8 +228,8 @@ function NowBlock({ view }) {
     return (
       <section className="order-now" data-tone="attention">
         <div>
-          <h2>补好再传一次就行</h2>
-          <p>还差这些：</p>
+          <h2>{n.invalidTitle}</h2>
+          <p>{n.invalidBody}</p>
           {missing.length ? (
             <ul className="order-missing">
               {missing.map((item) => (
@@ -226,14 +237,12 @@ function NowBlock({ view }) {
               ))}
             </ul>
           ) : (
-            <p>缺什么、怎么补，看我们发给你的消息。也可以微信问客服。</p>
+            <p>{n.invalidFallback}</p>
           )}
-          <p className="order-now-note">
-            补好后重新上传，会回到「已收到」，不用重新说需求。
-          </p>
+          <p className="order-now-note">{n.invalidNote}</p>
         </div>
         <a className="account-button" href="/app/upload">
-          重新上传
+          {n.reupload}
         </a>
       </section>
     )
@@ -243,9 +252,11 @@ function NowBlock({ view }) {
     return (
       <section className="order-now" data-tone="attention">
         <div>
-          <h2>上一轮你说的问题，<span className="order-nowrap">这一轮</span>在改</h2>
+          <h2>
+            <Rich parts={n.rejectedTitle} />
+          </h2>
           {view.feedback ? <blockquote>“{view.feedback}”</blockquote> : null}
-          <p>开工后会从「开工」重新走，做完再给你试。</p>
+          <p>{n.rejectedBody}</p>
         </div>
       </section>
     )
@@ -255,9 +266,11 @@ function NowBlock({ view }) {
     return (
       <section className="order-now">
         <div>
-          <h2>上一轮你说的问题，<span className="order-nowrap">这一轮</span>在改</h2>
+          <h2>
+            <Rich parts={n.rejectedTitle} />
+          </h2>
           {view.feedback ? <blockquote>“{view.feedback}”</blockquote> : null}
-          <p>这一轮从「开工」重新走，做完再给你试。</p>
+          <p>{n.rejectedWorkingBody}</p>
         </div>
       </section>
     )
@@ -268,8 +281,8 @@ function NowBlock({ view }) {
     return (
       <section className="order-now" data-tone="ready">
         <div>
-          <h2>可以试了</h2>
-          <p>做好了。麻烦试试这几件事：</p>
+          <h2>{n.trialTitle}</h2>
+          <p>{n.trialBody}</p>
           {trial.length ? (
             <ol className="order-trial">
               {trial.map((item) => (
@@ -277,9 +290,9 @@ function NowBlock({ view }) {
               ))}
             </ol>
           ) : (
-            <p>试用清单已经发给你。哪里不对，直接微信说。</p>
+            <p>{n.trialFallback}</p>
           )}
-          <p className="order-now-note">哪里不对，直接微信说。</p>
+          <p className="order-now-note">{n.trialNote}</p>
         </div>
         {view.deliveryUrl ? (
           <a
@@ -288,7 +301,7 @@ function NowBlock({ view }) {
             target="_blank"
             rel="noreferrer"
           >
-            打开交付地址
+            {n.deliveryLink}
           </a>
         ) : null}
       </section>
@@ -299,11 +312,11 @@ function NowBlock({ view }) {
     return (
       <section className="order-now">
         <div>
-          <h2>这单做完了</h2>
-          <p>要仓库的话，找客服过户。有新需求，随时传。</p>
+          <h2>{n.doneTitle}</h2>
+          <p>{n.doneBody}</p>
         </div>
         <a className="account-button account-button-quiet" href="/app/upload">
-          传新需求
+          {n.newRequest}
         </a>
       </section>
     )
@@ -312,14 +325,16 @@ function NowBlock({ view }) {
   return (
     <section className="order-now order-now-quiet">
       <p>
-        <b>你不需要做什么。</b>
-        {view.tierLabel === '开发中' ? '我们在做。' : '我们在做，做完会微信告诉你。'}
+        <b>{n.quietPrefix}</b>
+        {view.tierLabel === '开发中' ? n.quietWorking : n.quietWorkingNote}
       </p>
     </section>
   )
 }
 
 function History({ view }) {
+  const { lang, copy } = useI18n()
+  const d = copy.account.detail
   const rounds = historyRounds(view)
   const rejected = view.transitions.some(
     (transition) => transition.tier === '已驳回',
@@ -329,14 +344,15 @@ function History({ view }) {
   return (
     <section className="order-history" aria-labelledby="order-history-title">
       <div className="order-history-head">
-        <h2 id="order-history-title">经历</h2>
-        <p>上一轮的时间留在这里，不占进度条。</p>
+        <h2 id="order-history-title">{d.historyTitle}</h2>
+        <p>{d.historyLede}</p>
       </div>
 
       {rounds.map(({ round, events }) => (
         <div className="order-history-round" key={round}>
           <h3>
-            第 {round} 轮{round === view.round ? ' · 现在' : ''}
+            {d.historyRound(round)}
+            {round === view.round ? d.historyNow : ''}
           </h3>
           <ol className="order-history-list">
             {events.map((event) => (
@@ -346,7 +362,7 @@ function History({ view }) {
               >
                 <time>{formatAt(event.at)}</time>
                 <span className="order-history-dot" aria-hidden="true" />
-                <span>{event.tier}</span>
+                <span>{tierName(lang, event.tier)}</span>
               </li>
             ))}
           </ol>
@@ -356,7 +372,7 @@ function History({ view }) {
       {view.feedback && (view.tierLabel !== '开发中' || view.round === 1) ? (
         <blockquote className="order-history-quote">
           “{view.feedback}”
-          <cite>你上一轮说的</cite>
+          <cite>{d.historyCite}</cite>
         </blockquote>
       ) : null}
     </section>
@@ -364,43 +380,46 @@ function History({ view }) {
 }
 
 function Side({ order, view }) {
+  const { copy } = useI18n()
+  const s = copy.account.detail.side
+
   return (
-    <aside className="order-side" aria-label="订单信息">
+    <aside className="order-side" aria-label={s.aria}>
       <section className="order-side-block">
-        <h3>交付地址</h3>
-        <p>{view.delivery || '交付地址还没填。到交付时会发给你。'}</p>
+        <h3>{s.delivery}</h3>
+        <p>{view.delivery || s.deliveryEmpty}</p>
         {view.delivery ? (
-          <p className="order-side-note">交付到这里。不对就微信说。</p>
+          <p className="order-side-note">{s.deliveryNote}</p>
         ) : null}
       </section>
 
       <section className="order-side-block">
-        <h3>这一单</h3>
+        <h3>{s.orderTitle}</h3>
         <dl className="order-facts">
           <div>
-            <dt>单号</dt>
-            <dd>{order.number || '未记录'}</dd>
+            <dt>{s.number}</dt>
+            <dd>{order.number || s.missing}</dd>
           </div>
           <div>
-            <dt>传包时间</dt>
-            <dd>{formatAt(view.uploadAt) || '未记录'}</dd>
+            <dt>{s.uploadAt}</dt>
+            <dd>{formatAt(view.uploadAt) || s.missing}</dd>
           </div>
           <div>
-            <dt>当前轮次</dt>
-            <dd>第 {view.round} 轮</dd>
+            <dt>{s.round}</dt>
+            <dd>{s.roundValue(view.round)}</dd>
           </div>
           <div>
-            <dt>最近更新</dt>
-            <dd>{formatAt(view.lastAt) || '未记录'}</dd>
+            <dt>{s.updated}</dt>
+            <dd>{formatAt(view.lastAt) || s.missing}</dd>
           </div>
         </dl>
       </section>
 
       <section className="order-side-block">
-        <h3>有问题</h3>
-        <p>在微信里直接说。电话只在微信联系不上时用。</p>
+        <h3>{s.help}</h3>
+        <p>{s.helpBody}</p>
         <a className="order-side-link" href="/help">
-          怎么找客服 →
+          {s.helpLink}
         </a>
       </section>
     </aside>
@@ -408,20 +427,22 @@ function Side({ order, view }) {
 }
 
 function OrderDetail({ order, session, onLogout }) {
-  const view = useMemo(() => buildOrderView(order), [order])
+  const { lang, copy } = useI18n()
+  const d = copy.account.detail
+  const view = useMemo(() => buildOrderView(order, lang), [order, lang])
   const [selected, setSelected] = useState(view.currentIndex)
   const tabsRef = useRef([])
 
   useEffect(() => {
     document.title = `${order.title} · afkfactory`
-  }, [order.title])
+  }, [order.title, lang])
 
   return (
     <main id="main" className="page account-page order-detail-page">
       <AccountBar session={session} onLogout={onLogout} />
 
       <a className="order-back" href="/app/orders">
-        <span aria-hidden="true">←</span> 我的订单
+        <span aria-hidden="true">←</span> {d.back}
       </a>
 
       <header className="order-detail-head">
@@ -432,23 +453,25 @@ function OrderDetail({ order, session, onLogout }) {
               <span className="order-product">{order.product}</span>
             ) : null}
             {order.product && order.number ? ' · ' : null}
-            {order.number || (order.product ? null : '订单')}
+            {order.number || (order.product ? null : d.orderMeta)}
           </p>
           <p className="order-detail-lede">{view.lede}</p>
         </div>
         <div className="order-detail-status">
           <span className="order-detail-badges">
             <span className="account-state" data-tone={stateTone(view)}>
-              {view.invalid ? '校验未通过' : view.tierLabel}
+              {view.invalid ? copy.account.orders.checkFailed : view.tierName}
             </span>
             {view.round > 1 ? (
-              <span className="account-round">第 {view.round} 轮</span>
+              <span className="account-round">
+                {copy.account.orders.round(view.round)}
+              </span>
             ) : null}
           </span>
           <span className="order-updated">
             {view.lastAt
-              ? `最近更新 ${formatAt(view.lastAt)}`
-              : '还没有进度记录'}
+              ? d.updated(formatAt(view.lastAt))
+              : d.noProgress}
           </span>
         </div>
       </header>
@@ -462,8 +485,8 @@ function OrderDetail({ order, session, onLogout }) {
             aria-labelledby="order-progress-title"
           >
             <div className="order-section-head">
-              <h2 id="order-progress-title">走到哪了</h2>
-              <p>点一个节点，看这一档的细步骤。</p>
+              <h2 id="order-progress-title">{d.progressTitle}</h2>
+              <p>{d.progressHint}</p>
             </div>
 
             <Stepper
@@ -485,11 +508,13 @@ function OrderDetail({ order, session, onLogout }) {
 }
 
 function DetailShell({ session, onLogout, children }) {
+  const { copy } = useI18n()
+
   return (
     <main id="main" className="page account-page order-detail-page">
       <AccountBar session={session} onLogout={onLogout} />
       <a className="order-back" href="/app/orders">
-        <span aria-hidden="true">←</span> 我的订单
+        <span aria-hidden="true">←</span> {copy.account.detail.back}
       </a>
       {children}
     </main>
@@ -497,6 +522,8 @@ function DetailShell({ session, onLogout, children }) {
 }
 
 export default function OrderDetailPage({ id, session, onLogout }) {
+  const { copy } = useI18n()
+  const d = copy.account.detail
   const [state, setState] = useState('loading')
   const [order, setOrder] = useState(null)
   const [missingOrder, setMissingOrder] = useState(false)
@@ -539,7 +566,7 @@ export default function OrderDetailPage({ id, session, onLogout }) {
       <DetailShell session={session} onLogout={onLogout}>
         <div className="order-detail-skeleton" aria-busy="true">
           <p className="orders-loading-text" role="status">
-            正在打开这一单…
+            {d.loading}
           </p>
           <span aria-hidden="true" />
           <span aria-hidden="true" />
@@ -553,13 +580,13 @@ export default function OrderDetailPage({ id, session, onLogout }) {
     return (
       <DetailShell session={session} onLogout={onLogout}>
         <section className="orders-notice" role="alert">
-          <h2>这张单没打开</h2>
-          <p>可能是网络断了，或者服务在重启。过一会儿再试。</p>
+          <h2>{d.errorTitle}</h2>
+          <p>{d.errorBody}</p>
           <button className="account-button" type="button" onClick={load}>
-            再试一次
+            {d.retry}
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/help">找客服</a>。
+            <Rich parts={d.helpHint} />
           </p>
         </section>
       </DetailShell>
@@ -570,13 +597,13 @@ export default function OrderDetailPage({ id, session, onLogout }) {
     return (
       <DetailShell session={session} onLogout={onLogout}>
         <section className="orders-notice">
-          <h2>没找到这张单</h2>
-          <p>可能链接过期了，或者这张单不在你这个账号下。</p>
+          <h2>{d.missingTitle}</h2>
+          <p>{d.missingBody}</p>
           <a className="account-button" href="/app/orders">
-            回我的订单
+            {d.missingAction}
           </a>
           <p className="orders-notice-hint">
-            确定没走错？<a href="/help">找客服</a>。
+            <Rich parts={d.missingHint} />
           </p>
         </section>
       </DetailShell>

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import AccountBar from '../components/AccountBar.jsx'
 import OrderTrack from '../components/OrderTrack.jsx'
+import { Rich, useI18n } from '../i18n/index.jsx'
 import { listOrders, readOrders } from '../api/account.js'
-import { buildOrderView, formatAt, listSubline } from '../progress.js'
+import {
+  buildOrderView,
+  formatAt,
+  listSubline,
+} from '../progress.js'
 
 function stateTone(view) {
   if (view.invalid) return 'warn'
@@ -10,7 +15,7 @@ function stateTone(view) {
   return 'active'
 }
 
-function summaryText(views) {
+function summaryText(views, copy) {
   if (!views.length) return ''
   const counts = { doing: 0, invalid: 0, trial: 0, done: 0, received: 0 }
 
@@ -24,16 +29,19 @@ function summaryText(views) {
   }
 
   const bits = []
-  if (counts.doing) bits.push(`${counts.doing} 个在做`)
-  if (counts.invalid) bits.push(`${counts.invalid} 个等你补文件`)
-  if (counts.trial) bits.push(`${counts.trial} 个等你试`)
-  if (counts.received) bits.push(`${counts.received} 个刚收到`)
-  if (counts.done) bits.push(`${counts.done} 个已完成`)
+  const words = copy.account.orders.summaryBits
+  if (counts.doing) bits.push(words.doing(counts.doing))
+  if (counts.invalid) bits.push(words.invalid(counts.invalid))
+  if (counts.trial) bits.push(words.trial(counts.trial))
+  if (counts.received) bits.push(words.received(counts.received))
+  if (counts.done) bits.push(words.done(counts.done))
 
-  return `你有 ${views.length} 个订单。${bits.length ? `${bits.join('，')}。` : ''}`
+  return copy.account.orders.summary(views.length, bits)
 }
 
 function OrderRow({ order, view }) {
+  const { lang, copy } = useI18n()
+  const o = copy.account.orders
   const href = order.id
     ? `/app/orders/${encodeURIComponent(order.id)}`
     : order.number
@@ -49,7 +57,7 @@ function OrderRow({ order, view }) {
             <span className="order-product">{order.product}</span>
           ) : null}
           {order.product && order.number ? ' · ' : null}
-          {order.number || (order.product ? null : '订单')}
+          {order.number || (order.product ? null : o.metaOrder)}
         </span>
       </span>
 
@@ -58,15 +66,15 @@ function OrderRow({ order, view }) {
       <span className="order-row-side">
         <span className="order-row-badges">
           <span className="account-state" data-tone={stateTone(view)}>
-            {view.invalid ? '校验未通过' : view.tierLabel}
+            {view.invalid ? o.checkFailed : view.tierName}
           </span>
           {view.round > 1 ? (
-            <span className="account-round">第 {view.round} 轮</span>
+            <span className="account-round">{o.round(view.round)}</span>
           ) : null}
         </span>
-        <span className="order-sub">{listSubline(view)}</span>
+        <span className="order-sub">{listSubline(view, lang)}</span>
         <span className="order-updated">
-          {view.lastAt ? `最近更新 ${formatAt(view.lastAt)}` : '还没有进度记录'}
+          {view.lastAt ? o.updated(formatAt(view.lastAt)) : o.noProgress}
         </span>
       </span>
 
@@ -88,21 +96,16 @@ function OrderRow({ order, view }) {
 }
 
 export default function OrdersPage({ session, onLogout }) {
+  const { lang, copy } = useI18n()
+  const o = copy.account.orders
   const [state, setState] = useState('loading')
-  const [items, setItems] = useState([])
+  const [orders, setOrders] = useState([])
 
   const load = useCallback(async () => {
     setState('loading')
     try {
       const payload = await listOrders()
-      const rows = readOrders(payload)
-        .map((order) => ({ order, view: buildOrderView(order) }))
-        .sort(
-          (left, right) =>
-            new Date(right.view.lastAt || 0).getTime() -
-            new Date(left.view.lastAt || 0).getTime(),
-        )
-      setItems(rows)
+      setOrders(readOrders(payload))
       setState('ready')
     } catch (error) {
       if (error.status === 401) {
@@ -119,7 +122,15 @@ export default function OrdersPage({ session, onLogout }) {
     load()
   }, [load])
 
-  const views = items.map((item) => item.view)
+  // 语言切换时只重算显示文字，不重新请求订单。
+  const rows = orders
+    .map((order) => ({ order, view: buildOrderView(order, lang) }))
+    .sort(
+      (left, right) =>
+        new Date(right.view.lastAt || 0).getTime() -
+        new Date(left.view.lastAt || 0).getTime(),
+    )
+  const views = rows.map((item) => item.view)
 
   return (
     <main id="main" className="page account-page orders-page">
@@ -127,18 +138,18 @@ export default function OrdersPage({ session, onLogout }) {
 
       <header className="orders-head">
         <div>
-          <h1 className="orders-title">我的订单</h1>
-          <p className="orders-lede">每一单走到哪、下一步是什么，都写在这里。</p>
+          <h1 className="orders-title">{o.title}</h1>
+          <p className="orders-lede">{o.lede}</p>
         </div>
         <a className="orders-upload" href="/app/upload">
-          传新需求 →
+          {o.uploadLink}
         </a>
       </header>
 
       {state === 'loading' ? (
         <div className="orders-skeleton" aria-busy="true">
           <p className="orders-loading-text" role="status">
-            正在打开订单…
+            {o.loading}
           </p>
           {[0, 1, 2].map((row) => (
             <div className="orders-skeleton-row" key={row} aria-hidden="true">
@@ -152,43 +163,42 @@ export default function OrdersPage({ session, onLogout }) {
 
       {state === 'error' ? (
         <section className="orders-notice" role="alert">
-          <h2>订单没打开</h2>
-          <p>可能是网络断了，或者服务在重启。过一会儿再试。</p>
+          <h2>{o.errorTitle}</h2>
+          <p>{o.errorBody}</p>
           <button className="account-button" type="button" onClick={load}>
-            再试一次
+            {o.retry}
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/help">找客服</a>。
+            <Rich parts={o.helpHint} />
           </p>
         </section>
       ) : null}
 
       {state === 'ready' && views.length === 0 ? (
         <section className="orders-notice">
-          <h2>还没有订单</h2>
-          <p>把做完的工作区传回来，这里会出现第一单的进度。</p>
+          <h2>{o.emptyTitle}</h2>
+          <p>{o.emptyBody}</p>
           <a className="account-button" href="/app/upload">
-            上传工作区
+            {o.emptyAction}
           </a>
           <p className="orders-notice-hint">
-            还不知道怎么传？<a href="/tutorial">看教程</a>。
+            <Rich parts={o.emptyHint} />
           </p>
         </section>
       ) : null}
 
       {state === 'ready' && views.length > 0 ? (
         <>
-          <p className="orders-summary">{summaryText(views)}</p>
+          <p className="orders-summary">{summaryText(views, copy)}</p>
           <ol className="orders-list">
-            {items.map(({ order, view }, index) => (
+            {rows.map(({ order, view }, index) => (
               <li key={order.id || order.number || index}>
                 <OrderRow order={order} view={view} />
               </li>
             ))}
           </ol>
           <p className="orders-foot">
-            只看得到你自己账号下的订单。有问题，
-            <a href="/help">找客服</a>。
+            <Rich parts={o.foot} />
           </p>
         </>
       ) : null}

@@ -43,7 +43,8 @@
 | `--olive-text` | `color-mix(in srgb, var(--olive) 68%, var(--ink))` | 橄榄当文字 |
 | `--on-accent` | `#141413` | 亮色块上的字，不随明暗模式翻转 |
 | `--clay-deep` | `color-mix(in srgb, var(--clay) 88%, #141413)` | 陶土按钮悬停 |
-| `--surface-warm` | `#e9e1d1`（夜间 `#2a2521`） | 暖色面：下载文件区、技能页下一步、教程卡住块 |
+| `--surface-warm` | `#e9e1d1`（夜间 `#2a2521`） | 暖色面：下载文件区、技能页下一步、教程卡住块、首页三步装好、教程第 2 节 |
+| `--surface-mist` | `#e7e3da`（夜间 `#262624`） | 教程页交替暖灰段（第 4 节）；夜间版这一节改用 `--night` #0b0b0b，跟首页回传带一致 |
 | `--surface-cool` | `#dfe8e3`（夜间 `#1f2824`） | 冷色面：SHA256 块 |
 | `--glass-highlight` | `rgba(255, 255, 255, 0.42)`（夜间 `rgba(250, 249, 245, 0.1)`） | 顶栏玻璃顶边高光 |
 | `--glass-shadow` | `rgba(20, 20, 19, 0.06)`（夜间 `rgba(0, 0, 0, 0.45)`） | 顶栏玻璃下沿阴影 |
@@ -69,9 +70,18 @@
 | `--slate` | `#8fa9bd` |
 | `--line` / `--line-soft` / `--line-pill` | `#30302e` / `#262624` / `#3d3d3a` |
 | `--pill-wash` / `--pill-hover` | `rgba(250, 249, 245, 0.06)` / `rgba(250, 249, 245, 0.1)` |
-| `--surface-warm` / `--surface-cool` | `#2a2521` / `#1f2824` |
+| `--surface-warm` / `--surface-cool` / `--surface-mist` | `#2a2521` / `#1f2824` / `#262624` |
 
 强调色本身不翻；`--clay-text` 等用 `var(--ink)` 混色，会自动变浅。亮色块上的字固定用 `--on-accent`。顶栏右侧的圆形按钮切明暗，选择写进 `localStorage`，同时更新 `<meta name="theme-color">`。
+
+## 中英文切换
+
+- 顶栏右侧第二枚胶囊切语言：中文页写 EN，英文页写中文，选择存 `localStorage` 的 `afk-lang`。
+- 切换时给 `<html>` 设 `lang="en"` 和 `data-lang="en"`；切回中文时移除 `data-lang`，`lang` 回到 `zh-CN`。
+- 六个 HTML 的 `<head>` 先读 `afk-lang`，英文时预加载两个字体、加 `lang-pending`，脚本接上前不画中文预渲染；`main.jsx` 接上后撤掉这个类，2.5 秒兜底。
+- 公开页的预渲染始终是中文。英文用户的首屏由客户端渲染，避免水合结果对不上。
+- 文案在 `src/content/zh.js` 和 `src/content/en.js`，两份结构相同；页面和账号区都从 `copy` 取字。
+- 页面标题和 description 跟着语言换；不跑脚本时保留 HTML 里的中文标题。
 
 ## 字体
 
@@ -80,6 +90,28 @@
 | `--font-serif` | Songti SC → SimSun → Noto Serif SC → serif | 宋体标题 |
 | `--font-sans` | PingFang SC → Hiragino Sans GB → Microsoft YaHei → Noto Sans SC → system-ui | 苹方正文 |
 | `--font-mono` | SF Mono → SFMono-Regular → ui-monospace → Menlo → Consolas | 版本号和 SHA |
+
+英文模式在 `html[data-lang="en"]` 里换掉前两个变量，等宽不变：
+
+| 变量 | 字体 | 用途 |
+| --- | --- | --- |
+| `--font-serif` | "Source Serif 4" → Songti SC → SimSun → Noto Serif SC → serif | 英文标题 |
+| `--font-sans` | "Instrument Sans" → PingFang SC → Hiragino Sans GB → Microsoft YaHei → Noto Sans SC → system-ui | 英文正文和界面 |
+
+这两个字体是 Anthropic 官网衬线标题加无衬线正文的开源近似，文件在 `site/public/fonts/`，OFL 许可证同目录。Google Fonts 的 latin 子集：Source Serif 4 约 122 KB，Instrument Sans 约 30 KB。中文页不引用这两个字体，浏览器不会下载；英文页由 `<head>` 里的脚本预加载。
+
+英文模式的字号覆盖：
+
+| 变量 | 中文 | 英文 |
+| --- | --- | --- |
+| `--text-display` | 44px | 50px |
+| `--text-display-narrow` | 32px | 36px |
+| `--text-section` | 38px | 42px |
+| `--text-section-narrow` | 32px | 32px |
+| `--text-subhead` | 26px | 28px |
+| `--text-lead` | 16.5px | 17px |
+| `--text-body` | 15px | 16px |
+
 
 | 字重变量 | 值 |
 | --- | --- |
@@ -182,4 +214,5 @@
 
 - 标题宋体先用系统字体。锁定字形后要自托管中文子集，控制在 50–130 KB。来源：票 I-0061 评论 C-0375。
 - Windows 上宋体标题的回退字形还没验证。来源：同上。
+- 英文两个字体目前是 Google Fonts 的完整 latin 子集，没有按站内文案再裁；如果要压体积，可以在构建时子集化，保留 ASCII、引号、箭头和常用标点。
 - 首屏视频的渐变色属于首页首屏，不进这份基础变量表。来源：地图 I-0058 的覆盖表第 1、2 句。

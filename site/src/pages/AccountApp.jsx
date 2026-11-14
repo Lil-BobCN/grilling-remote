@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import SiteLayout from '../components/SiteLayout.jsx'
+import { Rich, useI18n, usePageMeta } from '../i18n/index.jsx'
 import LoginPage from './LoginPage.jsx'
 import OrderDetailPage from './OrderDetailPage.jsx'
 import OrdersPage from './OrdersPage.jsx'
@@ -39,14 +40,16 @@ function readRoute(path) {
 }
 
 const TITLES = {
-  login: '登录 · afkfactory',
-  orders: '我的订单 · afkfactory',
-  detail: '订单详情 · afkfactory',
-  upload: '上传工作区 · afkfactory',
-  missing: '页面不存在 · afkfactory',
+  login: 'login',
+  orders: 'orders',
+  detail: 'detail',
+  upload: 'upload',
+  missing: 'missing',
 }
 
 export default function AccountApp() {
+  const { copy } = useI18n()
+  const a = copy.account.app
   const path = normalizePath()
   const route = readRoute(path)
   const [session, setSession] = useState(null)
@@ -54,9 +57,16 @@ export default function AccountApp() {
     route.needsAuth ? 'loading' : 'ready',
   )
 
-  useEffect(() => {
-    document.title = TITLES[route.name]
-  }, [route.name])
+  const pageMeta = useMemo(
+    () => ({
+      // 订单详情用单据名做标题，由 OrderDetail 自己写，账号壳不覆盖。
+      title:
+        route.name === 'detail' ? '' : copy.meta.app[TITLES[route.name]],
+      description: copy.meta.app.description,
+    }),
+    [copy, route.name],
+  )
+  usePageMeta(pageMeta)
 
   const loadSession = useCallback(async () => {
     setSessionState('loading')
@@ -91,14 +101,14 @@ export default function AccountApp() {
   } else if (route.name === 'missing') {
     content = (
       <main id="main" className="page account-page">
-        <h1 className="orders-title">页面不存在</h1>
-        <p className="orders-lede">地址不对。回首页，或者去看订单。</p>
+        <h1 className="orders-title">{a.missingTitle}</h1>
+        <p className="orders-lede">{a.missingBody}</p>
         <p className="account-links">
           <a className="account-link" href="/">
-            回首页
+            {a.homeLink}
           </a>
           <a className="account-link" href="/app/orders">
-            我的订单
+            {a.ordersLink}
           </a>
         </p>
       </main>
@@ -107,7 +117,7 @@ export default function AccountApp() {
     content = (
       <main id="main" className="page account-page" aria-busy="true">
         <p className="orders-loading-text" role="status">
-          正在打开…
+          {a.loading}
         </p>
         <div className="orders-skeleton-row" aria-hidden="true">
           <span />
@@ -120,13 +130,13 @@ export default function AccountApp() {
     content = (
       <main id="main" className="page account-page">
         <section className="orders-notice" role="alert">
-          <h2>账号没打开</h2>
-          <p>可能是网络断了，或者服务在重启。过一会儿再试。</p>
+          <h2>{a.errorTitle}</h2>
+          <p>{a.errorBody}</p>
           <button className="account-button" type="button" onClick={loadSession}>
-            再试一次
+            {a.retry}
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/help">找客服</a>。
+            <Rich parts={a.helpHint} />
           </p>
         </section>
       </main>
