@@ -206,6 +206,42 @@ export default function DownloadPage() {
       </section>
 
       <section
+        className="download-steps"
+        aria-labelledby="download-steps-title"
+        data-reveal
+      >
+        <h2 id="download-steps-title">三步装好</h2>
+        <div className="download-step-grid">
+          <article className="download-step">
+            <b>01</b>
+            <h3>下载两样</h3>
+            <p>先下工作区 zip，再下 dsh 的安装包。两个都下好，再往下走。</p>
+          </article>
+          <article className="download-step">
+            <b>02</b>
+            <h3>解压到空文件夹</h3>
+            <p>
+              新建一个空文件夹，名字用日常中文，例如「需求澄清」。把 zip
+              放进去，解压到当前文件夹。
+            </p>
+            <p className="download-step-check">
+              检查：打开文件夹，第一层就能直接看到 AGENTS.md。只看到一个同名文件夹，就是多套了一层。
+            </p>
+          </article>
+          <article className="download-step">
+            <b>03</b>
+            <h3>用 dsh 打开并开口</h3>
+            <p>
+              在 dsh 里选这个文件夹，然后说一句「开始需求澄清」。它会先自检，再问你想做什么。
+            </p>
+          </article>
+        </div>
+        <a className="download-steps-link" href="/tutorial">
+          看完整教程（含截图）→
+        </a>
+      </section>
+
+      <section
         className="download-next"
         aria-labelledby="download-next-title"
         data-reveal="panel"

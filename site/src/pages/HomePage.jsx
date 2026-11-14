@@ -33,7 +33,7 @@ const steps = [
     n: '02',
     title: '解压到空文件夹',
     text: '右键解压，不要直接在压缩包里打开。',
-    check: '你会看到：AGENTS.md 和 .scratch/ 在文件夹里',
+    check: '你会看到：打开文件夹，第一层就能直接看到 AGENTS.md',
   },
   {
     n: '03',
