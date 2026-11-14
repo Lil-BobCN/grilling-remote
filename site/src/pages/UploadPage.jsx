@@ -1,23 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  ApiError,
+  getSession,
+  login,
+  logout,
+  readSession,
+} from '../api/account.js'
 import '../styles/upload.css'
 
 /*
- * 账号接口经裸域 /app/api/* 反代到独立服务。
- * 字段和错误码归 I-0035；这里只依赖最小字段，服务端改了只改这一段：
- *   GET  /app/api/session  -> { customer: { short_name, display_name, email } }，没登录回 401
- *   POST /app/api/login    <- { email, password }，成功回同一份 customer
- *   POST /app/api/logout
+ * 账号接口走 ../api/account.js，和订单页用同一份契约（归 I-0035）。
+ * 上传接口不在这份文件里，这里是唯一的直接调用：
  *   POST /app/api/uploads  <- multipart：file、finished=true
  */
 const API_BASE = '/app/api'
 const MAX_BYTES = 50 * 1024 * 1024
-
-class ApiError extends Error {
-  constructor(status, message) {
-    super(message)
-    this.status = status
-  }
-}
 
 function pickMessage(data) {
   if (!data || typeof data !== 'object') return ''
@@ -25,60 +22,13 @@ function pickMessage(data) {
   return typeof value === 'string' ? value : ''
 }
 
-async function readJson(response) {
-  try {
-    return await response.json()
-  } catch {
-    return null
-  }
-}
-
-async function getJson(path) {
-  let response
-
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      credentials: 'same-origin',
-    })
-  } catch {
-    throw new ApiError(0, '没连上服务器，检查网络后再试。')
-  }
-
-  const data = await readJson(response)
-  if (!response.ok) throw new ApiError(response.status, pickMessage(data))
-  return data
-}
-
-async function postJson(path, body) {
-  const options = {
-    method: 'POST',
-    credentials: 'same-origin',
-  }
-
-  if (body !== undefined) {
-    options.headers = { 'content-type': 'application/json' }
-    options.body = JSON.stringify(body)
-  }
-
-  let response
-  try {
-    response = await fetch(`${API_BASE}${path}`, options)
-  } catch {
-    throw new ApiError(0, '没连上服务器，检查网络后再试。')
-  }
-
-  const data = await readJson(response)
-  if (!response.ok) throw new ApiError(response.status, pickMessage(data))
-  return data
-}
-
-function customerFrom(data) {
-  const customer = data && data.customer
-  if (!customer || !customer.email) return null
+function customerFrom(payload) {
+  const user = readSession(payload)
+  if (!user.email) return null
 
   return {
-    name: customer.display_name || customer.short_name || customer.email,
-    email: customer.email,
+    name: user.displayName || user.email,
+    email: user.email,
   }
 }
 
@@ -142,10 +92,8 @@ function LoginPanel({ notice, onLogin }) {
     setError('')
 
     try {
-      const data = await postJson('/login', {
-        email: trimmed.toLowerCase(),
-        password,
-      })
+      await login(trimmed.toLowerCase(), password)
+      const data = await getSession()
       const customer = customerFrom(data)
       if (!customer) {
         throw new ApiError(0, '登录成功了，但账号信息没读出来。刷新页面再试。')
@@ -359,7 +307,7 @@ export default function UploadPage() {
     setSessionError('')
 
     try {
-      const data = await getJson('/session')
+      const data = await getSession()
       const customer = customerFrom(data)
       if (!customer) {
         throw new ApiError(0, '账号信息没读出来，刷新页面再试。')
@@ -395,7 +343,7 @@ export default function UploadPage() {
     setLoggingOut(true)
 
     try {
-      await postJson('/logout')
+      await logout()
     } catch {
       // 服务端没回话也先退出本地，别把人卡在账号里。
     }
