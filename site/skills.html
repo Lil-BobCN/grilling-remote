@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-en-title="Skills · afkfactory" data-en-description="What each of the seven skills does and when to use it.">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -26,12 +26,51 @@
         }
       })()
     </script>
+    <script>
+      ;(function () {
+        var lang = null
+        try {
+          lang = window.localStorage.getItem('afk-lang')
+        } catch (error) {}
+        if (lang === 'en') {
+          document.documentElement.lang = 'en'
+          document.documentElement.setAttribute('data-lang', 'en')
+          document.documentElement.classList.add('lang-pending')
+          ;[
+            ['/fonts/SourceSerif4-Variable.woff2', 'font'],
+            ['/fonts/InstrumentSans-Variable.woff2', 'font'],
+          ].forEach(function (entry) {
+            var link = document.createElement('link')
+            link.rel = 'preload'
+            link.as = entry[1]
+            link.type = 'font/woff2'
+            link.crossOrigin = 'anonymous'
+            link.href = entry[0]
+            document.head.appendChild(link)
+          })
+          setTimeout(function () {
+            document.documentElement.classList.remove('lang-pending')
+          }, 2500)
+        }
+      })()
+    </script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>技能清单 · afkfactory</title>
     <meta
       name="description"
       content="技能完整清单，各自管什么、什么时候用。"
     />
+    <script>
+      ;(function () {
+        if (document.documentElement.getAttribute('data-lang') !== 'en') return
+        var root = document.documentElement
+        var title = root.getAttribute('data-en-title')
+        if (title) document.title = title
+        var description = root.getAttribute('data-en-description')
+        var meta = document.querySelector('meta[name="description"]')
+        if (description && meta) meta.setAttribute('content', description)
+      })()
+    </script>
   </head>
   <body>
     <div id="root" data-page="skills"><!--app-html--></div>

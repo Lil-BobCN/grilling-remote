@@ -28,6 +28,12 @@ body {
   min-height: 100vh;
 }
 
+/* 存过英文的人：预渲染的中文先不画，等脚本换成英文再出现。
+   2.5 秒后脚本没接上就自动放开，和 js-motion 的兜底一致。 */
+html.lang-pending #root {
+  visibility: hidden;
+}
+
 ::selection {
   background: var(--ink);
   color: var(--paper);
@@ -220,6 +226,27 @@ html.js-motion .brand-letter {
   --load-delay: 390ms;
 }
 
+.nav-right .pill:nth-child(5) {
+  --load-delay: 440ms;
+}
+
+/* 语言切换：只写目标语言，中文页写 EN，英文页写中文。 */
+.pill.lang-toggle {
+  justify-content: center;
+  min-width: 46px;
+  padding: 7px 12px;
+  font-weight: var(--weight-semibold);
+}
+
+html:not([data-lang="en"]) .pill.lang-toggle {
+  letter-spacing: 0.04em;
+}
+
+/* 手机上「上传工作区」缩成「上传」，五个动作挤进一行。 */
+.nav-upload-short {
+  display: none;
+}
+
 /* 明暗切换：只放图标，滚到顶时沿用胶囊的描边和底色。 */
 .pill.theme-toggle {
   display: inline-grid;
@@ -271,6 +298,7 @@ html[data-theme="dark"] .theme-icon-moon {
   color: var(--ink-soft);
   font-size: var(--text-ui);
   line-height: 1.2;
+  white-space: nowrap;
   transition:
     background-size 240ms var(--ease-ui),
     background-color 200ms var(--ease-ui),
@@ -383,20 +411,26 @@ html[data-theme="dark"] .pill[aria-current="page"]:hover {
   align-items: center;
   gap: var(--space-24);
   padding: 46px var(--gutter) 56px;
-  border-top: var(--rule);
-  color: var(--body-soft);
+  border-top: var(--line-width) solid var(--night-line);
+  /* 日间保持夜黑；夜间底色取「三步装好」暖纸的 25%（2026-11-14 选定）。 */
+  background: var(--night);
+  background: light-dark(
+    var(--night),
+    color-mix(in srgb, var(--surface-warm) 25%, var(--night))
+  );
+  color: var(--on-night-soft);
   font-size: var(--text-ui);
 }
 
 .footer-help {
-  color: var(--ink);
+  color: var(--on-night);
   text-decoration: underline;
   text-underline-offset: 4px;
   transition: color var(--motion-fast) var(--ease-ui);
 }
 
 .footer-help:hover {
-  color: var(--slate-text);
+  color: var(--on-night-soft);
 }
 
 .footer-links {
@@ -406,18 +440,51 @@ html[data-theme="dark"] .pill[aria-current="page"]:hover {
 }
 
 .footer-links a {
+  color: var(--on-night-soft);
   transition: color var(--motion-fast) var(--ease-ui);
 }
 
 .footer-links a:hover {
-  color: var(--ink);
+  color: var(--on-night);
 }
 
 .footer-meta {
   margin: 0 0 0 auto;
-  color: var(--muted-strong);
+  color: var(--on-night-note);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
+}
+
+.site-footer :focus-visible {
+  outline-color: var(--on-night);
+}
+
+/* 901–1200：五枚右侧动作加英文长标签会挤到字标，收一档字号和间距。 */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .nav-left,
+  .nav-right {
+    gap: var(--space-6);
+  }
+
+  .site-nav .pill {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .site-nav .pill.theme-toggle {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+  }
+
+  .site-nav .pill.lang-toggle {
+    min-width: 42px;
+  }
+
+  .brand {
+    font-size: 18px;
+    letter-spacing: 0.14em;
+  }
 }
 
 @media (max-width: 900px) {
@@ -425,7 +492,6 @@ html[data-theme="dark"] .pill[aria-current="page"]:hover {
     position: static;
     padding: 0 var(--gutter-narrow);
   }
-
   .site-header::after {
     display: none;
   }
@@ -446,8 +512,18 @@ html[data-theme="dark"] .pill[aria-current="page"]:hover {
 
   .nav-right {
     order: 2;
+    width: 100%;
     gap: var(--space-6);
-    margin-left: auto;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+
+  .nav-upload-full {
+    display: none;
+  }
+
+  .nav-upload-short {
+    display: inline;
   }
 
   .nav-left {

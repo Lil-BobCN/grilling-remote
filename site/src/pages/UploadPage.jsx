@@ -6,6 +6,8 @@ import {
   logout,
   readSession,
 } from '../api/account.js'
+import { Rich, useI18n } from '../i18n/index.jsx'
+import { TIERS, tierName } from '../progress.js'
 import '../styles/upload.css'
 
 /*
@@ -32,43 +34,33 @@ function customerFrom(payload) {
   }
 }
 
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} 字节`
+function formatSize(bytes, copy) {
+  if (bytes < 1024) return copy.account.upload.bytes(bytes)
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function validateFile(file) {
-  if (!/\.zip$/i.test(file.name)) {
-    return '只收 .zip。把整个工作区文件夹压成一个 zip 再选。'
-  }
-  if (file.size === 0) {
-    return '这个文件是空的。重新压一次再选。'
-  }
-  if (file.size > MAX_BYTES) {
-    return `这个包 ${formatSize(file.size)}，超过 50 MB 上限。删掉不需要的文件，重新压缩后再传。`
-  }
+function validateFile(file, copy) {
+  const u = copy.account.upload
+  if (!/\.zip$/i.test(file.name)) return u.fileNotZip
+  if (file.size === 0) return u.fileEmpty
+  if (file.size > MAX_BYTES) return u.fileTooBig(formatSize(file.size, copy))
   return ''
 }
 
-function uploadErrorMessage(status, message) {
+function uploadErrorMessage(status, message, copy) {
+  const u = copy.account.upload
   if (message) return message
-  if (status === 413) {
-    return '包太大了，服务器没收下。确认压缩包在 50 MB 以内，再传一次。'
-  }
-  if (status === 415) {
-    return '服务器不收这个格式。只传 .zip。'
-  }
-  if (status === 400 || status === 422) {
-    return '服务器没通过这个包。看看提示，改好再传。'
-  }
-  if (status >= 500) {
-    return '服务器出错了。等一会儿再试；一直不行就找客服。'
-  }
-  return '上传没成功。稍后再试；一直不行就找客服。'
+  if (status === 413) return u.serverTooBig
+  if (status === 415) return u.serverBadType
+  if (status === 400 || status === 422) return u.serverRejected
+  if (status >= 500) return u.serverError
+  return u.serverUnknown
 }
 
 function LoginPanel({ notice, onLogin }) {
+  const { copy } = useI18n()
+  const u = copy.account.upload
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -80,11 +72,11 @@ function LoginPanel({ notice, onLogin }) {
 
     const trimmed = email.trim()
     if (!trimmed || !password) {
-      setError('邮箱和密码都要填。')
+      setError(u.loginEmpty)
       return
     }
     if (!trimmed.includes('@')) {
-      setError('邮箱看着不对，检查一下。')
+      setError(u.loginBadEmail)
       return
     }
 
@@ -96,16 +88,16 @@ function LoginPanel({ notice, onLogin }) {
       const data = await getSession()
       const customer = customerFrom(data)
       if (!customer) {
-        throw new ApiError(0, '登录成功了，但账号信息没读出来。刷新页面再试。')
+        throw new ApiError(0, u.loginNoSession)
       }
       onLogin(customer)
     } catch (caught) {
       if (caught.status === 401) {
-        setError('邮箱或密码不对。再试一次，或找客服。')
+        setError(u.loginWrong)
       } else if (caught.status === 403) {
-        setError('这个账号已停用，找客服。')
+        setError(u.loginDisabled)
       } else {
-        setError(caught.message || '登录没成功，稍后再试。')
+        setError(caught.message || u.loginFailed)
       }
       setBusy(false)
     }
@@ -113,10 +105,8 @@ function LoginPanel({ notice, onLogin }) {
 
   return (
     <form className="upload-login" onSubmit={submit} noValidate>
-      <h2 className="upload-login-title">先登录</h2>
-      <p className="upload-login-sub">
-        用我们发给你的邮箱和密码。账号由我们开通，忘了密码找客服。
-      </p>
+      <h2 className="upload-login-title">{u.loginTitle}</h2>
+      <p className="upload-login-sub">{u.loginSub}</p>
 
       {notice ? (
         <p className="upload-notice" role="status">
@@ -125,7 +115,7 @@ function LoginPanel({ notice, onLogin }) {
       ) : null}
 
       <div className="upload-field">
-        <label htmlFor="upload-email">邮箱</label>
+        <label htmlFor="upload-email">{u.email}</label>
         <input
           id="upload-email"
           className="upload-input"
@@ -140,7 +130,7 @@ function LoginPanel({ notice, onLogin }) {
       </div>
 
       <div className="upload-field">
-        <label htmlFor="upload-password">密码</label>
+        <label htmlFor="upload-password">{u.password}</label>
         <input
           id="upload-password"
           className="upload-input"
@@ -165,10 +155,10 @@ function LoginPanel({ notice, onLogin }) {
           type="submit"
           disabled={busy}
         >
-          {busy ? '正在登录…' : '登录'}
+          {busy ? u.loggingIn : u.loginSubmit}
         </button>
         <a className="upload-help-link" href="/help">
-          忘了密码？找客服
+          {u.forgot}
         </a>
       </div>
     </form>
@@ -176,6 +166,9 @@ function LoginPanel({ notice, onLogin }) {
 }
 
 function AccountBar({ session, onLogout, loggingOut }) {
+  const { copy } = useI18n()
+  const u = copy.account.upload
+
   return (
     <div className="upload-account">
       <span className="upload-account-mark" aria-hidden="true">
@@ -191,53 +184,40 @@ function AccountBar({ session, onLogout, loggingOut }) {
         onClick={onLogout}
         disabled={loggingOut}
       >
-        {loggingOut ? '正在退出…' : '退出登录'}
+        {loggingOut ? u.accountOutBusy : u.accountOut}
       </button>
     </div>
   )
 }
 
-const STAGES = ['已收到', '安排中', '开发中', '待客户验收', '已完成']
-
 function SideNotes() {
+  const { lang, copy } = useI18n()
+  const u = copy.account.upload
+
   return (
-    <aside className="upload-side" aria-label="上传前后要注意的事">
-      <h2 className="upload-side-title">传之前，检查三件事</h2>
-      <p className="upload-side-lede">压错了，我们会让你补传。</p>
+    <aside className="upload-side" aria-label={u.sideAria}>
+      <h2 className="upload-side-title">{u.sideTitle}</h2>
+      <p className="upload-side-lede">{u.sideLede}</p>
       <ol className="upload-side-list">
-        <li>
-          <span className="upload-side-num" aria-hidden="true">
-            1
-          </span>
-          <span>
-            压的是整个工作区文件夹，不是只压 <code className="upload-side-code">.scratch/</code>。
-          </span>
-        </li>
-        <li>
-          <span className="upload-side-num" aria-hidden="true">
-            2
-          </span>
-          <span>
-            文件夹里有 <code className="upload-side-code">AGENTS.md</code> 和 <code className="upload-side-code">.scratch/</code>。
-          </span>
-        </li>
-        <li>
-          <span className="upload-side-num" aria-hidden="true">
-            3
-          </span>
-          <span>压缩包在 50 MB 以内。超了先删掉不需要的文件，再压一次。</span>
-        </li>
+        {u.sideItems.map((item, index) => (
+          <li key={index}>
+            <span className="upload-side-num" aria-hidden="true">
+              {index + 1}
+            </span>
+            <span>
+              <Rich parts={item} />
+            </span>
+          </li>
+        ))}
       </ol>
 
-      <h2 className="upload-side-sub">传上来之后</h2>
-      <p className="upload-side-text">
-        我们先校验，再建单、安排处理。进度在「我的订单」看，不用催。
-      </p>
-      <ol className="upload-side-stages" aria-label="五档进度">
-        {STAGES.map((stage, index) => (
-          <li key={stage}>
-            {stage}
-            {index < STAGES.length - 1 ? (
+      <h2 className="upload-side-sub">{u.sideSub}</h2>
+      <p className="upload-side-text">{u.sideText}</p>
+      <ol className="upload-side-stages" aria-label={u.sideStagesAria}>
+        {TIERS.map((tier, index) => (
+          <li key={tier.key}>
+            {tierName(lang, tier.key)}
+            {index < TIERS.length - 1 ? (
               <span className="upload-side-arrow" aria-hidden="true">
                 →
               </span>
@@ -245,21 +225,19 @@ function SideNotes() {
           </li>
         ))}
       </ol>
-      <p className="upload-side-note">
-        校验没通过时，我们会说缺什么、怎么补，补好再传一次。
-      </p>
+      <p className="upload-side-note">{u.sideNote}</p>
 
-      <p className="upload-side-help">
-        卡在这一步？截一张屏幕，把窗口边框和报错带上，发给客服。微信为主，电话兜底。
-      </p>
+      <p className="upload-side-help">{u.sideHelp}</p>
       <a className="upload-side-link" href="/help">
-        怎么找客服 →
+        {u.sideLink}
       </a>
     </aside>
   )
 }
 
 export default function UploadPage() {
+  const { copy } = useI18n()
+  const u = copy.account.upload
   const [sessionState, setSessionState] = useState('loading')
   const [session, setSession] = useState(null)
   const [sessionError, setSessionError] = useState('')
@@ -310,7 +288,7 @@ export default function UploadPage() {
       const data = await getSession()
       const customer = customerFrom(data)
       if (!customer) {
-        throw new ApiError(0, '账号信息没读出来，刷新页面再试。')
+        throw new ApiError(0, u.sessionMissing)
       }
       setSession(customer)
       setSessionState('ready')
@@ -323,10 +301,10 @@ export default function UploadPage() {
       if (caught.status === 403) {
         setSession(null)
         setSessionState('ready')
-        setLoginNotice('这个账号已停用，找客服。')
+        setLoginNotice(u.sessionDisabled)
         return
       }
-      setSessionError(caught.message || '没连上服务器，稍后再试。')
+      setSessionError(caught.message || u.sessionOffline)
       setSessionState('error')
     }
   }
@@ -375,7 +353,7 @@ export default function UploadPage() {
   const acceptFile = (nextFile) => {
     if (!nextFile) return
 
-    const error = validateFile(nextFile)
+    const error = validateFile(nextFile, copy)
     setUploadError('')
 
     if (error) {
@@ -407,12 +385,13 @@ export default function UploadPage() {
   const canSubmit = Boolean(file && finished && uploadState !== 'uploading')
 
   const submitHint = () => {
-    if (uploadState === 'uploading') return '正在上传，别关页面。'
-    if (fileError || uploadError) return '看上面的提示，改好再选一次。'
-    if (!file && !finished) return '选一个 zip，再勾上「已问完」。'
-    if (!file) return '还要选一个 zip。'
-    if (!finished) return '还差一步：勾上「已问完」。'
-    return '可以上传了。'
+    const hints = u.submitHints
+    if (uploadState === 'uploading') return hints.uploading
+    if (fileError || uploadError) return hints.error
+    if (!file && !finished) return hints.empty
+    if (!file) return hints.noFile
+    if (!finished) return hints.noFinished
+    return hints.ready
   }
 
   const handleSubmit = (event) => {
@@ -455,15 +434,13 @@ export default function UploadPage() {
 
       if (xhr.status === 401 || xhr.status === 403) {
         setLoginNotice(
-          xhr.status === 403
-            ? '这个账号已停用，传不上去。找客服。'
-            : '登录过期了，重新登录后再传。文件还在。',
+          xhr.status === 403 ? u.uploadDisabled : u.expired,
         )
         setSession(null)
         return
       }
 
-      setUploadError(uploadErrorMessage(xhr.status, pickMessage(data)))
+      setUploadError(uploadErrorMessage(xhr.status, pickMessage(data), copy))
     }
 
     xhr.onerror = () => {
@@ -471,7 +448,7 @@ export default function UploadPage() {
       xhrRef.current = null
       setUploadState('idle')
       setProgress(0)
-      setUploadError('没连上服务器。文件还在，检查网络后再点一次上传。')
+      setUploadError(u.networkError)
     }
 
     xhr.onabort = () => {
@@ -479,7 +456,7 @@ export default function UploadPage() {
       xhrRef.current = null
       setUploadState('idle')
       setProgress(0)
-      setUploadError('上传停了。文件还在，可以再点一次。')
+      setUploadError(u.aborted)
     }
 
     const body = new FormData()
@@ -496,30 +473,28 @@ export default function UploadPage() {
   return (
     <main id="main" className="page upload-page">
       <header className="page-head">
-        <h1 className="page-title">上传工作区</h1>
-        <p className="page-lede">
-          全部问完，把整个工作区压成一个 zip 传回来。简称和邮箱由账号带出，不用再填。
-        </p>
+        <h1 className="page-title">{u.title}</h1>
+        <p className="page-lede">{u.lede}</p>
       </header>
 
       <div className="upload-layout">
         <div className="upload-main">
           {sessionState === 'loading' ? (
             <p className="upload-loading" role="status">
-              正在确认登录状态…
+              {u.confirmLogin}
             </p>
           ) : null}
 
           {sessionState === 'error' ? (
             <section className="upload-session-error" role="alert">
-              <h2>没连上服务器</h2>
+              <h2>{u.serverErrorTitle}</h2>
               <p>{sessionError}</p>
               <button
                 className="upload-button upload-button-outline"
                 type="button"
                 onClick={loadSession}
               >
-                重试
+                {u.retry}
               </button>
             </section>
           ) : null}
@@ -547,32 +522,31 @@ export default function UploadPage() {
                     className="upload-success-title"
                     id="upload-success-title"
                   >
-                    传上来了。
+                    {u.successTitle}
                   </h2>
-                  <p className="upload-success-lede">
-                    我们在校验，接下来会安排处理。进度在「我的订单」看，不用再传一次。
-                  </p>
+                  <p className="upload-success-lede">{u.successLede}</p>
                   <dl className="upload-success-meta">
-                    <dt>文件</dt>
+                    <dt>{u.successFile}</dt>
                     <dd>
-                      {successInfo.filename} · {formatSize(successInfo.size)}
+                      {successInfo.filename} ·{' '}
+                      {formatSize(successInfo.size, copy)}
                     </dd>
-                    <dt>状态</dt>
-                    <dd>已收到 · 校验中</dd>
+                    <dt>{u.successStatus}</dt>
+                    <dd>{u.successStatusValue}</dd>
                   </dl>
                   <div className="upload-success-actions">
                     <a
                       className="upload-button upload-button-primary"
                       href="/app/orders"
                     >
-                      看订单进度
+                      {u.successOrders}
                     </a>
                     <button
                       className="upload-button upload-button-outline"
                       type="button"
                       onClick={handleReset}
                     >
-                      再传一个
+                      {u.successAgain}
                     </button>
                   </div>
                 </section>
@@ -602,11 +576,9 @@ export default function UploadPage() {
                     <span className="upload-drop-mark" aria-hidden="true">
                       ZIP
                     </span>
-                    <span className="upload-drop-title">把 zip 拖到这里</span>
-                    <span className="upload-drop-sub">或点这里选择文件</span>
-                    <span className="upload-drop-limit">
-                      只收 .zip · 50 MB 以内
-                    </span>
+                    <span className="upload-drop-title">{u.dropTitle}</span>
+                    <span className="upload-drop-sub">{u.dropSub}</span>
+                    <span className="upload-drop-limit">{u.dropLimit}</span>
                   </button>
 
                   <input
@@ -625,7 +597,7 @@ export default function UploadPage() {
                       <div className="upload-file-main">
                         <p className="upload-file-name">{file.name}</p>
                         <p className="upload-file-size">
-                          {formatSize(file.size)}
+                          {formatSize(file.size, copy)}
                         </p>
                       </div>
                       <button
@@ -634,7 +606,7 @@ export default function UploadPage() {
                         onClick={() => inputRef.current?.click()}
                         disabled={uploadState === 'uploading'}
                       >
-                        换一个
+                        {u.fileReplace}
                       </button>
                     </div>
                   ) : null}
@@ -663,24 +635,21 @@ export default function UploadPage() {
                         aria-describedby="upload-done-help"
                       />
                       <span>
-                        <span className="upload-check-title">已问完</span>
+                        <span className="upload-check-title">
+                          {u.finishedTitle}
+                        </span>
                         <span className="upload-check-help" id="upload-done-help">
-                          全部问完、agent 说没有下一张票了，再勾。
+                          {u.finishedHelp}
                         </span>
                       </span>
                     </label>
-                    <p className="upload-check-note">
-                      勾上「已问完」，我们才开始处理这个包。
-                    </p>
+                    <p className="upload-check-note">{u.finishedNote}</p>
                   </div>
 
                   <div className="upload-privacy">
-                    <p className="upload-privacy-title">
-                      文件夹里的所有文件都会上传，请只放本项目的资料。
-                    </p>
+                    <p className="upload-privacy-title">{u.privacyTitle}</p>
                     <p className="upload-privacy-text">
-                      对话记录在 <code>~/.dsh/sessions/</code>
-                      ，不在工作区里，不会跟着上传。
+                      <Rich parts={u.privacyText} />
                     </p>
                   </div>
 
@@ -690,7 +659,7 @@ export default function UploadPage() {
                       type="submit"
                       disabled={!canSubmit}
                     >
-                      {uploadState === 'uploading' ? '上传中…' : '上传'}
+                      {uploadState === 'uploading' ? u.submitting : u.submit}
                     </button>
                     <p className="upload-submit-hint" role="status">
                       {submitHint()}
@@ -702,7 +671,7 @@ export default function UploadPage() {
                       <div
                         className="upload-meter"
                         role="progressbar"
-                        aria-label="上传进度"
+                        aria-label={u.progressAria}
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-valuenow={progress}
@@ -711,8 +680,8 @@ export default function UploadPage() {
                       </div>
                       <p className="upload-progress">
                         {progress >= 100
-                          ? '传完了，等服务器回话…'
-                          : `正在上传 ${progress}%`}
+                          ? u.progressDone
+                          : u.progress(progress)}
                       </p>
                     </div>
                   ) : null}

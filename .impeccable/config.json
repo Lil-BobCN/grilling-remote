@@ -38,6 +38,15 @@
         ],
         "createdAt": "2026-11-14T03:44:47.179Z",
         "reason": "首页三步是必须按顺序走的流程，01/02/03 承载顺序信息，不是章节装饰。"
+      },
+      {
+        "rule": "overused-font",
+        "value": "Instrument Sans",
+        "files": [
+          "site/dist/**/*.css"
+        ],
+        "createdAt": "2026-11-14T12:24:39.000Z",
+        "reason": "运营者 2026-11-14 要求英文页仿 Anthropic 官网的字体。Instrument Sans 是与 Anthropic Sans 最接近的开源字体，属于指定方向，不是默认潮流选择。"
       }
     ]
   }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useI18n } from '../i18n/index.jsx'
 
 const THEME_COLORS = { light: '#f0eee6', dark: '#141413' }
 
@@ -14,6 +15,8 @@ function applyTheme(theme) {
 }
 
 export default function ThemeToggle() {
+  const { copy } = useI18n()
+
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -49,8 +52,8 @@ export default function ThemeToggle() {
       className="pill theme-toggle"
       type="button"
       onClick={toggle}
-      aria-label="切换明暗模式"
-      title="切换明暗模式"
+      aria-label={copy.site.theme}
+      title={copy.site.theme}
     >
       <svg
         className="theme-icon theme-icon-moon"

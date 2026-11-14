@@ -1,3 +1,4 @@
+import { useI18n, usePageMeta } from './i18n/index.jsx'
 import SiteLayout from './components/SiteLayout.jsx'
 import DownloadPage from './pages/DownloadPage.jsx'
 import HelpPage from './pages/HelpPage.jsx'
@@ -16,6 +17,9 @@ const pages = {
 export default function App({ page }) {
   const entry = pages[page] || pages.home
   const { Component, current } = entry
+  const { copy } = useI18n()
+
+  usePageMeta(copy.meta[page] || copy.meta.home)
 
   return (
     <SiteLayout help={page !== 'tutorial' && page !== 'help'} current={current}>

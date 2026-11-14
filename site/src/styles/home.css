@@ -295,21 +295,15 @@ html.js-motion .hero-video {
   background: var(--paper-raised);
 }
 
-/* 三步装好：深色带。colorize 审阅选定，暖棕只落在步骤号上。 */
-.home-steps--night {
-  background: var(--night);
-  color: var(--on-night);
+/* 三步装好：暖纸带。2026-11-14 live 审阅选定暖纸面，上下墨线接住。 */
+.home-steps--paper {
+  border-top: var(--rule-ink);
+  border-bottom: var(--rule-ink);
+  background: var(--surface-warm);
+  color: var(--ink);
 }
 
-.home-steps--night .home-section-title {
-  color: var(--on-night);
-}
-
-.home-steps--night .home-step-grid {
-  border-top: var(--line-width) solid var(--night-line);
-}
-
-.home-steps--night .home-step b {
+.home-steps--paper .home-step b {
   display: inline-flex;
   align-items: center;
   height: 26px;
@@ -322,25 +316,12 @@ html.js-motion .hero-video {
   letter-spacing: 0.08em;
 }
 
-.home-steps--night .home-step:nth-child(2) b {
+.home-steps--paper .home-step:nth-child(2) b {
   background: var(--oat);
 }
 
-.home-steps--night .home-step:nth-child(3) b {
+.home-steps--paper .home-step:nth-child(3) b {
   background: var(--mint);
-}
-
-.home-steps--night .home-step h3 {
-  color: var(--on-night);
-}
-
-.home-steps--night .home-step p {
-  color: var(--on-night-soft);
-}
-
-.home-steps--night .home-step span {
-  border-top-color: var(--night-line);
-  color: var(--on-night-note);
 }
 
 .home-section-title {
@@ -437,6 +418,24 @@ html.js-motion .hero-video {
   color: var(--muted);
   font-size: var(--text-ui);
   line-height: 1.6;
+}
+
+/* 英文步骤标题更长，列高不齐时把检查行压到同一底线。 */
+html[data-lang="en"] .home-step {
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-lang="en"] .home-step b {
+  align-self: flex-start;
+}
+
+html[data-lang="en"] .home-step p {
+  margin-bottom: var(--space-14);
+}
+
+html[data-lang="en"] .home-step span {
+  margin-top: auto;
 }
 
 .home-skills-grid {
@@ -663,10 +662,6 @@ html.js-motion .hero-video {
   .home-step {
     padding: var(--space-18) 0 0;
     border-top: var(--rule-ink);
-  }
-
-  .home-steps--night .home-step {
-    border-top-color: var(--night-line);
   }
 
   .home-skill-list li {

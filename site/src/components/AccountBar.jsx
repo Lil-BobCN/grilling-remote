@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { useI18n } from '../i18n/index.jsx'
 
 export default function AccountBar({ session, onLogout }) {
+  const { copy } = useI18n()
+  const bar = copy.account.bar
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const name = session?.displayName || session?.email || ''
@@ -12,7 +15,7 @@ export default function AccountBar({ session, onLogout }) {
     try {
       await onLogout()
     } catch {
-      setError('退出没成功，再试一次。')
+      setError(bar.logoutFailed)
       setBusy(false)
     }
   }
@@ -26,7 +29,7 @@ export default function AccountBar({ session, onLogout }) {
         onClick={handleLogout}
         disabled={busy}
       >
-        {busy ? '正在退出…' : '退出'}
+        {busy ? bar.loggingOut : bar.logout}
       </button>
       {error ? (
         <p className="account-bar-error" role="alert">

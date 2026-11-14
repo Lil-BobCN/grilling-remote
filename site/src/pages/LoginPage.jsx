@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSession, login } from '../api/account.js'
-import { TIERS } from '../progress.js'
+import { Rich, useI18n } from '../i18n/index.jsx'
+import { TIERS, tierName } from '../progress.js'
 
 function safeNext() {
   const next = new URLSearchParams(window.location.search).get('next')
@@ -26,6 +27,8 @@ function EyeIcon({ crossed }) {
 }
 
 export default function LoginPage() {
+  const { lang, copy } = useI18n()
+  const l = copy.account.login
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -52,7 +55,7 @@ export default function LoginPage() {
 
     const cleanEmail = email.trim().toLowerCase()
     if (!cleanEmail || !password) {
-      setError('邮箱和密码都要填。')
+      setError(l.errorEmpty)
       return
     }
 
@@ -64,9 +67,7 @@ export default function LoginPage() {
       window.location.assign(safeNext())
     } catch (requestError) {
       setError(
-        requestError.status === 401
-          ? '邮箱或密码不对。忘了密码，微信找客服重设。'
-          : '登录没成功。看看网络，再试一次。',
+        requestError.status === 401 ? l.errorWrong : l.errorNetwork,
       )
       setBusy(false)
     }
@@ -77,16 +78,15 @@ export default function LoginPage() {
       <div className="login-grid">
         <section className="login-intro" aria-labelledby="login-title">
           <h1 id="login-title" className="login-title">
-            登录
+            {l.title}
           </h1>
-          <p className="login-lede">用我们发给你的邮箱和密码。</p>
+          <p className="login-lede">{l.lede}</p>
           <p className="login-pitch">
-            登录后，每一单走到哪一步、下一步做什么，都在
-            <span className="login-nowrap">「我的订单」</span>里。
+            <Rich parts={l.pitch} />
           </p>
 
           <div className="login-guide">
-            <h2>你会看到的五档</h2>
+            <h2>{l.stagesTitle}</h2>
             <ol className="login-stages">
               {TIERS.map((tier, index) => (
                 <li className="login-stage" key={tier.key}>
@@ -94,8 +94,8 @@ export default function LoginPage() {
                     {index + 1}
                   </span>
                   <span className="login-stage-text">
-                    <b>{tier.key}</b>
-                    <span>{tier.short}</span>
+                    <b>{tierName(lang, tier.key)}</b>
+                    <span>{copy.progress.tiers[tier.key].short}</span>
                   </span>
                 </li>
               ))}
@@ -103,19 +103,18 @@ export default function LoginPage() {
           </div>
 
           <p className="login-note">
-            账号由我们开通，密码通过微信发给你。忘了密码，
-            <a href="/help">微信找客服</a>重设。
+            <Rich parts={l.note} />
           </p>
         </section>
 
         <section className="login-form-panel" aria-labelledby="login-form-title">
           <h2 id="login-form-title" className="login-form-title">
-            邮箱登录
+            {l.formTitle}
           </h2>
           <form className="login-form" onSubmit={submit} noValidate>
             <div className="login-field">
               <label className="login-label" htmlFor="login-email">
-                邮箱
+                {l.email}
               </label>
               <input
                 className="login-input"
@@ -135,7 +134,7 @@ export default function LoginPage() {
 
             <div className="login-field">
               <label className="login-label" htmlFor="login-password">
-                密码
+                {l.password}
               </label>
               <span className="login-input-wrap">
                 <input
@@ -153,7 +152,7 @@ export default function LoginPage() {
                   className="login-eye"
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  aria-label={showPassword ? l.hidePassword : l.showPassword}
                 >
                   <EyeIcon crossed={showPassword} />
                 </button>
@@ -166,7 +165,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={busy}
               >
-                {busy ? '正在登录…' : '登录'}
+                {busy ? l.submitting : l.submit}
               </button>
               <button
                 className="login-forgot-toggle"
@@ -175,17 +174,15 @@ export default function LoginPage() {
                 aria-expanded={forgotOpen}
                 aria-controls="login-forgot"
               >
-                忘记密码？
+                {l.forgot}
               </button>
             </div>
 
             {forgotOpen ? (
               <div className="login-forgot" id="login-forgot" role="note">
-                <p>
-                  在微信里跟客服说「重设密码」，我们会发一个新的给你。电话只在微信联系不上时用。
-                </p>
+                <p>{l.forgotBody}</p>
                 <a className="login-forgot-link" href="/help">
-                  怎么找客服 →
+                  {l.forgotLink}
                 </a>
               </div>
             ) : null}
@@ -198,7 +195,7 @@ export default function LoginPage() {
           </form>
 
           <p className="login-hint">
-            还没有账号？首期邀请制。要开通，<a href="/help">微信找客服</a>。
+            <Rich parts={l.hint} />
           </p>
         </section>
       </div>

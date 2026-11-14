@@ -1,54 +1,17 @@
 import { useEffect, useRef } from 'react'
 import RiseChars from '../components/RiseChars.jsx'
+import { Rich, skillText, useI18n } from '../i18n/index.jsx'
 import manifest from '../../../customer-kit/manifest.json'
 import release from '../../../customer-kit/release.json'
 import '../styles/home.css'
 
-const titleSegments = [
-  { text: '从一句需求，' },
-  { text: '到一套能用的软件。' },
-]
-
-const reasons = [
-  {
-    title: '打开就能用',
-    text: `${manifest.skills.length} 个技能和一套规则都装好了，不用自己配。`,
-  },
-  {
-    title: '文件留在你电脑',
-    text: '需求和草稿都在本机；官网只负责发下载包、收成品。',
-  },
-  {
-    title: '卡住有人管',
-    text: '教程中每一步都写清了你该看到什么、该怎么做。卡住了，截图发给我们。',
-  },
-]
-
-const steps = [
-  {
-    n: '01',
-    title: '下载两样',
-    text: '工作区 zip 和 dsh 安装包，都下好再继续。',
-    check: '你会看到：下载列表里有两个文件',
-  },
-  {
-    n: '02',
-    title: '解压到空文件夹',
-    text: '右键解压，不要直接在压缩包里打开。',
-    check: '你会看到：打开文件夹，第一层就能直接看到 AGENTS.md',
-  },
-  {
-    n: '03',
-    title: '用 dsh 打开，说一句话',
-    text: '选这个文件夹，输入「开始需求澄清」。',
-    check: '你会看到：agent 开始问你第一个问题',
-  },
-]
-
 // 来源：customer-kit/manifest.json。清单页 I-0065 也直接读 manifest。
 const skills = manifest.skills
+const size = release.size.toLocaleString('en-US')
 
 export default function HomePage() {
+  const { lang, copy } = useI18n()
+  const home = copy.home
   const heroRef = useRef(null)
 
   useEffect(() => {
@@ -123,29 +86,23 @@ export default function HomePage() {
             <h1
               id="home-title"
               className="home-hero-title"
-              aria-label="从一句需求，到一套能用的软件。"
+              aria-label={home.titleAria}
               style={{ '--motion-delay': '60ms' }}
             >
-              <RiseChars segments={titleSegments} />
+              <RiseChars segments={home.titleSegments} />
             </h1>
             <p
               className="home-hero-lede motion-rise"
               style={{ '--motion-delay': '260ms' }}
             >
-              下载客户工作区，按三步装好。
-              <br className="home-lede-break" />
-              agent 会主动用一套专业方法，把需求问清楚；做完把整个<span className="home-keep">文件夹</span>传回来。
+              <Rich parts={home.lede} />
             </p>
           </div>
           <p
             className="home-hero-meta motion-rise"
             style={{ '--motion-delay': '340ms' }}
           >
-            客户工作区 {release.version}
-            <br />
-            {release.size.toLocaleString('en-US')} 字节 · {release.date}
-            <br />
-            支持 macOS 和 Windows 64 位
+            <Rich parts={home.heroMeta(release, size)} />
           </p>
         </div>
       </section>
@@ -169,13 +126,13 @@ export default function HomePage() {
                 className="hero-video-title motion-rise"
                 style={{ '--motion-delay': '420ms' }}
               >
-                想法完善，落地更快。
+                {home.videoTitle}
               </h2>
               <p
                 className="hero-video-note motion-rise"
                 style={{ '--motion-delay': '480ms' }}
               >
-                {manifest.skills.length} 个技能先把需求问透；再用 AI 时代的<span className="home-keep">低成本</span>开发，把想法做出来。
+                <Rich parts={home.videoNote(manifest.skills.length)} />
               </p>
             </div>
             <div
@@ -183,10 +140,10 @@ export default function HomePage() {
               style={{ '--motion-delay': '540ms' }}
             >
               <a className="hero-download" href="/download">
-                下载客户工作区
+                {home.downloadAction}
               </a>
               <a className="hero-tutorial" href="/tutorial">
-                先看教程
+                {home.tutorialAction}
               </a>
             </div>
           </div>
@@ -200,16 +157,14 @@ export default function HomePage() {
         <div className="home-intro-grid">
           <div data-reveal>
             <h2 id="home-intro-title" className="home-section-title">
-              你负责说清楚，<br className="home-intro-break" /><span className="home-keep">我们</span>负责做出来。
+              <Rich parts={home.introTitle} />
             </h2>
             <p className="home-section-lede">
-              从下载到回传，按教程走就行。
-              <br />
-              装好工作区，说清需求，传回文件夹。
+              <Rich parts={home.introLede} />
             </p>
           </div>
           <div className="home-points">
-            {reasons.map((reason, index) => (
+            {home.reasons(manifest.skills.length).map((reason, index) => (
               <div
                 className="home-point"
                 key={reason.title}
@@ -225,7 +180,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="home-steps home-steps--night"
+        className="home-steps home-steps--paper"
         aria-labelledby="home-steps-title"
       >
         <h2
@@ -233,10 +188,10 @@ export default function HomePage() {
           className="home-section-title"
           data-reveal
         >
-          三步装好
+          {home.stepsTitle}
         </h2>
         <div className="home-step-grid">
-          {steps.map((step, index) => (
+          {home.steps.map((step, index) => (
             <div
               className="home-step"
               key={step.n}
@@ -245,7 +200,9 @@ export default function HomePage() {
             >
               <b>{step.n}</b>
               <h3>{step.title}</h3>
-              <p>{step.text}</p>
+              <p>
+                <Rich parts={step.text} />
+              </p>
               <span>{step.check}</span>
             </div>
           ))}
@@ -259,13 +216,11 @@ export default function HomePage() {
         <div className="home-skills-grid">
           <div data-reveal>
             <h2 id="home-skills-title" className="home-section-title">
-              {manifest.skills.length} 个技能，<br />装好就能用。
+              <Rich parts={home.skillsTitle(manifest.skills.length)} />
             </h2>
-            <p className="home-section-lede">
-              不用学，也不用记名字。agent 会主动帮你判断，选对技能。
-            </p>
+            <p className="home-section-lede">{home.skillsLede}</p>
             <a className="home-skills-link" href="/skills">
-              看完整清单 →
+              {home.skillsLink}
             </a>
           </div>
           <ol className="home-skill-list">
@@ -277,7 +232,7 @@ export default function HomePage() {
               >
                 <b>{String(index + 1).padStart(2, '0')}</b>
                 <span>{skill.name}</span>
-                <p>{skill.summary}</p>
+                <p>{skillText(lang, skill, copy).summary}</p>
               </li>
             ))}
           </ol>
@@ -291,17 +246,17 @@ export default function HomePage() {
         <div className="home-band-grid">
           <div className="home-band-statement" data-reveal>
             <h2 id="home-band-title">
-              做完了，<br />传回来。
+              <Rich parts={home.bandTitle} />
             </h2>
-            <p>整个文件夹压成 zip，登录后传回来。勾上「已问完」，剩下的我们来。</p>
+            <p>{home.bandText}</p>
           </div>
           <div
             className="home-band-progress"
             data-reveal
             style={{ '--reveal-delay': '90ms' }}
           >
-            <h2>进度随时看。</h2>
-            <p>五档状态，走到哪一步都写清楚。不用追着问。</p>
+            <h2>{home.progressTitle}</h2>
+            <p>{home.progressText}</p>
           </div>
           <div
             className="home-band-actions"
@@ -309,11 +264,11 @@ export default function HomePage() {
             style={{ '--reveal-delay': '180ms' }}
           >
             <a className="home-band-action" href="/app/upload">
-              <span>上传工作区</span>
+              <span>{home.uploadAction}</span>
               <span className="home-band-arrow" aria-hidden="true">→</span>
             </a>
             <a className="home-band-action" href="/app/orders">
-              <span>我的订单</span>
+              <span>{home.ordersAction}</span>
               <span className="home-band-arrow" aria-hidden="true">→</span>
             </a>
           </div>

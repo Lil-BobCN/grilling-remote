@@ -6,11 +6,14 @@
  * 正式契约（字段、错误码、会话）归 I-0035。换契约时只改这个文件。
  */
 
-const ERROR_MESSAGES = {
-  401: '请先登录。',
-  403: '这个账号不能看这张单。',
-  404: '没找到。',
-  429: '试得太快了，过一会儿再来。',
+import { en } from '../content/en.js'
+import { zh } from '../content/zh.js'
+import { getLang } from '../i18n/index.jsx'
+
+const API_COPY = { zh: zh.account.api, en: en.account.api }
+
+function messages() {
+  return API_COPY[getLang()] || API_COPY.zh
 }
 
 export class ApiError extends Error {
@@ -22,7 +25,7 @@ export class ApiError extends Error {
 }
 
 export class UnauthorizedError extends ApiError {
-  constructor(message = ERROR_MESSAGES[401]) {
+  constructor(message = messages()[401]) {
     super(401, message)
     this.name = 'UnauthorizedError'
   }
@@ -44,7 +47,8 @@ async function request(path, options = {}) {
   if (response.status === 401) throw new UnauthorizedError()
 
   if (!response.ok) {
-    let message = ERROR_MESSAGES[response.status] || '服务没有响应。'
+    const copy = messages()
+    let message = copy[response.status] || copy.noResponse
     try {
       const payload = await response.json()
       if (typeof payload?.message === 'string') message = payload.message

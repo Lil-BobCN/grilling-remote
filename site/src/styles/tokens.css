@@ -5,6 +5,24 @@
  * 变量清单见 site/design/tokens.md。
  */
 
+/* 英文页的两种字。取自 Anthropic 官网的衬线标题加无衬线正文，用开源近似字体；
+ * 文件和许可证在 site/public/fonts/。中文页不加载这两个文件。 */
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/SourceSerif4-Variable.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("/fonts/InstrumentSans-Variable.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
 
@@ -38,6 +56,8 @@
   /* 带色纸面：亮模式是浅色纸，暗模式换成深色纸，字色跟着 --ink 走。 */
   --surface-warm: #e9e1d1;
   --surface-cool: #dfe8e3;
+  /* 教程页交替底色：暖灰随明暗翻转。 */
+  --surface-mist: #e7e3da;
 
   /* 细线与胶囊 */
   --line: #d9d4c7;
@@ -143,6 +163,23 @@
   --ease-ui: cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 
+/* 英文：衬线标题和无衬线正文换成 Anthropic 官网那两种开源近似字体，
+ * 字号按拉丁字母的视觉大小抬一档。数据仍用等宽。 */
+html[data-lang="en"] {
+  --font-serif: "Source Serif 4", "Songti SC", "SimSun", "Noto Serif SC",
+    serif;
+  --font-sans: "Instrument Sans", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+
+  --text-display: 50px;
+  --text-display-narrow: 36px;
+  --text-section: 42px;
+  --text-section-narrow: 32px;
+  --text-subhead: 28px;
+  --text-lead: 17px;
+  --text-body: 16px;
+}
+
 /* 夜间：纸面和墨色对调，强调色保留。色块上的字仍用深墨。 */
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -170,4 +207,5 @@ html[data-theme="dark"] {
 
   --surface-warm: #2a2521;
   --surface-cool: #1f2824;
+  --surface-mist: #262624;
 }

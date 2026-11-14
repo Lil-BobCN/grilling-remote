@@ -230,6 +230,14 @@
   content: "收起";
 }
 
+html[data-lang="en"] .download-sha-turn::before {
+  content: "Expand";
+}
+
+html[data-lang="en"] .download-sha[open] .download-sha-turn::before {
+  content: "Collapse";
+}
+
 @media (max-width: 520px) {
   .download-sha-note {
     display: none;
@@ -534,7 +542,7 @@
   }
 
   .download-file {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-32);
     padding: var(--space-20);
   }
@@ -617,5 +625,12 @@
   .download-button:active,
   .download-copy:active {
     transform: none;
+  }
+}
+
+/* 英文摘要比中文长，小屏降一档，避免“SHA256 & / checksum”只剩一个词。 */
+@media (max-width: 520px) {
+  html[data-lang="en"] .download-sha summary {
+    font-size: 24px;
   }
 }

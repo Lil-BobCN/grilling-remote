@@ -27,19 +27,16 @@
 .tutorial-page [data-phase="install"] {
   --phase: var(--clay);
   --phase-text: var(--clay-text);
-  --phase-night: var(--clay);
 }
 
 .tutorial-page [data-phase="chat"] {
   --phase: var(--blue);
   --phase-text: var(--blue-text);
-  --phase-night: var(--blue);
 }
 
 .tutorial-page [data-phase="handoff"] {
   --phase: var(--olive);
   --phase-text: var(--olive-text);
-  --phase-night: var(--olive);
 }
 
 .tutorial-page [data-phase] {
@@ -106,6 +103,7 @@
   font-size: var(--text-control);
   font-weight: var(--weight-semibold);
   line-height: 1.4;
+  white-space: nowrap;
   transition:
     background-color var(--motion-fast) var(--ease-ui),
     transform var(--motion-fast) var(--ease-ui);
@@ -120,6 +118,7 @@
 }
 
 .tutorial-button-note {
+  flex: none;
   padding-left: var(--space-14);
   border-left: var(--line-width) solid
     color-mix(in srgb, var(--on-accent) 34%, transparent);
@@ -319,23 +318,6 @@
   color: var(--phase-text);
 }
 
-/* 目录浮在夜黑带上时逐项换成带上的字色；手机上目录是纸色横条，不用换。 */
-@media (min-width: 1101px) {
-  .tutorial-rail li[data-band="night"] {
-    --rail-text: var(--on-night-soft);
-    --rail-strong: var(--on-night);
-    --rail-line: color-mix(in srgb, var(--on-night) 18%, transparent);
-  }
-
-  .tutorial-rail li[data-band="night"] .tutorial-rail-num {
-    color: var(--phase-night);
-  }
-
-  .tutorial-rail[data-band="night"] .tutorial-rail-title {
-    color: var(--on-night-note);
-  }
-}
-
 .tutorial-body {
   min-width: 0;
 }
@@ -355,8 +337,8 @@
   border-top: var(--line-width) solid var(--phase-line);
 }
 
-/* 整段背景：第 4 节铺冷色纸，第 5 节铺夜黑，隔一段换一次底色。
-   背景用负边距画在段落背后，正文宽度和内边距都不动。 */
+/* 整段背景：只用纸色、暖纸、暖灰三色交叉铺底——01 纸色、02 暖纸、03 纸色、
+   04 暖灰、05 回到纸色。背景用负边距画在段落背后，正文宽度和内边距都不动。 */
 .tutorial-step[data-band] {
   position: relative;
   isolation: isolate;
@@ -377,35 +359,44 @@
   background: var(--band-bg);
 }
 
-/* 带前面留出纸色空档，带和带之间直接相接。 */
+/* 带前面留出纸色空档，相邻两带直接相接。 */
 .tutorial-step:has(+ .tutorial-step[data-band]) {
   padding-bottom: var(--space-96);
 }
 
-.tutorial-step[data-band="night"] {
+.tutorial-step[data-band="warm"] {
+  --band-bg: var(--surface-warm);
+}
+
+.tutorial-step[data-band="mist"] {
+  --band-bg: var(--surface-mist);
+}
+
+.tutorial-step[data-band="warm"]::before,
+.tutorial-step[data-band="mist"]::before {
+  border-top: var(--line-width) solid var(--line);
+  border-bottom: var(--line-width) solid var(--line);
+}
+
+/* 夜间版跟首页取同一组三色：暖纸、纸色、夜黑。第 4 节的暖灰在夜间
+   换用首页回传带的夜黑底，边界线也跟着换成夜里那套。 */
+html[data-theme="dark"] .tutorial-step[data-band="mist"] {
   --band-bg: var(--night);
-  --phase-text: var(--phase-night);
-  --ink: var(--on-night);
-  --ink-soft: var(--on-night-soft);
-  --body: var(--on-night-soft);
-  --body-soft: var(--on-night-soft);
-  --muted: var(--on-night-note);
-  --muted-strong: var(--on-night-note);
-  --line: color-mix(in srgb, var(--on-night) 18%, transparent);
-  --line-soft: color-mix(in srgb, var(--on-night) 14%, transparent);
-  --rule: var(--line-width) solid var(--line);
-  --rule-ink: var(--line-width) solid var(--line);
-  --rule-soft: var(--line-width) solid var(--line-soft);
-  color: var(--on-night);
 }
 
-.tutorial-step[data-band="night"]::before {
-  border-top: var(--line-width) solid var(--night-line);
-  border-bottom: var(--line-width) solid var(--night-line);
+html[data-theme="dark"] .tutorial-step[data-band="mist"]::before {
+  border-color: var(--night-line);
 }
 
-/* 两段夜黑带相接时只留一条分隔线。 */
-.tutorial-step[data-band="night"] + .tutorial-step[data-band="night"]::before {
+/* 带色纸面比纸深一档，灰字压深，保住 4.5:1。 */
+.tutorial-step[data-band="warm"],
+.tutorial-step[data-band="mist"] {
+  --muted: color-mix(in srgb, var(--ink) 62%, transparent);
+  --muted-strong: color-mix(in srgb, var(--ink) 68%, transparent);
+}
+
+/* 相邻两带相接时只留一条分隔线。 */
+.tutorial-step[data-band] + .tutorial-step[data-band]::before {
   border-top: 0;
 }
 
@@ -414,60 +405,6 @@
   margin-top: 0;
   padding-top: var(--space-96);
   border-top: 0;
-}
-
-/* 夜黑带里，虚线、悬停色和焦点框都换成带上的颜色。 */
-.tutorial-step[data-band="night"] .tutorial-stuck {
-  border-top-color: var(--clay);
-  border-bottom-color: var(--clay);
-}
-
-.tutorial-step[data-band="night"] .tutorial-stuck-title {
-  color: var(--clay);
-}
-
-.tutorial-step[data-band="night"] .tutorial-stuck-go:hover,
-.tutorial-step[data-band="night"] .tutorial-next a:hover {
-  color: var(--clay);
-}
-
-.tutorial-step[data-band="night"] .tutorial-copy:hover {
-  background: var(--on-night);
-  color: var(--night);
-}
-
-/* 带内按钮用纸底墨字；陶土只留给公开页的主下载按钮。 */
-.tutorial-step[data-band="night"] .tutorial-button {
-  background: var(--on-night);
-  color: var(--on-accent);
-}
-
-.tutorial-step[data-band="night"] .tutorial-button:hover {
-  background: var(--on-night-soft);
-}
-
-/* 示例框跟着带换底，否则实色纸面配重映射后的白字会看不清。 */
-.tutorial-step[data-band="night"] .tutorial-example {
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--on-night) 6%, transparent);
-  color: var(--on-night);
-}
-
-/* 黑块落在夜黑带里会看不见，改用透明白提一档。 */
-.tutorial-step[data-band="night"] .tutorial-three {
-  border-color: color-mix(in srgb, var(--on-night) 20%, transparent);
-  background: color-mix(in srgb, var(--on-night) 4%, transparent);
-}
-
-.tutorial-step[data-band="night"] .tutorial-note-strong {
-  padding: var(--space-20) var(--space-24);
-  border-top: 0;
-  border-left: var(--line-width-strong) solid var(--clay);
-  background: color-mix(in srgb, var(--on-night) 6%, transparent);
-}
-
-.tutorial-step[data-band="night"] :focus-visible {
-  outline-color: var(--on-night);
 }
 
 /* 每节标题 */
@@ -853,15 +790,15 @@
 .tutorial-three {
   margin-top: var(--space-32);
   padding: var(--space-32) var(--space-32) var(--space-28);
-  border-top: var(--line-width) solid var(--night-line);
-  border-bottom: var(--line-width) solid var(--night-line);
-  background: var(--night);
-  color: var(--on-night);
+  border-top: var(--rule-ink);
+  border-bottom: var(--rule);
+  background: var(--paper-raised);
+  color: var(--ink);
 }
 
 .tutorial-three-title {
   margin: 0;
-  color: var(--on-night);
+  color: var(--ink);
   font-family: var(--font-serif);
   font-size: var(--text-subhead);
   font-weight: var(--weight-regular);
@@ -880,12 +817,12 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-10);
-  color: var(--on-night-soft);
+  color: var(--body-soft);
   font-size: var(--text-body);
   line-height: 1.6;
 }
 
-/* 三个编号沿用首页夜黑带的色块：暖棕、燕麦、薄荷。 */
+/* 三个编号沿用首页三步的色块：暖棕、燕麦、薄荷。 */
 .tutorial-three-row b {
   display: inline-flex;
   align-items: center;
@@ -909,12 +846,12 @@
 }
 
 .tutorial-arrow {
-  color: var(--on-night-note);
+  color: var(--muted);
 }
 
 .tutorial-three-note {
   margin: var(--space-16) 0 0;
-  color: var(--on-night-note);
+  color: var(--muted);
   font-size: var(--text-ui);
   line-height: 1.7;
 }
@@ -1444,4 +1381,9 @@
   .tutorial-copy:active {
     transform: none;
   }
+}
+
+/* 英文标题较长：让阶段标题在窄栏里均衡断行，避免最后一行只剩一个词。 */
+html[data-lang="en"] .tutorial-needs h2 {
+  text-wrap: balance;
 }

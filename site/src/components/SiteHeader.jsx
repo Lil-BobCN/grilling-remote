@@ -1,10 +1,14 @@
 import { useEffect, useRef } from 'react'
+import { useI18n } from '../i18n/index.jsx'
+import LanguageToggle from './LanguageToggle.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
 
 const BRAND = 'AFKFACTORY'
 const MORPH_DISTANCE = 480
 
 export default function SiteHeader({ current }) {
+  const { copy } = useI18n()
+  const nav = copy.site.nav
   const headerRef = useRef(null)
 
   useEffect(() => {
@@ -87,34 +91,34 @@ export default function SiteHeader({ current }) {
 
   return (
     <header ref={headerRef} className="site-header">
-      <nav className="site-nav" aria-label="主导航">
+      <nav className="site-nav" aria-label={copy.site.navLabel}>
         <div className="nav-left">
           <a
             className="pill"
             href="/download"
             aria-current={current === 'download' ? 'page' : undefined}
           >
-            下载
+            {nav.download}
           </a>
           <a
             className="pill"
             href="/skills"
             aria-current={current === 'skills' ? 'page' : undefined}
           >
-            技能清单
+            {nav.skills}
           </a>
           <a
             className="pill"
             href="/tutorial"
             aria-current={current === 'tutorial' ? 'page' : undefined}
           >
-            教程
+            {nav.tutorial}
           </a>
         </div>
         <a
           className="brand"
           href="/"
-          aria-label="afkfactory 首页"
+          aria-label={copy.site.brandHome}
           aria-current={current === 'home' ? 'page' : undefined}
         >
           <span className="brand-full" aria-hidden="true">
@@ -135,26 +139,29 @@ export default function SiteHeader({ current }) {
         </a>
         <div className="nav-right">
           <ThemeToggle />
+          <LanguageToggle />
           <a
             className="pill"
             href="/app"
             aria-current={current === 'login' ? 'page' : undefined}
           >
-            登录
+            {nav.login}
           </a>
           <a
             className="pill"
             href="/app/orders"
             aria-current={current === 'orders' ? 'page' : undefined}
           >
-            我的订单
+            {nav.orders}
           </a>
           <a
             className="pill pill-dark"
             href="/app/upload"
             aria-current={current === 'upload' ? 'page' : undefined}
+            aria-label={nav.upload}
           >
-            上传工作区
+            <span className="nav-upload-full">{nav.upload}</span>
+            <span className="nav-upload-short">{nav.uploadShort}</span>
           </a>
         </div>
       </nav>

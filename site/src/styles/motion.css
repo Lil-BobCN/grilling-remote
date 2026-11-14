@@ -36,6 +36,17 @@
 
 /* 首屏标题：逐字上浮、去模糊、淡入。 */
 
+/* 逐字拆开后，空格也要保留宽度；中文标题没有空格，英文标题靠这一条。 */
+.rise-char {
+  white-space: pre;
+}
+
+/* 英文单词整块换行，不让行内方块把一个词拆到两行。 */
+.rise-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
 html.js-motion .rise-char {
   display: inline-block;
   animation:
