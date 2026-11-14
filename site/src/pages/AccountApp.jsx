@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import PageShell from '../components/PageShell.jsx'
 import SiteLayout from '../components/SiteLayout.jsx'
 import LoginPage from './LoginPage.jsx'
 import OrderDetailPage from './OrderDetailPage.jsx'
 import OrdersPage from './OrdersPage.jsx'
+import UploadPage from './UploadPage.jsx'
 import { getSession, logout, readSession } from '../api/account.js'
 import '../styles/account.css'
 import '../styles/orders.css'
@@ -19,7 +19,7 @@ function readRoute(path) {
     return { name: 'orders', current: 'orders', needsAuth: true }
   }
 
-  // 上传页归 I-0067；在那张票合进来之前保留原有占位，别让导航落到 404。
+  // 上传页自己处理登录态，不走账号区重定向。
   if (path === '/app/upload') {
     return { name: 'upload', current: 'upload' }
   }
@@ -87,13 +87,7 @@ export default function AccountApp() {
   if (route.name === 'login') {
     content = <LoginPage />
   } else if (route.name === 'upload') {
-    content = (
-      <PageShell
-        path="/app/upload"
-        title="上传工作区"
-        lede="把做完的整个文件夹压成 zip，登录后传回来。"
-      />
-    )
+    content = <UploadPage />
   } else if (route.name === 'missing') {
     content = (
       <main id="main" className="page account-page">
