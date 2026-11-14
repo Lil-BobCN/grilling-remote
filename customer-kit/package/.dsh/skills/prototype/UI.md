@@ -1,76 +1,112 @@
-# UI 原型（单文件版）
+# UI Prototype
 
-做一个 HTML 文件，里面放三个结构不同的界面版本。客户双击打开，在三个版本之间来回切，挑一个，或者说“我要 B 的头部加 C 的列表”。
+Generate **several radically different UI variations** on a single route, switchable from a floating bottom bar. The user flips between variants in the browser, picks one (or steals bits from each), then throws the rest away.
 
-如果问题是“这套逻辑/状态对不对”，不要用这个文件，用 [LOGIC.md](LOGIC.md)。
+If the question is about logic/state rather than what something looks like, this is the wrong branch. Use [LOGIC.md](LOGIC.md).
 
-## 什么时候用
+## When this is the right shape
 
-- “这个页面应该长什么样？”
-- “给我看几个首页方案，再定。”
-- “我想比较三种填写表单的方式。”
-- 客户对着一堆抽象描述说不清，需要看到具体东西才能判断。
+- "What should this page look like?"
+- "I want to see a few options for this dashboard before committing."
+- "Try a different layout for the settings screen."
+- Any time the user would otherwise spend a day picking between three vague mockups in their head.
 
-## 产出要求
+## Two sub-shapes: strongly prefer sub-shape A
 
-1. **一个 HTML 文件。** 文件名 `.scratch/{需求名}/prototypes/prototype-<name>.html`。所有 CSS、JavaScript、假数据都写在文件里。
-2. **不引用网络。** 不用 CDN、在线字体、图床、外部图标库。断网也能打开。
-3. **三个版本，结构不同。** 差异在布局、信息层级和主操作，不是只换颜色或文案。三个版本都用同一份假数据。
-4. **页面顶部写清要回答的问题。** 一句话，客户一眼能看到这次到底在比什么。
-5. **底部浮动切换栏。** 一个明显的胶囊条，固定在页面底部中间，包含左箭头、当前版本名（如 `B（侧栏版）`）、右箭头。它看起来要明显不属于页面设计本身。
-6. **左右方向键也能切。** 输入框、文本域或可编辑区域获得焦点时，不要拦截方向键。
-7. **400 行以内。** 包括 HTML、CSS、JavaScript。超了就删装饰，不删版本。
-8. **能直接双击打开。** 不依赖项目、路由、开发服务器、框架、构建步骤。
+A UI prototype is much easier to judge when it's **butting up against the rest of the app**: real header, real sidebar, real data, real density. A throwaway route on its own is a vacuum: every variant looks fine in isolation. Default to sub-shape A whenever there's a plausible existing page to host the variants. Only reach for sub-shape B if the prototype genuinely has no nearby home.
 
-## 怎么做
+### Sub-shape A: adjustment to an existing page (preferred)
 
-### 1. 先写问题
+The route already exists. Variants are rendered **on the same route**, gated by a `?variant=` URL search param. The existing data fetching, params, and auth all stay. Only the rendering swaps. This is the default; pick it unless there's a specific reason not to.
 
-在文件最上面写一行注释，也在页面顶部显示：
+If the prototype is for something that doesn't yet have a page but *would naturally live inside one* (a new section of the dashboard, a new card on the settings screen, a new step in an existing flow), it's still sub-shape A. Mount the variants inside the host page.
 
-> 这次要回答：客户更愿意用哪种方式挑门店？
+### Sub-shape B: a new page (last resort)
 
-问题写不清，三个版本就会变成三张壁纸。
+Only use this when the thing being prototyped genuinely has no existing page to live inside (e.g. an entirely new top-level surface, or a flow that can't be embedded anywhere sensible).
 
-### 2. 画三个结构不同的版本
+Create a **throwaway route** following whatever routing convention the project already uses. Don't invent a new top-level structure. Name it so it's obviously a prototype (e.g. include the word `prototype` in the path or filename). Same `?variant=` pattern.
 
-先各写一句话，说明这个版本的结构和主操作，再动手：
+Before committing to sub-shape B, sanity-check: is there really no existing page this could be embedded in? An empty route hides design problems that a populated one would expose.
 
-- A：左侧菜单 + 右侧表格，主操作是“按列筛选”。
-- B：顶部导航 + 卡片网格，主操作是“搜索后点卡片”。
-- C：单列长列表 + 底部固定按钮，主操作是“一路往下填”。
+In both sub-shapes the floating bottom bar is identical.
 
-三个版本必须能回答同一个问题，但走法不同。如果两个版本画出来差不多，推翻一个重画。
+## Process
 
-### 3. 写成一个文件
+### 1. State the question and pick N
 
-- 用一个 `<style>`，一个 `<script>`。
-- 三个版本各是一个 `<section>`，同一时间只显示一个。
-- 假数据写成 JavaScript 里的常量；不要发请求，不要读本地文件。
-- 字体用系统字体栈。
-- 图标能用文字或内联 SVG 就用，不要引外部文件。
+Default to **3 variants**. More than 5 stops being radically different and starts being noise, so cap there.
 
-### 4. 接上切换栏
+Write down the plan in one line, in the prototype's location or a top-of-file comment:
 
-- 点左箭头切到上一个，点右箭头切到下一个，首尾循环。
-- 键盘 `←` `→` 同样循环；焦点在输入框、文本域或 `contenteditable` 元素里时跳过。
-- 切换时更新版本名，并让新版本回到页面顶部。
-- 切换栏用 `position: fixed`，`z-index` 高于页面内容，但不要遮住页面底部的主按钮。
+> "Three variants of the settings page, switchable via `?variant=`, on the existing `/settings` route."
 
-### 5. 交给客户
+This works whether the user is here to push back or not.
 
-告诉客户：文件在哪、双击打开、底部可以切三个版本、看完说喜欢哪个或喜欢哪几块。
+### 2. Generate radically different variants
 
-### 6. 收尾
+Draft each variant. Hold each one to:
 
-客户选定后，把结论写进当前票的 `## 结论`：选了哪个、为什么、要混哪几块。HTML 文件留在 `.scratch/{需求名}/prototypes/`，随进度文件一起回传。不要建分支，不要推，不要开 PR。
+- The page's purpose and the data it has access to.
+- The project's component library / styling system (TailwindCSS, shadcn, MUI, plain CSS, whatever).
+- A clear exported component name, e.g. `VariantA`, `VariantB`, `VariantC`.
 
-## 不要做
+Variants must be **structurally different**: different layout, different information hierarchy, different primary affordance, not just different colours. Three slightly-tweaked card grids isn't a UI prototype, it's wallpaper. If two drafts come out too similar, redo one with explicit "do not use a card grid" guidance.
 
-- 三个版本只换颜色、字号或文案。那是同一版。
-- 三个版本共用同一个布局骨架。共用头部可以，共用整个页面不行。
-- 引外部字体、图片、图标、脚本。
-- 接真实接口或真实数据库。用假数据。
-- 加登录、路由、构建、测试。
-- 把原型当成品交付。
-- 超过 400 行。
+### 3. Wire them together
+
+Create a single switcher component on the route:
+
+```tsx
+// pseudo-code, adapt to the project's framework
+const variant = searchParams.get('variant') ?? 'A';
+return (
+  <>
+    {variant === 'A' && <VariantA {...data} />}
+    {variant === 'B' && <VariantB {...data} />}
+    {variant === 'C' && <VariantC {...data} />}
+    <PrototypeSwitcher variants={['A','B','C']} current={variant} />
+  </>
+);
+```
+
+For sub-shape A (existing page): keep all the existing data fetching above the switcher; only the rendered subtree changes per variant.
+
+For sub-shape B (new page): the throwaway route under `/prototype/<name>` mounts the same switcher.
+
+### 4. Build the floating switcher
+
+A small fixed-position bar at the bottom-centre of the screen with three pieces:
+
+- **Left arrow**: cycles to the previous variant (wraps around).
+- **Variant label**: shows the current variant key and, if the variant exports a name, that name too. e.g. `B (Sidebar layout)`.
+- **Right arrow**: cycles forward (wraps around).
+
+Behaviour:
+
+- Clicking an arrow updates the URL search param (use the framework's router, e.g. `router.replace` on Next, `navigate` on React Router, etc) so the variant is shareable and reload-stable.
+- Keyboard: `←` and `→` arrow keys also cycle. Don't intercept arrow keys when an `<input>`, `<textarea>`, or `[contenteditable]` is focused.
+- Visually distinct from the page (e.g. high-contrast pill, subtle shadow) so it's obviously not part of the design being evaluated.
+- Hidden in production builds: gate on `process.env.NODE_ENV !== 'production'` or an equivalent check, so a stray prototype merge can't ship the bar to users.
+
+Put the switcher in a single shared component so both sub-shapes can reuse it. Locate it wherever shared UI lives in the project.
+
+### 5. Hand it over
+
+Surface the URL (and the `?variant=` keys). The user will flip through whenever they get to it. The interesting feedback is usually **"I want the header from B with the sidebar from C"**, which is the actual design they want.
+
+### 6. Capture the answer and clean up
+
+Once a variant has won, capture the answer (which variant and why), then capture the prototype the way the [SKILL](SKILL.md) describes. Fold the winner into the real code and move the rest onto the throwaway branch, not into main:
+
+- **Sub-shape A**: fold the winner into the existing page; drop the losing variants and the switcher from main.
+- **Sub-shape B**: promote the winning variant to a real route; drop the throwaway route and the switcher from main.
+
+The full set of variants is the primary source, so it lands on the throwaway branch, not the bin, since variant components and the switcher left in the main branch rot fast and confuse the next reader.
+
+## Anti-patterns
+
+- **Variants that differ only in colour or copy.** That's a tweak, not a prototype. Real variants disagree about structure.
+- **Sharing too much code between variants.** A shared `<Header>` is fine; a shared `<Layout>` defeats the point. Each variant should be free to throw out the layout.
+- **Wiring variants to real mutations.** Read-only prototypes are fine. If a variant needs to mutate, point it at a stub: the question is "what should this look like", not "does the backend work".
+- **Promoting the prototype directly to production.** The variant code was written under prototype constraints (no tests, minimal error handling). Rewrite it properly when you fold it in.

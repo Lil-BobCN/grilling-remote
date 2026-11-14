@@ -1,15 +1,13 @@
 {
   "version": "v1",
-  "date": "2026-11-07",
+  "date": "2026-11-14",
   "skills": [
     {"name": "grilling", "summary": "一次问一件事，把模糊的想法问清楚", "when": "聊需求、定终点的时候"},
     {"name": "domain-modeling", "summary": "把需求里的词定清楚，写进词表", "when": "同一个词有几种意思的时候"},
+    {"name": "grill-with-docs", "summary": "一边问清楚，一边把新词写进词表", "when": "问需求、定词义的时候"},
     {"name": "wayfinder", "summary": "把大需求拆成一张张小议题，一次做一张", "when": "需求太大，一次对话装不下的时候"},
     {"name": "prototype", "summary": "先做个粗糙的样子给你看，边看边改", "when": "要定长什么样、怎么操作的时候"},
     {"name": "research", "summary": "去查资料，把查到的结论写成文件", "when": "有个事实要查清才能做决定的时候"},
-    {"name": "wait-what", "summary": "你没听懂时，把刚才那段重新讲一遍", "when": "你说「等一下，我没听懂」的时候"},
-    {"name": "next", "summary": "看进度，说下一张做哪张，并给出可复制的一行", "when": "每次开工前和每次收尾时"},
-    {"name": "map-gate", "summary": "写结论前查一遍，有没有推翻前面定过的事", "when": "每张议题写结论之前"},
-    {"name": "wrap-up", "summary": "收尾时列出新想法和冲突，核对进度", "when": "每张议题做完收尾时"}
+    {"name": "wait-what", "summary": "你没听懂时，把刚才那段重新讲一遍", "when": "你说「等一下，我没听懂」的时候"}
   ]
 }
