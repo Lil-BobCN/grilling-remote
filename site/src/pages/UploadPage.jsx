@@ -254,70 +254,59 @@ const STAGES = ['已收到', '安排中', '开发中', '待客户验收', '已�
 function SideNotes() {
   return (
     <aside className="upload-side" aria-label="上传前后要注意的事">
-      <section className="upload-side-section" aria-labelledby="upload-before">
-        <h2 className="upload-side-title" id="upload-before">
-          传之前，检查三件事
-        </h2>
-        <p className="upload-side-lede">压错了，我们会让你补传。</p>
-        <ol className="upload-side-list">
-          <li>
-            <span className="upload-side-num" aria-hidden="true">
-              1
-            </span>
-            <span>
-              压的是整个工作区文件夹，不是只压 <code>.scratch/</code>。
-            </span>
-          </li>
-          <li>
-            <span className="upload-side-num" aria-hidden="true">
-              2
-            </span>
-            <span>
-              文件夹里有 <code>AGENTS.md</code> 和 <code>.scratch/</code>。
-            </span>
-          </li>
-          <li>
-            <span className="upload-side-num" aria-hidden="true">
-              3
-            </span>
-            <span>压缩包在 50 MB 以内。超了先删掉不需要的文件，再压一次。</span>
-          </li>
-        </ol>
-      </section>
+      <h2 className="upload-side-title">传之前，检查三件事</h2>
+      <p className="upload-side-lede">压错了，我们会让你补传。</p>
+      <ol className="upload-side-list">
+        <li>
+          <span className="upload-side-num" aria-hidden="true">
+            1
+          </span>
+          <span>
+            压的是整个工作区文件夹，不是只压 <code className="upload-side-code">.scratch/</code>。
+          </span>
+        </li>
+        <li>
+          <span className="upload-side-num" aria-hidden="true">
+            2
+          </span>
+          <span>
+            文件夹里有 <code className="upload-side-code">AGENTS.md</code> 和 <code className="upload-side-code">.scratch/</code>。
+          </span>
+        </li>
+        <li>
+          <span className="upload-side-num" aria-hidden="true">
+            3
+          </span>
+          <span>压缩包在 50 MB 以内。超了先删掉不需要的文件，再压一次。</span>
+        </li>
+      </ol>
 
-      <section className="upload-side-section" aria-labelledby="upload-after">
-        <h2 className="upload-side-title" id="upload-after">
-          传上来之后
-        </h2>
-        <p className="upload-side-lede">
-          我们先校验，再建单、安排处理。进度在「我的订单」看，不用催。
-        </p>
-        <ol className="upload-stages" aria-label="五档进度">
-          {STAGES.map((stage, index) => (
-            <li key={stage}>
-              <span className="upload-stage-mark" aria-hidden="true">
-                {index === 0 ? '·' : '→'}
+      <h2 className="upload-side-sub">传上来之后</h2>
+      <p className="upload-side-text">
+        我们先校验，再建单、安排处理。进度在「我的订单」看，不用催。
+      </p>
+      <ol className="upload-side-stages" aria-label="五档进度">
+        {STAGES.map((stage, index) => (
+          <li key={stage}>
+            {stage}
+            {index < STAGES.length - 1 ? (
+              <span className="upload-side-arrow" aria-hidden="true">
+                →
               </span>
-              {stage}
-            </li>
-          ))}
-        </ol>
-        <p className="upload-side-note">
-          校验没通过时，我们会说缺什么、怎么补，补好再传一次。
-        </p>
-      </section>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      <p className="upload-side-note">
+        校验没通过时，我们会说缺什么、怎么补，补好再传一次。
+      </p>
 
-      <section className="upload-side-section" aria-labelledby="upload-help">
-        <h2 className="upload-side-title" id="upload-help">
-          卡在这一步
-        </h2>
-        <p className="upload-side-lede">
-          截一张屏幕，把窗口边框和报错带上，发给客服。微信为主，电话兜底。不要重复传很多次。
-        </p>
-        <a className="upload-side-link" href="/tutorial#support">
-          怎么找客服 →
-        </a>
-      </section>
+      <p className="upload-side-help">
+        卡在这一步？截一张屏幕，把窗口边框和报错带上，发给客服。微信为主，电话兜底。
+      </p>
+      <a className="upload-side-link" href="/tutorial#support">
+        怎么找客服 →
+      </a>
     </aside>
   )
 }
