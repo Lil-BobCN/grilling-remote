@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import PageShell from '../components/PageShell.jsx'
 import SiteLayout from '../components/SiteLayout.jsx'
+import UploadPage from './UploadPage.jsx'
 
 const routes = [
   {
@@ -47,18 +48,22 @@ export default function AccountApp() {
 
   return (
     <SiteLayout help={false} current={route ? route.current : null}>
-      <PageShell path={path} title={title} lede={lede}>
-        {route && route.demoOrder ? (
-          <p className="scaffold-note">
-            <a href="/app/orders/demo">打开示例订单 →</a>
-          </p>
-        ) : null}
-        {route ? null : (
-          <p className="scaffold-note">
-            <a href="/">回首页</a> · <a href="/app/orders">我的订单</a>
-          </p>
-        )}
-      </PageShell>
+      {path === '/app/upload' ? (
+        <UploadPage />
+      ) : (
+        <PageShell path={path} title={title} lede={lede}>
+          {route && route.demoOrder ? (
+            <p className="scaffold-note">
+              <a href="/app/orders/demo">打开示例订单 →</a>
+            </p>
+          ) : null}
+          {route ? null : (
+            <p className="scaffold-note">
+              <a href="/">回首页</a> · <a href="/app/orders">我的订单</a>
+            </p>
+          )}
+        </PageShell>
+      )}
     </SiteLayout>
   )
 }
