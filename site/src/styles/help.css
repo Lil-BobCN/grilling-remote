@@ -1,0 +1,292 @@
+/* 帮助与客服页：先找联系方式，再按卡点回到对应一步。 */
+
+/* 页头直接接到联系方式，标题下不再叠一条细线。 */
+.help-page .page-head {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.help-contact {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: var(--space-48);
+  align-items: start;
+  padding-top: var(--space-28);
+  border-top: var(--rule-ink);
+}
+
+.help-qr {
+  display: grid;
+  gap: var(--space-10);
+}
+
+/* 虚线在这个系统里表示「还没定，等你处理」；二维码上线前补。 */
+.help-qr-slot {
+  display: grid;
+  place-content: center;
+  gap: var(--space-4);
+  width: 100%;
+  aspect-ratio: 1;
+  padding: var(--space-12);
+  border: var(--line-width) dashed var(--line-soft);
+  border-radius: var(--radius-control);
+  background: var(--paper-raised);
+  color: var(--muted-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.help-qr-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+}
+
+.help-contact-body h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
+}
+
+.help-contact-body p {
+  max-width: 560px;
+  margin: var(--space-8) 0 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+.help-contact-body .help-contact-note {
+  margin-top: var(--space-16);
+  padding-top: var(--space-12);
+  border-top: var(--rule);
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: 1.7;
+}
+
+.help-send {
+  margin-top: var(--space-64);
+  padding-top: var(--space-24);
+  border-top: var(--rule-ink);
+}
+
+.help-send-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-48);
+}
+
+.help-send-grid h2 {
+  margin: 0 0 var(--space-10);
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
+}
+
+.help-list {
+  margin: 0;
+  padding: 0;
+  border-top: var(--rule);
+  list-style: none;
+}
+
+.help-list li {
+  padding: var(--space-12) 0;
+  border-bottom: var(--rule);
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.help-stuck {
+  margin-top: var(--space-64);
+  padding-top: var(--space-24);
+  border-top: var(--rule-ink);
+}
+
+.help-stuck h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
+}
+
+.help-stuck-lede {
+  max-width: 560px;
+  margin: var(--space-8) 0 0;
+  color: var(--body);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.help-stuck-list {
+  margin: var(--space-24) 0 0;
+  padding: 0;
+  border-top: var(--rule);
+}
+
+.help-stuck-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: var(--space-16) var(--space-24);
+  align-items: baseline;
+  padding: var(--space-16) 0;
+  border-bottom: var(--rule);
+}
+
+.help-stuck-row dt {
+  color: var(--ink);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semibold);
+  line-height: 1.5;
+}
+
+.help-stuck-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-24);
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+
+.help-stuck-row dd span {
+  flex: 1 1 260px;
+  text-wrap: pretty;
+}
+
+.help-stuck-row a {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.help-stuck-row a:hover {
+  color: var(--slate-text);
+}
+
+.help-next {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-32);
+  margin-top: var(--space-64);
+  padding: var(--space-32);
+  border-top: var(--line-width-strong) solid var(--clay);
+  background: var(--surface-warm);
+}
+
+.help-next h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.help-next p {
+  max-width: 520px;
+  margin: var(--space-8) 0 0;
+  color: var(--body);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.help-next-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-24);
+}
+
+.help-next-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--text-control);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.help-next-link:hover {
+  color: var(--slate-text);
+}
+
+.help-next-link-quiet {
+  color: var(--body-soft);
+}
+
+@media (max-width: 900px) {
+  .help-contact {
+    grid-template-columns: 1fr;
+    gap: var(--space-24);
+    padding-top: var(--space-24);
+  }
+
+  .help-qr {
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: var(--space-16);
+    align-items: center;
+  }
+
+  .help-send-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-32);
+  }
+
+  .help-stuck-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .help-stuck-row dd {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .help-stuck-row dd span {
+    flex: none;
+  }
+
+  .help-stuck-row a {
+    min-height: 44px;
+  }
+
+  .help-next {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-20);
+    padding: var(--space-24);
+  }
+
+  .help-next-actions {
+    gap: var(--space-20);
+  }
+
+  .help-next-link {
+    transition: none;
+  }
+}

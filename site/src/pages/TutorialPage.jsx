@@ -14,7 +14,6 @@ const sections = [
   { id: 'step-3', n: '03', label: '用 dsh 打开并开口', phase: 'install', band: 'paper' },
   { id: 'first-chat', n: '04', label: '第一次对话', phase: 'chat', band: 'night' },
   { id: 'upload', n: '05', label: '压缩并回传', phase: 'handoff', band: 'night' },
-  { id: 'support', n: '!', label: '卡住了', phase: 'help', band: 'paper' },
 ]
 
 function fallbackCopy(text) {
@@ -99,7 +98,7 @@ function Stuck({ text, shot }) {
         </p>
         <p className="tutorial-stuck-shot">{shot}</p>
       </div>
-      <a className="tutorial-stuck-go" href="#support">
+      <a className="tutorial-stuck-go" href="/help">
         怎么找客服 →
       </a>
     </aside>
@@ -978,7 +977,9 @@ export default function TutorialPage() {
                   <p>
                     用我们发给你的邮箱和密码登录。账号由我们开通，密码通过微信发给你。
                   </p>
-                  <p className="tutorial-hint">忘了密码，找客服重设。</p>
+                  <p className="tutorial-hint">
+                    忘了密码，<a href="/help">找客服</a>重设。
+                  </p>
                 </div>
               </li>
 
@@ -1018,52 +1019,6 @@ export default function TutorialPage() {
               text="我卡在第 5 步，压缩包传不上去。"
               shot="截上传页和报错提示，一起发。不要重复传很多次。"
             />
-          </section>
-
-          <section
-            className="tutorial-step tutorial-support"
-            data-phase="help"
-            data-reveal
-            id="support"
-            aria-labelledby="support-title"
-          >
-            <header className="tutorial-support-head">
-              <h2 id="support-title">找客服，比自己重装快</h2>
-              <p className="tutorial-step-lede">
-                每一步下面都有一句话。照抄，配一张屏幕截图，发给客服。说清楚卡在第几步，客服不用再问一圈。
-              </p>
-            </header>
-
-            <div className="tutorial-support-grid">
-              <div>
-                <h3>发这三样</h3>
-                <ul>
-                  <li>第几步，直接说「我卡在第 2 步」。</li>
-                  <li>一张屏幕截图，把窗口边框和路径带上。</li>
-                  <li>那一步下面的那句话，复制过去。</li>
-                </ul>
-              </div>
-              <div>
-                <h3>先别做这些</h3>
-                <ul>
-                  <li>不要自己删文件、重装 dsh、换文件夹。</li>
-                  <li>不要重复下载很多次，先看一眼报错。</li>
-                  <li>不要把工作区发给别人，里面有你的需求。</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="tutorial-contact">
-              <div>
-                <h3>微信找签约时对接你的那个人</h3>
-                <p>
-                  微信为主，电话兜底。有事先微信找我们，我们一般都在线；没回就是在忙或睡了，看到会回。
-                </p>
-              </div>
-              <p className="tutorial-contact-note">
-                语气不用客气，说清楚就行。「我卡在第 2 步，解压后看不到 AGENTS.md，截图在下面。」这一句就够客服接手。
-              </p>
-            </div>
           </section>
         </div>
       </div>

@@ -448,6 +448,31 @@
   line-height: 1.7;
 }
 
+.login-forgot-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--text-ui);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.login-note a,
+.login-hint a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.login-forgot-link:hover,
+.login-note a:hover,
+.login-hint a:hover {
+  color: var(--slate-text);
+}
+
 .login-error {
   margin: var(--space-16) 0 0;
   padding: var(--space-12) var(--space-14);

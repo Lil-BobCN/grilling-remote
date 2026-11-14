@@ -12,7 +12,7 @@ npm run build
 npm run preview
 ```
 
-`npm run dev` 和 `npm run preview` 都支持干净 URL：`/download`、`/skills`、`/tutorial`、`/app/*`。线上映射按 D-0097，由上线票 I-0070 落 Caddy。
+`npm run dev` 和 `npm run preview` 都支持干净 URL：`/download`、`/skills`、`/tutorial`、`/help`、`/app/*`。线上映射按 D-0097，由上线票 I-0070 落 Caddy。
 
 ## 路由
 
@@ -22,6 +22,7 @@ npm run preview
 | `/download` | 下载 | 构建时预渲染 |
 | `/skills` | 技能清单 | 构建时预渲染 |
 | `/tutorial` | 教程 | 构建时预渲染 |
+| `/help` | 帮助与客服 | 构建时预渲染 |
 | `/app` | 登录 | 客户端 |
 | `/app/upload` | 上传工作区 | 客户端 |
 | `/app/orders` | 我的订单 | 客户端 |
@@ -31,9 +32,9 @@ npm run preview
 
 ## 预渲染怎么走
 
-1. `vite build` 生成 5 个 HTML 和前端 bundle。
+1. `vite build` 生成 6 个 HTML 和前端 bundle。
 2. `vite build --ssr src/entry-server.jsx --outDir .ssr` 生成渲染入口。
-3. `scripts/prerender.mjs` 把四个公开页的 HTML 写进 `dist/`，并删掉 `.ssr/`。
+3. `scripts/prerender.mjs` 把五个公开页的 HTML 写进 `dist/`，并删掉 `.ssr/`。
 
 公开页的 HTML 里已经有完整内容，关掉 JavaScript 也能读。浏览器加载后由 `src/main.jsx` 水合。账号区 HTML 只有空壳，`src/main.jsx` 按 `data-page="app"` 挂载 `AccountApp`，再由路径决定显示哪一页。
 
@@ -78,7 +79,7 @@ npm run preview
 - 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。默认块淡入 640ms、去模糊 520ms、上移 760ms；成排条目用 `data-reveal="row"`，大面用 `data-reveal="panel"`，元信息用 `data-reveal="fade"`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
 - 循环动效：给容器加 `data-motion-loop`，离开视口自动暂停。
 - 标题逐字：用 `src/components/RiseChars.jsx`，标题本体用 `aria-label` 给读屏完整句子。
-- 默认内容可见。`index.html` 等五个 HTML 在 `<head>` 里加 `js-motion` 类，只在 JS 接上后才收起待出现的元素；2.5 秒内没接上就撤掉这个类，避免脚本失败时页面空着。
+- 默认内容可见。`index.html` 等六个 HTML 在 `<head>` 里加 `js-motion` 类，只在 JS 接上后才收起待出现的元素；2.5 秒内没接上就撤掉这个类，避免脚本失败时页面空着。
 - `prefers-reduced-motion: reduce` 时去掉位移和模糊，只留淡入；视频直接满宽，不跟随滚动；视频占位的循环停掉。
 
 滚动出现只在成组出现时错开，不要每段都排一套延迟。同一页最多用三种动效材料：文字上浮、成排条目错开、大面收边。
@@ -86,7 +87,7 @@ npm run preview
 ## 明暗模式
 
 - 顶栏右侧有圆形切换按钮，`ThemeToggle.jsx` 把 `data-theme` 写到 `<html>`，选择存 `localStorage` 的 `afk-theme`。
-- 五个 HTML 在 `<head>` 里先读存储或系统偏好，再画页面，避免闪白。
+- 六个 HTML 在 `<head>` 里先读存储或系统偏好，再画页面，避免闪白。
 - 夜间色值在 `src/styles/tokens.css` 的 `html[data-theme="dark"]`，清单见 `design/tokens.md`。
 - 切换时同步更新 `<meta name="theme-color">`；首屏视频的渐变从 `--paper` 起，夜间不会露出浅色边。
 

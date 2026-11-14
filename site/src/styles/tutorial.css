@@ -42,12 +42,6 @@
   --phase-night: var(--olive);
 }
 
-.tutorial-page [data-phase="help"] {
-  --phase: var(--clay);
-  --phase-text: var(--clay-text);
-  --phase-night: var(--clay);
-}
-
 .tutorial-page [data-phase] {
   --phase-line: color-mix(in srgb, var(--phase) 45%, var(--line));
   --phase-wash: color-mix(in srgb, var(--phase) 6%, transparent);
@@ -351,8 +345,7 @@
   max-width: 840px;
 }
 
-.tutorial-step,
-.tutorial-support {
+.tutorial-step {
   scroll-margin-top: calc(var(--nav-height) + var(--space-24));
 }
 
@@ -561,6 +554,17 @@
   color: var(--muted);
   font-size: var(--text-ui);
   line-height: 1.7;
+}
+
+.tutorial-hint a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.tutorial-hint a:hover {
+  color: var(--slate-text);
 }
 
 .tutorial-file-table {
@@ -1239,82 +1243,6 @@
   color: var(--slate-text);
 }
 
-/* 客服 */
-
-.tutorial-support-head h2 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--text-section);
-  font-weight: var(--weight-regular);
-  line-height: 1.25;
-  text-wrap: balance;
-}
-
-.tutorial-support-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-48);
-  margin-top: var(--space-28);
-  padding-top: var(--space-20);
-  border-top: var(--rule-ink);
-}
-
-.tutorial-support-grid h3 {
-  margin: 0 0 var(--space-10);
-  font-size: var(--text-lead);
-  font-weight: var(--weight-semibold);
-  line-height: 1.5;
-}
-
-.tutorial-support-grid ul {
-  margin: 0;
-  padding: 0;
-  border-top: var(--rule);
-  list-style: none;
-}
-
-.tutorial-support-grid li {
-  padding: var(--space-10) 0;
-  border-bottom: var(--rule);
-  color: var(--body-soft);
-  font-size: var(--text-body);
-  line-height: 1.7;
-}
-
-.tutorial-contact {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-48);
-  margin-top: var(--space-40);
-  padding: var(--space-24) 0;
-  border-top: var(--rule-ink);
-  border-bottom: var(--rule);
-}
-
-.tutorial-contact h3 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--text-subhead);
-  font-weight: var(--weight-regular);
-  line-height: 1.35;
-}
-
-.tutorial-contact p {
-  max-width: 560px;
-  margin: var(--space-8) 0 0;
-  color: var(--body-soft);
-  font-size: var(--text-body);
-  line-height: 1.75;
-  text-wrap: pretty;
-}
-
-.tutorial-contact-note {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-ui);
-  line-height: 1.7;
-}
-
 /* 手机 */
 
 @media (max-width: 1100px) {
@@ -1398,8 +1326,7 @@
     padding-top: var(--space-48);
   }
 
-  .tutorial-step,
-  .tutorial-support {
+  .tutorial-step {
     scroll-margin-top: calc(var(--nav-height) + 64px);
   }
 }
@@ -1454,8 +1381,7 @@
     padding: var(--space-4) var(--gutter-narrow);
   }
 
-  .tutorial-step,
-  .tutorial-support {
+  .tutorial-step {
     scroll-margin-top: 76px;
   }
 
@@ -1468,8 +1394,7 @@
     font-size: 36px;
   }
 
-  .tutorial-step-title,
-  .tutorial-support-head h2 {
+  .tutorial-step-title {
     font-size: var(--text-section-narrow);
   }
 
@@ -1484,9 +1409,7 @@
     gap: 2px;
   }
 
-  .tutorial-branch,
-  .tutorial-support-grid,
-  .tutorial-contact {
+  .tutorial-branch {
     grid-template-columns: 1fr;
     gap: var(--space-24);
   }

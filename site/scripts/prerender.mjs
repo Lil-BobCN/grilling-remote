@@ -12,6 +12,7 @@ const pages = [
   ['download.html', 'download'],
   ['skills.html', 'skills'],
   ['tutorial.html', 'tutorial'],
+  ['help.html', 'help'],
 ]
 
 const entry = ['entry-server.js', 'entry-server.mjs']

@@ -158,7 +158,7 @@ export default function OrdersPage({ session, onLogout }) {
             再试一次
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/tutorial#support">找客服</a>。
+            一直打不开，<a href="/help">找客服</a>。
           </p>
         </section>
       ) : null}
@@ -188,7 +188,7 @@ export default function OrdersPage({ session, onLogout }) {
           </ol>
           <p className="orders-foot">
             只看得到你自己账号下的订单。有问题，
-            <a href="/tutorial#support">找客服</a>。
+            <a href="/help">找客服</a>。
           </p>
         </>
       ) : null}
