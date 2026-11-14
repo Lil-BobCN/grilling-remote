@@ -1,6 +1,12 @@
 /* 教程页：一页往下走的手册。左边目录跟着滚，正文按步骤排。 */
 
 .tutorial-page {
+  --rail-w: 190px;
+  --rail-gap: var(--space-80);
+  --page-gutter: var(--gutter);
+  /* 整段背景要铺到视口两边：左边盖住目录栏，右边只让出页边距。 */
+  --band-left: calc(-1 * (var(--page-gutter) + var(--rail-w) + var(--rail-gap)));
+  --band-right: calc(-1 * var(--page-gutter));
   padding-top: var(--space-80);
 }
 
@@ -14,6 +20,37 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* 阶段色：安装暖棕、对话蓝灰、回传橄榄，卡住回到暖棕。
+   色相只标阶段、编号和动作，正文仍是墨色，靠对比度分级。 */
+.tutorial-page [data-phase="install"] {
+  --phase: var(--clay);
+  --phase-text: var(--clay-text);
+  --phase-night: var(--clay);
+}
+
+.tutorial-page [data-phase="chat"] {
+  --phase: var(--blue);
+  --phase-text: var(--blue-text);
+  --phase-night: var(--blue);
+}
+
+.tutorial-page [data-phase="handoff"] {
+  --phase: var(--olive);
+  --phase-text: var(--olive-text);
+  --phase-night: var(--olive);
+}
+
+.tutorial-page [data-phase="help"] {
+  --phase: var(--clay);
+  --phase-text: var(--clay-text);
+  --phase-night: var(--clay);
+}
+
+.tutorial-page [data-phase] {
+  --phase-line: color-mix(in srgb, var(--phase) 45%, var(--line));
+  --phase-wash: color-mix(in srgb, var(--phase) 6%, transparent);
 }
 
 /* 首屏 */
@@ -42,7 +79,7 @@
 }
 
 .tutorial-title span {
-  color: var(--body-soft);
+  color: var(--clay-text);
 }
 
 .tutorial-lede {
@@ -70,8 +107,8 @@
   min-height: 52px;
   padding: var(--space-14) var(--space-24);
   border-radius: var(--radius-control);
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--clay);
+  color: var(--on-accent);
   font-size: var(--text-control);
   font-weight: var(--weight-semibold);
   line-height: 1.4;
@@ -81,7 +118,7 @@
 }
 
 .tutorial-button:hover {
-  background: var(--night-hover);
+  background: var(--clay-deep);
 }
 
 .tutorial-button:active {
@@ -90,8 +127,9 @@
 
 .tutorial-button-note {
   padding-left: var(--space-14);
-  border-left: var(--line-width) solid var(--night-line);
-  color: var(--on-night-note);
+  border-left: var(--line-width) solid
+    color-mix(in srgb, var(--on-accent) 34%, transparent);
+  color: color-mix(in srgb, var(--on-accent) 88%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   font-weight: var(--weight-regular);
@@ -210,14 +248,19 @@
 }
 
 .tutorial-rail {
+  --rail-text: var(--body-soft);
+  --rail-strong: var(--ink);
+  --rail-line: var(--line);
+  --rail-title: var(--muted);
   position: sticky;
   top: calc(var(--nav-height) + var(--space-24));
+  z-index: 2;
   min-width: 0;
 }
 
 .tutorial-rail-title {
   margin: 0 0 var(--space-12);
-  color: var(--muted);
+  color: var(--rail-title);
   font-size: var(--text-micro);
   line-height: 1.5;
   letter-spacing: 0.08em;
@@ -226,47 +269,85 @@
 .tutorial-rail ol {
   margin: 0;
   padding: 0;
-  border-top: var(--rule);
+  border-top: var(--line-width) solid var(--rail-line);
   list-style: none;
 }
 
 .tutorial-rail li {
-  border-bottom: var(--rule);
+  border-bottom: var(--line-width) solid var(--rail-line);
 }
 
 .tutorial-rail a {
+  position: relative;
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
   gap: var(--space-8);
   align-items: baseline;
   min-height: 40px;
-  padding: var(--space-10) 0;
-  color: var(--muted);
+  padding: var(--space-10) 0 var(--space-10) var(--space-12);
+  color: var(--rail-text);
   font-size: var(--text-ui);
   line-height: 1.5;
   transition: color var(--motion-fast) var(--ease-ui);
 }
 
+.tutorial-rail a::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--line-width-strong);
+  height: 0;
+  background: var(--phase);
+  transform: translateY(-50%);
+  transition: height var(--motion-fast) var(--ease-ui);
+}
+
 .tutorial-rail a:hover {
-  color: var(--ink);
+  color: var(--rail-strong);
 }
 
 .tutorial-rail a[aria-current="location"] {
-  color: var(--ink);
+  color: var(--rail-strong);
+}
+
+.tutorial-rail a[aria-current="location"]::before {
+  height: 18px;
 }
 
 .tutorial-rail-num {
-  color: var(--muted);
+  color: var(--phase-text);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
 }
 
 .tutorial-rail a[aria-current="location"] .tutorial-rail-num {
-  color: var(--ink);
+  color: var(--phase-text);
+}
+
+/* 目录浮在夜黑带上时逐项换成带上的字色；手机上目录是纸色横条，不用换。 */
+@media (min-width: 1101px) {
+  .tutorial-rail li[data-band="night"] {
+    --rail-text: var(--on-night-soft);
+    --rail-strong: var(--on-night);
+    --rail-line: color-mix(in srgb, var(--on-night) 18%, transparent);
+  }
+
+  .tutorial-rail li[data-band="night"] .tutorial-rail-num {
+    color: var(--phase-night);
+  }
+
+  .tutorial-rail[data-band="night"] .tutorial-rail-title {
+    color: var(--on-night-note);
+  }
 }
 
 .tutorial-body {
   min-width: 0;
+}
+
+/* 段落本身铺满整列，背景才接得到视口边；正文仍收在 840px。 */
+.tutorial-step > * {
   max-width: 840px;
 }
 
@@ -278,7 +359,122 @@
 .tutorial-step + .tutorial-step {
   margin-top: var(--space-96);
   padding-top: var(--space-56);
-  border-top: var(--rule-ink);
+  border-top: var(--line-width) solid var(--phase-line);
+}
+
+/* 整段背景：第 4 节铺冷色纸，第 5 节铺夜黑，隔一段换一次底色。
+   背景用负边距画在段落背后，正文宽度和内边距都不动。 */
+.tutorial-step[data-band] {
+  position: relative;
+  isolation: isolate;
+  margin-top: 0;
+  padding-top: var(--space-96);
+  padding-bottom: var(--space-96);
+  border-top: 0;
+}
+
+.tutorial-step[data-band]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--band-left);
+  right: var(--band-right);
+  z-index: -1;
+  background: var(--band-bg);
+}
+
+/* 带前面留出纸色空档，带和带之间直接相接。 */
+.tutorial-step:has(+ .tutorial-step[data-band]) {
+  padding-bottom: var(--space-96);
+}
+
+.tutorial-step[data-band="night"] {
+  --band-bg: var(--night);
+  --phase-text: var(--phase-night);
+  --ink: var(--on-night);
+  --ink-soft: var(--on-night-soft);
+  --body: var(--on-night-soft);
+  --body-soft: var(--on-night-soft);
+  --muted: var(--on-night-note);
+  --muted-strong: var(--on-night-note);
+  --line: color-mix(in srgb, var(--on-night) 18%, transparent);
+  --line-soft: color-mix(in srgb, var(--on-night) 14%, transparent);
+  --rule: var(--line-width) solid var(--line);
+  --rule-ink: var(--line-width) solid var(--line);
+  --rule-soft: var(--line-width) solid var(--line-soft);
+  color: var(--on-night);
+}
+
+.tutorial-step[data-band="night"]::before {
+  border-top: var(--line-width) solid var(--night-line);
+  border-bottom: var(--line-width) solid var(--night-line);
+}
+
+/* 两段夜黑带相接时只留一条分隔线。 */
+.tutorial-step[data-band="night"] + .tutorial-step[data-band="night"]::before {
+  border-top: 0;
+}
+
+/* 带顶上的段落回到纸色，段首不再加线，交给底色断层分隔。 */
+.tutorial-step[data-band] + .tutorial-step {
+  margin-top: 0;
+  padding-top: var(--space-96);
+  border-top: 0;
+}
+
+/* 夜黑带里，虚线、悬停色和焦点框都换成带上的颜色。 */
+.tutorial-step[data-band="night"] .tutorial-stuck {
+  border-top-color: var(--clay);
+  border-bottom-color: var(--clay);
+}
+
+.tutorial-step[data-band="night"] .tutorial-stuck-title {
+  color: var(--clay);
+}
+
+.tutorial-step[data-band="night"] .tutorial-stuck-go:hover,
+.tutorial-step[data-band="night"] .tutorial-next a:hover {
+  color: var(--clay);
+}
+
+.tutorial-step[data-band="night"] .tutorial-copy:hover {
+  background: var(--on-night);
+  color: var(--night);
+}
+
+/* 带内按钮用纸底墨字；陶土只留给公开页的主下载按钮。 */
+.tutorial-step[data-band="night"] .tutorial-button {
+  background: var(--on-night);
+  color: var(--on-accent);
+}
+
+.tutorial-step[data-band="night"] .tutorial-button:hover {
+  background: var(--on-night-soft);
+}
+
+/* 示例框跟着带换底，否则实色纸面配重映射后的白字会看不清。 */
+.tutorial-step[data-band="night"] .tutorial-example {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--on-night) 6%, transparent);
+  color: var(--on-night);
+}
+
+/* 黑块落在夜黑带里会看不见，改用透明白提一档。 */
+.tutorial-step[data-band="night"] .tutorial-three {
+  border-color: color-mix(in srgb, var(--on-night) 20%, transparent);
+  background: color-mix(in srgb, var(--on-night) 4%, transparent);
+}
+
+.tutorial-step[data-band="night"] .tutorial-note-strong {
+  padding: var(--space-20) var(--space-24);
+  border-top: 0;
+  border-left: var(--line-width-strong) solid var(--clay);
+  background: color-mix(in srgb, var(--on-night) 6%, transparent);
+}
+
+.tutorial-step[data-band="night"] :focus-visible {
+  outline-color: var(--on-night);
 }
 
 /* 每节标题 */
@@ -291,7 +487,7 @@
 }
 
 .tutorial-step-num {
-  color: var(--muted-strong);
+  color: var(--phase-text);
   font-family: var(--font-serif);
   font-size: 48px;
   font-variant-numeric: lining-nums tabular-nums;
@@ -337,7 +533,7 @@
 
 .tutorial-sub-num {
   padding-top: var(--space-4);
-  color: var(--muted);
+  color: var(--phase-text);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   line-height: 1.5;
@@ -424,13 +620,14 @@
 
 .tutorial-check {
   margin-top: var(--space-32);
-  padding-top: var(--space-16);
-  border-top: 1px dashed var(--line);
+  padding: var(--space-16) var(--space-20) var(--space-18);
+  border-top: 1px dashed var(--phase-line);
+  background: var(--phase-wash);
 }
 
 .tutorial-check-title {
   margin: 0 0 var(--space-8);
-  color: var(--muted);
+  color: var(--phase-text);
   font-size: var(--text-micro);
   line-height: 1.5;
   letter-spacing: 0.08em;
@@ -455,10 +652,14 @@
 }
 
 .tutorial-check li::before {
-  content: "·";
+  content: "";
   position: absolute;
-  left: var(--space-6);
-  color: var(--tan);
+  top: 0.68em;
+  left: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--phase);
 }
 
 /* 示例和引文 */
@@ -466,7 +667,7 @@
 .tutorial-specimen {
   margin-top: var(--space-32);
   padding-top: var(--space-16);
-  border-top: var(--rule-ink);
+  border-top: var(--line-width) solid var(--phase-line);
 }
 
 .tutorial-specimen-title {
@@ -481,7 +682,8 @@
   margin: 0;
   overflow-x: auto;
   padding: var(--space-16) var(--space-20);
-  border: var(--rule);
+  border: var(--line-width) solid
+    color-mix(in srgb, var(--clay) 30%, var(--line-soft));
   border-radius: var(--radius-control);
   background: var(--paper-raised);
   color: var(--ink-soft);
@@ -493,7 +695,7 @@
 
 .tutorial-tree-hit {
   padding: 0 2px;
-  background: var(--paper-press);
+  background: color-mix(in srgb, var(--clay) 30%, var(--paper-raised));
   color: var(--ink);
   font-weight: var(--weight-semibold);
 }
@@ -542,7 +744,11 @@
 }
 
 .tutorial-note-strong {
-  padding: var(--space-24) 0;
+  --muted: var(--body-soft);
+  padding: var(--space-24);
+  border-top: var(--line-width-strong) solid var(--clay);
+  border-bottom: 0;
+  background: var(--surface-warm);
 }
 
 .tutorial-note-strong b {
@@ -555,8 +761,9 @@
 .tutorial-quote {
   max-width: 640px;
   margin: var(--space-12) 0 0;
-  padding: var(--space-4) 0 var(--space-4) var(--space-16);
-  border-left: var(--line-width) solid var(--line-soft);
+  padding: var(--space-12) var(--space-16);
+  border-left: var(--line-width-strong) solid var(--phase);
+  background: var(--phase-wash);
   color: var(--ink-soft);
   font-family: var(--font-serif);
   font-size: var(--text-body);
@@ -595,8 +802,8 @@
   margin: var(--space-12) 0 0;
   padding: var(--space-8) var(--space-12);
   border-radius: var(--radius-control);
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--clay);
+  color: var(--on-accent);
   font-size: var(--text-body);
   line-height: 1.6;
 }
@@ -631,7 +838,7 @@
 
 .tutorial-rule-num {
   padding-top: var(--space-4);
-  color: var(--muted);
+  color: var(--phase-text);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
   line-height: 1.5;
@@ -640,51 +847,70 @@
 /* 第一次对话 */
 
 .tutorial-three {
-  margin-top: var(--space-28);
-  padding: var(--space-18) 0;
-  border-top: var(--rule-ink);
-  border-bottom: var(--rule);
+  margin-top: var(--space-32);
+  padding: var(--space-32) var(--space-32) var(--space-28);
+  border-top: var(--line-width) solid var(--night-line);
+  border-bottom: var(--line-width) solid var(--night-line);
+  background: var(--night);
+  color: var(--on-night);
 }
 
 .tutorial-three-title {
   margin: 0;
-  color: var(--ink);
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
-  line-height: 1.6;
+  color: var(--on-night);
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
 }
 
 .tutorial-three-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-10) var(--space-16);
-  margin-top: var(--space-12);
+  gap: var(--space-12) var(--space-16);
+  margin-top: var(--space-20);
 }
 
 .tutorial-three-row > span:not(.tutorial-arrow) {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  color: var(--ink-soft);
+  align-items: center;
+  gap: var(--space-10);
+  color: var(--on-night-soft);
   font-size: var(--text-body);
   line-height: 1.6;
 }
 
+/* 三个编号沿用首页夜黑带的色块：暖棕、燕麦、薄荷。 */
 .tutorial-three-row b {
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--space-10);
+  border-radius: var(--radius-control);
+  background: var(--clay);
+  color: var(--on-accent);
   font-family: var(--font-mono);
   font-size: var(--text-micro);
-  font-weight: var(--weight-regular);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.tutorial-three-row > span:nth-child(3) b {
+  background: var(--oat);
+}
+
+.tutorial-three-row > span:nth-child(5) b {
+  background: var(--mint);
 }
 
 .tutorial-arrow {
-  color: var(--tan);
+  color: var(--on-night-note);
 }
 
 .tutorial-three-note {
-  margin: var(--space-12) 0 0;
-  color: var(--muted);
+  margin: var(--space-16) 0 0;
+  color: var(--on-night-note);
   font-size: var(--text-ui);
   line-height: 1.7;
 }
@@ -705,7 +931,7 @@
 }
 
 .tutorial-chat-num {
-  color: var(--muted-strong);
+  color: var(--phase-text);
   font-family: var(--font-serif);
   font-size: 28px;
   line-height: 1.25;
@@ -730,7 +956,7 @@
 
 .tutorial-do {
   padding-top: var(--space-8);
-  border-top: 1px dashed var(--line);
+  border-top: 1px dashed var(--phase-line);
   color: var(--ink);
   font-size: var(--text-ui);
   line-height: 1.65;
@@ -738,7 +964,7 @@
 
 .tutorial-do span {
   margin-right: var(--space-8);
-  color: var(--muted);
+  color: var(--phase-text);
   font-size: var(--text-micro);
   letter-spacing: 0.08em;
 }
@@ -751,8 +977,13 @@
 }
 
 .tutorial-branch > div {
-  padding-top: var(--space-12);
-  border-top: var(--rule);
+  padding: var(--space-16) var(--space-16) var(--space-18);
+  border-top: var(--line-width-strong) solid var(--phase);
+}
+
+.tutorial-branch .tutorial-quote {
+  padding: var(--space-8) var(--space-12);
+  background: transparent;
 }
 
 .tutorial-branch h4 {
@@ -923,19 +1154,20 @@
 }
 
 .tutorial-stuck {
+  --muted: var(--body-soft);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-24);
   align-items: center;
   margin-top: var(--space-32);
-  padding: var(--space-18) 0;
-  border-top: 1px dashed var(--line-soft);
-  border-bottom: 1px dashed var(--line-soft);
+  padding: var(--space-18) var(--space-20);
+  border-top: 1px dashed color-mix(in srgb, var(--clay) 58%, var(--line));
+  border-bottom: 1px dashed color-mix(in srgb, var(--clay) 58%, var(--line));
 }
 
 .tutorial-stuck-title {
   margin: 0;
-  color: var(--muted);
+  color: var(--clay-text);
   font-size: var(--text-micro);
   line-height: 1.5;
   letter-spacing: 0.08em;
@@ -1086,6 +1318,10 @@
 /* 手机 */
 
 @media (max-width: 1100px) {
+  .tutorial-page {
+    --band-left: calc(-1 * var(--page-gutter));
+  }
+
   .tutorial-hero {
     grid-template-columns: 1fr;
     gap: var(--space-32);
@@ -1154,6 +1390,10 @@
     white-space: nowrap;
   }
 
+  .tutorial-rail a::before {
+    display: none;
+  }
+
   .tutorial-body {
     padding-top: var(--space-48);
   }
@@ -1166,6 +1406,20 @@
 
 @media (max-width: 900px) {
   .tutorial-page {
+    --page-gutter: var(--gutter-narrow);
+    padding-top: var(--space-56);
+  }
+
+  .tutorial-step[data-band] {
+    padding-top: var(--space-56);
+    padding-bottom: var(--space-64);
+  }
+
+  .tutorial-step:has(+ .tutorial-step[data-band]) {
+    padding-bottom: var(--space-56);
+  }
+
+  .tutorial-step[data-band] + .tutorial-step {
     padding-top: var(--space-56);
   }
 
@@ -1175,6 +1429,10 @@
 
   .tutorial-hero {
     padding-bottom: var(--space-28);
+  }
+
+  .tutorial-three {
+    padding: var(--space-24) var(--space-20) var(--space-20);
   }
 
   .tutorial-actions {

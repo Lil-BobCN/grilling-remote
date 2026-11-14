@@ -9,12 +9,12 @@ const dshUrl = 'https://www.deepseek.com/harness'
 const originalSkillsUrl = 'https://github.com/mattpocock/skills'
 
 const sections = [
-  { id: 'step-1', n: '01', label: '下载两样东西' },
-  { id: 'step-2', n: '02', label: '解压到空文件夹' },
-  { id: 'step-3', n: '03', label: '用 dsh 打开并开口' },
-  { id: 'first-chat', n: '04', label: '第一次对话' },
-  { id: 'upload', n: '05', label: '压缩并回传' },
-  { id: 'support', n: '!', label: '卡住了' },
+  { id: 'step-1', n: '01', label: '下载两样东西', phase: 'install', band: 'paper' },
+  { id: 'step-2', n: '02', label: '解压到空文件夹', phase: 'install', band: 'paper' },
+  { id: 'step-3', n: '03', label: '用 dsh 打开并开口', phase: 'install', band: 'paper' },
+  { id: 'first-chat', n: '04', label: '第一次对话', phase: 'chat', band: 'night' },
+  { id: 'upload', n: '05', label: '压缩并回传', phase: 'handoff', band: 'night' },
+  { id: 'support', n: '!', label: '卡住了', phase: 'help', band: 'paper' },
 ]
 
 function fallbackCopy(text) {
@@ -120,6 +120,10 @@ function NextStep({ href, n, label }) {
 export default function TutorialPage() {
   const [active, setActive] = useState('')
   const railListRef = useRef(null)
+  const railSignatureRef = useRef('')
+  const [railBands, setRailBands] = useState(() =>
+    Object.fromEntries(sections.map((section) => [section.id, 'paper'])),
+  )
 
   useEffect(() => {
     const nodes = sections
@@ -147,6 +151,38 @@ export default function TutorialPage() {
       if (atBottom) current = nodes[nodes.length - 1].id
 
       setActive(current)
+
+      // 目录浮在整段背景上：逐项按自己的位置决定用纸色字还是带上的字。
+      const list = railListRef.current
+      if (!list) return
+      if (window.matchMedia('(max-width: 1100px)').matches) return
+
+      const bandNodes = sections
+        .filter((section) => section.band !== 'paper')
+        .map((section) => ({
+          band: section.band,
+          node: document.getElementById(section.id),
+        }))
+        .filter((entry) => entry.node)
+
+      const next = {}
+      sections.forEach((section, index) => {
+        const box = list.children[index]?.getBoundingClientRect()
+        const probe = box ? box.top + box.height / 2 : -1
+        let band = 'paper'
+
+        for (const entry of bandNodes) {
+          const rect = entry.node.getBoundingClientRect()
+          if (probe >= rect.top && probe < rect.bottom) band = entry.band
+        }
+
+        next[section.id] = band
+      })
+
+      const signature = sections.map((section) => next[section.id]).join('|')
+      if (signature === railSignatureRef.current) return
+      railSignatureRef.current = signature
+      setRailBands(next)
     }
 
     const schedule = () => {
@@ -265,7 +301,7 @@ export default function TutorialPage() {
         </aside>
       </header>
 
-      <p className="tutorial-alt-route">
+      <p className="tutorial-alt-route" data-reveal>
         会写代码，有自己的项目？用{' '}
         <a href={originalSkillsUrl} target="_blank" rel="noreferrer">
           mattpocock/skills 原版技能包
@@ -274,11 +310,19 @@ export default function TutorialPage() {
       </p>
 
       <div className="tutorial-layout">
-        <nav className="tutorial-rail" aria-label="教程目录">
+        <nav
+          className="tutorial-rail"
+          aria-label="教程目录"
+          data-band={railBands[sections[0].id]}
+        >
           <p className="tutorial-rail-title">本页</p>
           <ol ref={railListRef}>
             {sections.map((section) => (
-              <li key={section.id}>
+              <li
+                key={section.id}
+                data-phase={section.phase}
+                data-band={railBands[section.id]}
+              >
                 <a
                   href={`#${section.id}`}
                   aria-current={active === section.id ? 'location' : undefined}
@@ -296,6 +340,8 @@ export default function TutorialPage() {
         <div className="tutorial-body">
           <section
             className="tutorial-step"
+            data-phase="install"
+            data-reveal
             id="step-1"
             aria-labelledby="step-1-title"
           >
@@ -401,6 +447,8 @@ export default function TutorialPage() {
 
           <section
             className="tutorial-step"
+            data-phase="install"
+            data-reveal
             id="step-2"
             aria-labelledby="step-2-title"
           >
@@ -497,6 +545,8 @@ export default function TutorialPage() {
 
           <section
             className="tutorial-step"
+            data-phase="install"
+            data-reveal
             id="step-3"
             aria-labelledby="step-3-title"
           >
@@ -614,8 +664,11 @@ export default function TutorialPage() {
 
           <section
             className="tutorial-step tutorial-chat"
+            data-phase="chat"
+            data-band="night"
             id="first-chat"
             aria-labelledby="first-chat-title"
+            data-reveal
           >
             <StepHead
               n="04"
@@ -869,6 +922,9 @@ export default function TutorialPage() {
 
           <section
             className="tutorial-step"
+            data-phase="handoff"
+            data-band="night"
+            data-reveal
             id="upload"
             aria-labelledby="upload-title"
           >
@@ -966,6 +1022,8 @@ export default function TutorialPage() {
 
           <section
             className="tutorial-step tutorial-support"
+            data-phase="help"
+            data-reveal
             id="support"
             aria-labelledby="support-title"
           >

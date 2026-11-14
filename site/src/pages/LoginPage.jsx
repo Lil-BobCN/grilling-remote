@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { login } from '../api/account.js'
+import { useEffect, useState } from 'react'
+import { getSession, login } from '../api/account.js'
 import { TIERS } from '../progress.js'
 
 function safeNext() {
@@ -32,6 +32,19 @@ export default function LoginPage() {
   const [forgotOpen, setForgotOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // 已经登录的人点「登录」，直接去看订单，不再填一遍密码。
+  useEffect(() => {
+    let alive = true
+    getSession()
+      .then(() => {
+        if (alive) window.location.replace('/app/orders')
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const submit = async (event) => {
     event.preventDefault()

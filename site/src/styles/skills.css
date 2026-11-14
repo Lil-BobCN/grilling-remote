@@ -17,6 +17,15 @@
   letter-spacing: 0.04em;
 }
 
+.skills-meta::before {
+  content: "";
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--clay);
+}
+
 .skills-list {
   margin: 0;
   padding: 0;
@@ -31,6 +40,31 @@
   align-items: baseline;
   padding: var(--space-18) 0;
   border-bottom: var(--rule);
+}
+
+/* 三组颜色轮流标记，只落在序号和细线上。 */
+.skills-list li:nth-child(3n + 1) {
+  border-bottom-color: color-mix(in srgb, var(--clay) 34%, var(--line));
+}
+
+.skills-list li:nth-child(3n + 2) {
+  border-bottom-color: color-mix(in srgb, var(--blue) 30%, var(--line));
+}
+
+.skills-list li:nth-child(3n) {
+  border-bottom-color: color-mix(in srgb, var(--olive) 30%, var(--line));
+}
+
+.skills-list li:nth-child(3n + 1) .skills-index {
+  color: var(--clay-text);
+}
+
+.skills-list li:nth-child(3n + 2) .skills-index {
+  color: var(--blue-text);
+}
+
+.skills-list li:nth-child(3n) .skills-index {
+  color: var(--olive-text);
 }
 
 .skills-index {
@@ -74,13 +108,15 @@
 }
 
 .skills-next {
+  --muted: var(--body-soft);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-32);
   margin-top: var(--space-64);
-  padding-top: var(--space-32);
-  border-top: var(--rule-ink);
+  padding: var(--space-32);
+  border-top: var(--line-width-strong) solid var(--clay);
+  background: var(--surface-warm);
 }
 
 .skills-next h2 {
@@ -153,4 +189,29 @@
   .skills-next-link {
     transition: none;
   }
+}
+
+/* 三组各带一层很浅的色纸，让清单在纸面上有分段感。 */
+.skills-list li:nth-child(-n + 3) {
+  background: color-mix(in srgb, var(--clay) 5%, transparent);
+}
+
+.skills-list li:nth-child(n + 4):nth-child(-n + 6) {
+  background: color-mix(in srgb, var(--blue) 5%, transparent);
+}
+
+.skills-list li:nth-child(n + 7) {
+  background: color-mix(in srgb, var(--olive) 5%, transparent);
+}
+
+html[data-theme="dark"] .skills-list li:nth-child(-n + 3) {
+  background: color-mix(in srgb, var(--clay) 9%, transparent);
+}
+
+html[data-theme="dark"] .skills-list li:nth-child(n + 4):nth-child(-n + 6) {
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+}
+
+html[data-theme="dark"] .skills-list li:nth-child(n + 7) {
+  background: color-mix(in srgb, var(--olive) 9%, transparent);
 }

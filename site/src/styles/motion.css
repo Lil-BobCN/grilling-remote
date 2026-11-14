@@ -65,13 +65,35 @@ html.js-motion .motion-panel {
 
 html.js-motion [data-reveal] {
   opacity: 0;
-  filter: blur(3px);
-  transform: translateY(var(--motion-reveal-distance));
+  filter: blur(5px);
+  transform: translateY(22px);
   transition:
-    opacity var(--motion-reveal) var(--ease-fade),
-    filter var(--motion-reveal-short) ease,
-    transform var(--motion-reveal) var(--ease-rise);
+    opacity 640ms var(--ease-fade),
+    filter 520ms ease,
+    transform 760ms var(--ease-rise);
   transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* 大面：从下方轻轻推上来，带一点收边。 */
+html.js-motion [data-reveal="panel"] {
+  transform: translateY(16px) scale(0.992);
+}
+
+/* 成排的小条目：位移短一点，晚到的行也很快跟上。 */
+html.js-motion [data-reveal="row"] {
+  filter: blur(3px);
+  transform: translateY(14px);
+  transition:
+    opacity 560ms var(--ease-fade),
+    filter 420ms ease,
+    transform 620ms var(--ease-rise);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* 只淡入，给元信息和不想动的块。 */
+html.js-motion [data-reveal="fade"] {
+  filter: none;
+  transform: none;
 }
 
 html.js-motion [data-reveal].is-revealed {
@@ -94,7 +116,10 @@ html.js-motion [data-reveal].is-revealed {
     animation-delay: 0ms;
   }
 
-  html.js-motion [data-reveal] {
+  html.js-motion [data-reveal],
+  html.js-motion [data-reveal="panel"],
+  html.js-motion [data-reveal="row"],
+  html.js-motion [data-reveal="fade"] {
     filter: none;
     transform: none;
     transition: opacity var(--motion-fade-reduced) var(--ease-fade);
@@ -102,7 +127,7 @@ html.js-motion [data-reveal].is-revealed {
   }
 
   .brand-full,
-  .brand-mark {
+  .brand-letter {
     filter: none;
     transform: none;
     transition: opacity var(--motion-fade-reduced) var(--ease-fade);

@@ -14,7 +14,7 @@ function normalizePath() {
 }
 
 function readRoute(path) {
-  if (path === '/app') return { name: 'login', current: null }
+  if (path === '/app') return { name: 'login', current: 'login' }
   if (path === '/app/orders') {
     return { name: 'orders', current: 'orders', needsAuth: true }
   }

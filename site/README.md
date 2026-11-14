@@ -58,27 +58,37 @@ npm run preview
 
 方向契约在 `.impeccable/surfaces/site-index-html.md`，草图在 `design/refined-v1-anthropic-top.html`。页面里的颜色、字号、间距从 `tokens.css` 取，不写零散数值。新增变量时同时改 `tokens.css` 和 `design/tokens.md`。
 
-两处用色由 live 审阅定下，都只用既有四色：
+两处用色由 live 审阅定下：
 
-- 首页「三步装好」是深色带，步骤号和暖棕小方块对应，见 `home.css` 的 `.home-steps--night`。
-- 下载页文件区右下有一枚「已备好」落款章，旋转 -2.5 度，版本和日期和数据栏一致，见 `download.css` 的 `.download-seal`。
+- 首页「三步装好」是深色带，步骤号底用陶土、燕麦、薄荷三色循环，见 `home.css` 的 `.home-steps--night`。
+- 下载页文件区是燕麦色纸面，右下有一枚陶土落款章，旋转 -2.5 度，版本和日期和数据栏一致，见 `download.css` 的 `.download-seal`。
+- 技能清单的序号、细线和很浅的底色每三行换一组陶土、天蓝、橄榄，见 `skills.css`。
+
+2026-11-14 运营者要求下载页和技能清单页更接近 Anthropic 官网的纸面配色，强调色扩充为陶土 `#d97757`、燕麦 `#e3dacc`、天蓝 `#6a9bcc`、橄榄 `#788c5d`、薄荷 `#bcd1ca`。纸底、墨字和宋体标题不变，强调色只做色块、编号和小面积标记。完整清单见 `design/tokens.md`。
 
 ## 动效
 
 首屏只有一段编排好的入场：标题逐字上浮、去模糊、淡入，说明和版本信息随后，视频面板带着内容最后落定。其余动效只做两件事：滚动出现，以及悬停、焦点、按钮的即时反馈。
 
-- 页面加载入场：给元素加 `motion-rise`（文字块）或 `motion-panel`（大面），用内联 `--motion-delay` 排顺序。
-- 顶栏联动：桌面端滚动时，字标从 `AFKFACTORY` 收到 `AFK`；一条细线从字标下方长到两侧，胶囊的底色和描边随之退掉，只剩文字。停下来后悬停，胶囊会重新长回来。手机上顶栏不吸附，也不做这套联动；减少动态时保持展开状态。
-- 顶栏玻璃：同一段滚动里，整条顶栏从纸面变成纸色玻璃。纸色 62%、模糊 10px、饱和度 1.15，覆盖整宽和 80px 高；手机上不启用。
+- 页面加载入场：给元素加 `motion-rise`（文字块）或 `motion-panel`（大面），用内联 `--motion-delay` 排顺序。顶栏胶囊和字标字母另有一段加载动画，见 `base.css` 的 `header-item-in` 和 `brand-letter-in`。
+- 顶栏联动：桌面端滚动 480px 内，`FACTORY` 的字母从右往左逐个退场，剩下的 `AFK` 滑到中间；一条细线从字标下方长到两侧，胶囊的底色和描边随之退掉，只剩文字。停下来后悬停，胶囊会重新长回来。手机上顶栏不吸附，也不做这套联动；减少动态时保持展开状态。
+- 顶栏玻璃：滚动约 24px 内收满。纸色 96%、模糊 22px、饱和度 1.45，覆盖整宽和 80px 高，另加 1px 顶边高光；手机上不启用。
 - 胶囊悬停：悬停色从中间向两侧铺开，描边和文字同时收紧；按下缩到 97%，松开回弹。减少动态时只换底色。
 - 首屏视频拉伸：面板在页面里按满宽铺开，左右先用 `--gutter` 裁切；往下滚时 `--hero-stretch` 从 0 走到 1，`clip-path` 收到 0，画面横向铺满视口。进度按面板顶部收口。
-- 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
+- 滚动出现：给元素加 `data-reveal`，可选 `--reveal-delay`。默认块淡入 640ms、去模糊 520ms、上移 760ms；成排条目用 `data-reveal="row"`，大面用 `data-reveal="panel"`，元信息用 `data-reveal="fade"`。观察器在 `src/motion.js`，进入视口后加 `is-revealed`。
 - 循环动效：给容器加 `data-motion-loop`，离开视口自动暂停。
 - 标题逐字：用 `src/components/RiseChars.jsx`，标题本体用 `aria-label` 给读屏完整句子。
 - 默认内容可见。`index.html` 等五个 HTML 在 `<head>` 里加 `js-motion` 类，只在 JS 接上后才收起待出现的元素；2.5 秒内没接上就撤掉这个类，避免脚本失败时页面空着。
 - `prefers-reduced-motion: reduce` 时去掉位移和模糊，只留淡入；视频直接满宽，不跟随滚动；视频占位的循环停掉。
 
-滚动出现不要做成每段都错开，只在成组出现时用。
+滚动出现只在成组出现时错开，不要每段都排一套延迟。同一页最多用三种动效材料：文字上浮、成排条目错开、大面收边。
+
+## 明暗模式
+
+- 顶栏右侧有圆形切换按钮，`ThemeToggle.jsx` 把 `data-theme` 写到 `<html>`，选择存 `localStorage` 的 `afk-theme`。
+- 五个 HTML 在 `<head>` 里先读存储或系统偏好，再画页面，避免闪白。
+- 夜间色值在 `src/styles/tokens.css` 的 `html[data-theme="dark"]`，清单见 `design/tokens.md`。
+- 切换时同步更新 `<meta name="theme-color">`；首屏视频的渐变从 `--paper` 起，夜间不会露出浅色边。
 
 ## 检测器
 

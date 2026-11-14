@@ -18,7 +18,7 @@ export default function PageShell({
         </p>
       ) : null}
       {children ? (
-        <div className="page-body" data-reveal style={{ '--reveal-delay': '180ms' }}>
+        <div className="page-body">
           {children}
         </div>
       ) : null}

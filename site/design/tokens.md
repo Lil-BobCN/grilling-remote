@@ -33,8 +33,45 @@
 | `--on-night-chip` | `rgba(247, 245, 239, 0.78)` | 黑底上的小标签 |
 | `--on-night-note` | `rgba(247, 245, 239, 0.62)` | 黑底上的注释 |
 | `--night-line` | `rgba(247, 245, 239, 0.5)` | 黑底上的描边 |
+| `--clay` | `#d97757` | 陶土：下载按钮、首页三步第一号、技能第一组 |
+| `--oat` | `#e3dacc` | 燕麦：暖色面基色、落款章底 |
+| `--blue` | `#6a9bcc` | 天蓝：技能第二组序号和细线 |
+| `--olive` | `#788c5d` | 橄榄：技能第三组序号、哈希块边线 |
+| `--mint` | `#bcd1ca` | 薄荷：首页三步第三号 |
+| `--clay-text` | `color-mix(in srgb, var(--clay) 62%, var(--ink))` | 陶土当文字 |
+| `--blue-text` | `color-mix(in srgb, var(--blue) 60%, var(--ink))` | 天蓝当文字，纸上 5.0:1 |
+| `--olive-text` | `color-mix(in srgb, var(--olive) 68%, var(--ink))` | 橄榄当文字 |
+| `--on-accent` | `#141413` | 亮色块上的字，不随明暗模式翻转 |
+| `--clay-deep` | `color-mix(in srgb, var(--clay) 88%, #141413)` | 陶土按钮悬停 |
+| `--surface-warm` | `#e9e1d1`（夜间 `#2a2521`） | 暖色面：下载文件区、技能页下一步、教程卡住块 |
+| `--surface-cool` | `#dfe8e3`（夜间 `#1f2824`） | 冷色面：SHA256 块 |
+| `--glass-highlight` | `rgba(255, 255, 255, 0.42)`（夜间 `rgba(250, 249, 245, 0.1)`） | 顶栏玻璃顶边高光 |
+| `--glass-shadow` | `rgba(20, 20, 19, 0.06)`（夜间 `rgba(0, 0, 0, 0.45)`） | 顶栏玻璃下沿阴影 |
 
 `--muted-strong` 比草图的 `#8a867c` 深一档。草图的灰在暖白纸上只有 3.1:1，小字达不到 4.5:1。改后是 4.9:1。
+
+## 夜间模式
+
+页面 HTML 在样式前读 `localStorage` 的 `afk-theme`，没有就跟随系统 `prefers-color-scheme`，给 `<html>` 加 `data-theme="dark"`。`tokens.css` 末尾用 `html[data-theme="dark"]` 覆盖这些值：
+
+| 变量 | 夜间值 |
+| --- | --- |
+| `--paper` | `#141413` |
+| `--paper-raised` | `#1f1e1d` |
+| `--paper-press` | `#30302e` |
+| `--ink` | `#faf9f5` |
+| `--ink-soft` | `#e8e6dc` |
+| `--body` | `#c9c6bd` |
+| `--body-soft` | `#b0aea5` |
+| `--muted` | `#9a978e` |
+| `--muted-strong` | `#87867f` |
+| `--tan` | `#d4a27f` |
+| `--slate` | `#8fa9bd` |
+| `--line` / `--line-soft` / `--line-pill` | `#30302e` / `#262624` / `#3d3d3a` |
+| `--pill-wash` / `--pill-hover` | `rgba(250, 249, 245, 0.06)` / `rgba(250, 249, 245, 0.1)` |
+| `--surface-warm` / `--surface-cool` | `#2a2521` / `#1f2824` |
+
+强调色本身不翻；`--clay-text` 等用 `var(--ink)` 混色，会自动变浅。亮色块上的字固定用 `--on-accent`。顶栏右侧的圆形按钮切明暗，选择写进 `localStorage`，同时更新 `<meta name="theme-color">`。
 
 ## 字体
 
@@ -108,6 +145,8 @@
 | `--video-height` | `640px` | 桌面首屏视频 |
 | `--video-height-narrow` | `420px` | 手机首屏视频 |
 
+首页回传带的尺寸直接写在 `home.css`，没有进基础变量表：带体上下 96px（手机 64px），上排两栏 1.3fr / 0.7fr、间距 64px，入口行 1.2fr / 0.8fr、每行 104px（手机 88px）高。
+
 ## 断点
 
 手机断点是 `900px`，写在 `base.css` 的媒体查询里。CSS 变量不能用在媒体查询条件中，所以这个值不进 `tokens.css`。
@@ -120,10 +159,12 @@
 | `--motion-fade` | `500ms` | 淡入 |
 | `--motion-fade-reduced` | `200ms` | 减少动态时只留淡入 |
 | `--motion-rise` | `800ms` | 上浮和逐字入场 |
-| `--motion-reveal` | `700ms` | 滚动出现的位移和淡入 |
-| `--motion-reveal-short` | `450ms` | 滚动出现时的去模糊 |
-| `--motion-reveal-distance` | `18px` | 滚动出现的位移 |
+| `--motion-reveal` | `640ms` | 滚动出现的淡入 |
+| `--motion-reveal-short` | `520ms` | 滚动出现时的去模糊 |
+| `--motion-reveal-distance` | `22px` | 滚动出现的位移 |
 | `--motion-stagger` | `24ms` | 标题逐字间隔 |
+
+`data-reveal="row"` 的时长是 560 / 420 / 620ms，位移 14px；`data-reveal="panel"` 是向下 16px、收边 0.992；`data-reveal="fade"` 只淡入。成排条目用 `row`，大面用 `panel`，元信息用 `fade`。
 
 | 缓动变量 | 值 | 用途 |
 | --- | --- | --- |
@@ -135,7 +176,7 @@
 
 首屏视频的横向拉伸用运行时变量 `--hero-stretch`（0–1），由 `HomePage.jsx` 按滚动写入，不放进基础变量表。它只改 `clip-path`，不改布局尺寸。
 
-顶栏联动用运行时变量 `--hp`（0–1），由 `SiteHeader.jsx` 按滚动写入；`--hp-full`、`--hp-mark`、`--hp-line`、`--hp-chrome` 在 `base.css` 里从它派生，也不进基础变量表。
+顶栏联动用运行时变量 `--hp`（0–1），由 `SiteHeader.jsx` 按滚动写入，480px 内线性走满；`--hp-shift`、`--hp-line`、`--hp-glass`、`--hp-chrome` 在 `base.css` 里从它派生，也不进基础变量表。字标每个字母的退场起点由内联 `--letter-start` 写入。
 
 ## 还没定的
 

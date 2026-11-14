@@ -6,6 +6,8 @@
  */
 
 :root {
+  color-scheme: light;
+
   /* 颜色：纸、墨、暖棕、蓝灰 */
   --paper: #f0eee6;
   --paper-raised: #f7f5ef;
@@ -20,6 +22,22 @@
   --slate: #5f7385;
   /* 蓝灰当文字时压深一档，纸上从 4.23:1 到 4.81:1；焦点框仍用 --slate。 */
   --slate-text: color-mix(in srgb, var(--slate) 90%, var(--ink));
+
+  /* 强调色：取自 Anthropic 官网的纸面配色，只做色块和小面积标记。 */
+  --clay: #d97757;
+  --oat: #e3dacc;
+  --blue: #6a9bcc;
+  --olive: #788c5d;
+  --mint: #bcd1ca;
+  --clay-text: color-mix(in srgb, var(--clay) 62%, var(--ink));
+  --blue-text: color-mix(in srgb, var(--blue) 60%, var(--ink));
+  --olive-text: color-mix(in srgb, var(--olive) 68%, var(--ink));
+  /* 亮色块上的字始终用深墨，不随明暗模式翻转。 */
+  --on-accent: #141413;
+  --clay-deep: color-mix(in srgb, var(--clay) 88%, #141413);
+  /* 带色纸面：亮模式是浅色纸，暗模式换成深色纸，字色跟着 --ink 走。 */
+  --surface-warm: #e9e1d1;
+  --surface-cool: #dfe8e3;
 
   /* 细线与胶囊 */
   --line: #d9d4c7;
@@ -37,6 +55,10 @@
   --on-night-chip: rgba(247, 245, 239, 0.78);
   --on-night-note: rgba(247, 245, 239, 0.62);
   --night-line: rgba(247, 245, 239, 0.5);
+
+  /* 顶栏玻璃 */
+  --glass-highlight: rgba(255, 255, 255, 0.42);
+  --glass-shadow: rgba(20, 20, 19, 0.06);
 
   /* 字体 */
   --font-serif: "Songti SC", "SimSun", "Noto Serif SC", serif;
@@ -119,4 +141,33 @@
   --ease-fade: cubic-bezier(0.2, 0.7, 0.1, 1);
   --ease-rise: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-ui: cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* 夜间：纸面和墨色对调，强调色保留。色块上的字仍用深墨。 */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #141413;
+  --paper-raised: #1f1e1d;
+  --paper-press: #30302e;
+  --ink: #faf9f5;
+  --ink-soft: #e8e6dc;
+  --body: #c9c6bd;
+  --body-soft: #b0aea5;
+  --muted: #9a978e;
+  --muted-strong: #87867f;
+  --tan: #d4a27f;
+  --slate: #8fa9bd;
+
+  --line: #30302e;
+  --line-soft: #262624;
+  --line-pill: #3d3d3a;
+  --pill-wash: rgba(250, 249, 245, 0.06);
+  --pill-hover: rgba(250, 249, 245, 0.1);
+
+  --glass-highlight: rgba(250, 249, 245, 0.1);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+
+  --surface-warm: #2a2521;
+  --surface-cool: #1f2824;
 }

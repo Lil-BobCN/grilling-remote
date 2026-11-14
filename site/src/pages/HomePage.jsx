@@ -3,22 +3,22 @@ import RiseChars from '../components/RiseChars.jsx'
 import '../styles/home.css'
 
 const titleSegments = [
-  { text: '不用写代码，' },
-  { text: '把需求说清楚就行。' },
+  { text: '从一句需求，' },
+  { text: '到一套能用的软件。' },
 ]
 
 const reasons = [
   {
-    title: '工具都装好了',
-    text: '九个技能和一套规则都装好了。你只管说需求。',
+    title: '打开就能用',
+    text: '九个技能和一套规则都装好了，不用自己配。',
   },
   {
-    title: '文件在你本机',
-    text: '文件一直在你电脑上。官网只负责把包发给你，再收回来。',
+    title: '文件留在你电脑',
+    text: '需求和草稿都在本机；官网只负责发下载包、收成品。',
   },
   {
-    title: '卡住有人接',
-    text: '每一步都告诉你该看到什么。卡住了，截图发给我们。',
+    title: '卡住有人管',
+    text: '教程中每一步都写清了你该看到什么、该怎么做。卡住了，截图发给我们。',
   },
 ]
 
@@ -131,7 +131,7 @@ export default function HomePage() {
             <h1
               id="home-title"
               className="home-hero-title"
-              aria-label="不用写代码，把需求说清楚就行。"
+              aria-label="从一句需求，到一套能用的软件。"
               style={{ '--motion-delay': '60ms' }}
             >
               <RiseChars segments={titleSegments} />
@@ -140,9 +140,9 @@ export default function HomePage() {
               className="home-hero-lede motion-rise"
               style={{ '--motion-delay': '260ms' }}
             >
-              下载一份客户工作区，按三步装好，跟 agent 说一句话就开始。
+              下载客户工作区，按三步装好。
               <br className="home-lede-break" />
-              做完把整个文件夹传回来。
+              agent 会主动用一套专业方法，把需求问清楚；做完把整个<span className="home-keep">文件夹</span>传回来。
             </p>
           </div>
           <p
@@ -177,13 +177,13 @@ export default function HomePage() {
                 className="hero-video-title motion-rise"
                 style={{ '--motion-delay': '420ms' }}
               >
-                九个技能，一套规则。
+                想法完善，落地更快。
               </h2>
               <p
                 className="hero-video-note motion-rise"
                 style={{ '--motion-delay': '480ms' }}
               >
-                解压到空文件夹，用 dsh 打开就行。
+                九个技能先把需求问透；再用 AI 时代的<span className="home-keep">低成本</span>开发，把想法做出来。
               </p>
             </div>
             <div
@@ -204,20 +204,26 @@ export default function HomePage() {
       <section
         className="home-intro"
         aria-labelledby="home-intro-title"
-        data-reveal
       >
         <div className="home-intro-grid">
-          <div>
+          <div data-reveal>
             <h2 id="home-intro-title" className="home-section-title">
-              从下载到交付，<br className="home-intro-break" />只有一条路。
+              你负责说清楚，<br className="home-intro-break" /><span className="home-keep">我们</span>负责做出来。
             </h2>
             <p className="home-section-lede">
-              从下载工作区到交回成品，中间不用换地方，也不用记流程。
+              从下载到回传，按教程走就行。
+              <br />
+              装好工作区，说清需求，传回文件夹。
             </p>
           </div>
           <div className="home-points">
-            {reasons.map((reason) => (
-              <div className="home-point" key={reason.title}>
+            {reasons.map((reason, index) => (
+              <div
+                className="home-point"
+                key={reason.title}
+                data-reveal="row"
+                style={{ '--reveal-delay': `${index * 80}ms` }}
+              >
                 <b>{reason.title}</b>
                 <p>{reason.text}</p>
               </div>
@@ -242,8 +248,8 @@ export default function HomePage() {
             <div
               className="home-step"
               key={step.n}
-              data-reveal
-              style={{ '--reveal-delay': `${index * 90}ms` }}
+              data-reveal="row"
+              style={{ '--reveal-delay': `${index * 110}ms` }}
             >
               <b>{step.n}</b>
               <h3>{step.title}</h3>
@@ -257,15 +263,14 @@ export default function HomePage() {
       <section
         className="home-skills"
         aria-labelledby="home-skills-title"
-        data-reveal
       >
         <div className="home-skills-grid">
-          <div>
+          <div data-reveal>
             <h2 id="home-skills-title" className="home-section-title">
               九个技能，<br />装好就能用。
             </h2>
             <p className="home-section-lede">
-              不用挑，也不用记名字。agent 会自己判断。
+              不用学，也不用记名字。agent 会主动帮你判断，选对技能。
             </p>
             <a className="home-skills-link" href="/skills">
               看完整清单 →
@@ -273,7 +278,11 @@ export default function HomePage() {
           </div>
           <ol className="home-skill-list">
             {skills.map((skill, index) => (
-              <li key={skill.name}>
+              <li
+                key={skill.name}
+                data-reveal="row"
+                style={{ '--reveal-delay': `${Math.min(index * 45, 300)}ms` }}
+              >
                 <b>{String(index + 1).padStart(2, '0')}</b>
                 <span>{skill.name}</span>
                 <p>{skill.summary}</p>
@@ -286,26 +295,34 @@ export default function HomePage() {
       <section
         className="home-band"
         aria-labelledby="home-band-title"
-        data-reveal
       >
         <div className="home-band-grid">
-          <div>
-            <h2 id="home-band-title">做完了，传回来。</h2>
+          <div className="home-band-statement" data-reveal>
+            <h2 id="home-band-title">
+              做完了，<br />传回来。
+            </h2>
             <p>整个文件夹压成 zip，登录后传回来。勾上「已问完」，剩下的我们来。</p>
           </div>
-          <div>
+          <div
+            className="home-band-progress"
+            data-reveal
+            style={{ '--reveal-delay': '90ms' }}
+          >
             <h2>进度随时看。</h2>
             <p>五档状态，走到哪一步都写清楚。不用追着问。</p>
           </div>
-          <div className="home-band-actions">
+          <div
+            className="home-band-actions"
+            data-reveal
+            style={{ '--reveal-delay': '180ms' }}
+          >
             <a className="home-band-action" href="/app/upload">
-              上传工作区
+              <span>上传工作区</span>
+              <span className="home-band-arrow" aria-hidden="true">→</span>
             </a>
-            <a
-              className="home-band-action home-band-action-outline"
-              href="/app/orders"
-            >
-              我的订单
+            <a className="home-band-action" href="/app/orders">
+              <span>我的订单</span>
+              <span className="home-band-arrow" aria-hidden="true">→</span>
             </a>
           </div>
         </div>

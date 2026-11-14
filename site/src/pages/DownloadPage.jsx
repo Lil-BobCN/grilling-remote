@@ -55,7 +55,11 @@ export default function DownloadPage() {
       scaffold={false}
       className="download-page"
     >
-      <section className="download-file download-file--stamp" aria-labelledby="download-file-title">
+      <section
+        className="download-file download-file--stamp"
+        aria-labelledby="download-file-title"
+        data-reveal="panel"
+      >
         <div className="download-file-main">
           <h2 id="download-file-title" className="download-filename">
             {release.file}
@@ -91,15 +95,27 @@ export default function DownloadPage() {
 
         <div className="download-spec-wrap">
           <dl className="download-spec">
-            <div className="download-spec-item">
+            <div
+              className="download-spec-item"
+              data-reveal="fade"
+              style={{ '--reveal-delay': '120ms' }}
+            >
               <dt>当前版本</dt>
               <dd>{release.version}</dd>
             </div>
-            <div className="download-spec-item">
+            <div
+              className="download-spec-item"
+              data-reveal="fade"
+              style={{ '--reveal-delay': '180ms' }}
+            >
               <dt>日期</dt>
               <dd>{release.date}</dd>
             </div>
-            <div className="download-spec-item">
+            <div
+              className="download-spec-item"
+              data-reveal="fade"
+              style={{ '--reveal-delay': '240ms' }}
+            >
               <dt>大小</dt>
               <dd>
                 {size} 字节（{sizeKb} KB）
@@ -116,7 +132,7 @@ export default function DownloadPage() {
         </div>
       </section>
 
-      <details className="download-sha">
+      <details className="download-sha" data-reveal>
         <summary>
           SHA256 与校验
           <span className="download-sha-turn" aria-hidden="true" />
@@ -152,7 +168,11 @@ export default function DownloadPage() {
         </div>
       </details>
 
-      <section className="download-systems" aria-labelledby="download-systems-title">
+      <section
+        className="download-systems"
+        aria-labelledby="download-systems-title"
+        data-reveal
+      >
         <h2 id="download-systems-title">系统和装法</h2>
         <div className="download-systems-grid">
           <div>
@@ -185,7 +205,11 @@ export default function DownloadPage() {
         </div>
       </section>
 
-      <section className="download-next" aria-labelledby="download-next-title">
+      <section
+        className="download-next"
+        aria-labelledby="download-next-title"
+        data-reveal="panel"
+      >
         <div>
           <h2 id="download-next-title">下一步</h2>
           <p>按教程走完三步。第一次对话说什么，也写在里面。</p>
