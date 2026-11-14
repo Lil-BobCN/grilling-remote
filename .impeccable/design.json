@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-14",
+  "title": "Design System: afkfactory 官网",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "暖白纸",
+        "canonical": "#f0eee6",
+        "tonalRamp": ["#2a2922", "#4e4a3c", "#736d54", "#988f6c", "#afa992", "#c7c4b7", "#e1e0db", "#f3f3f1"]
+      },
+      "paper-raised": {
+        "role": "neutral",
+        "displayName": "抬起的纸",
+        "canonical": "#f7f5ef",
+        "tonalRamp": ["#2a2822", "#4e493c", "#736b54", "#988d6c", "#afa892", "#c7c3b7", "#e1e0db", "#f3f3f1"]
+      },
+      "paper-press": {
+        "role": "neutral",
+        "displayName": "压下的纸",
+        "canonical": "#e6e2d6",
+        "tonalRamp": ["#2a2822", "#4e493c", "#736b54", "#988d6c", "#afa892", "#c7c3b7", "#e1e0db", "#f3f3f1"]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "墨黑",
+        "canonical": "#141413",
+        "tonalRamp": ["#272726", "#464644", "#666661", "#85857f", "#a3a39f", "#c0c0be", "#dededd", "#f2f2f2"]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "软墨",
+        "canonical": "#3d3d3a",
+        "tonalRamp": ["#272726", "#464644", "#666661", "#85857f", "#a3a39f", "#c0c0be", "#dededd", "#f2f2f2"]
+      },
+      "body": {
+        "role": "neutral",
+        "displayName": "正文墨",
+        "canonical": "#4a4843",
+        "tonalRamp": ["#272725", "#474642", "#68655f", "#88857c", "#a5a29d", "#c1c0bd", "#dfdedd", "#f3f2f2"]
+      },
+      "body-soft": {
+        "role": "neutral",
+        "displayName": "浅正文墨",
+        "canonical": "#5c5a54",
+        "tonalRamp": ["#272725", "#474643", "#676560", "#88857c", "#a4a29d", "#c1c0bd", "#dfdedd", "#f3f2f2"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "元信息暖灰",
+        "canonical": "#6f6b61",
+        "tonalRamp": ["#282725", "#484641", "#69665e", "#8a867a", "#a6a39b", "#c2c1bc", "#dfdedd", "#f3f2f2"]
+      },
+      "muted-strong": {
+        "role": "neutral",
+        "displayName": "等宽暖灰",
+        "canonical": "#6a665c",
+        "tonalRamp": ["#282725", "#484641", "#6a665d", "#8b8679", "#a6a39b", "#c2c1bc", "#dfdedd", "#f3f2f2"]
+      },
+      "tan": {
+        "role": "tertiary",
+        "displayName": "暖棕",
+        "canonical": "#c8b69b",
+        "tonalRamp": ["#2a2722", "#4e473c", "#736754", "#98866c", "#afa492", "#c7c1b7", "#e1dfdb", "#f3f2f1"]
+      },
+      "slate": {
+        "role": "tertiary",
+        "displayName": "蓝灰",
+        "canonical": "#5f7385",
+        "tonalRamp": ["#23262a", "#3d454d", "#556472", "#6d8397", "#93a1ae", "#b8c0c7", "#dbdee1", "#f1f2f3"]
+      },
+      "slate-text": {
+        "role": "tertiary",
+        "displayName": "蓝灰文字",
+        "canonical": "color-mix(in srgb, #5f7385 90%, #141413)",
+        "tonalRamp": ["#23262a", "#3d454d", "#556471", "#6e8396", "#94a1ae", "#b8c0c6", "#dbdee1", "#f1f2f3"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "细线",
+        "canonical": "#d9d4c7",
+        "tonalRamp": ["#2a2822", "#4e493c", "#736a54", "#988c6c", "#afa792", "#c7c3b7", "#e1dfdb", "#f3f3f1"]
+      },
+      "line-soft": {
+        "role": "neutral",
+        "displayName": "浅细线",
+        "canonical": "#cfc9bb",
+        "tonalRamp": ["#2a2822", "#4d483c", "#726955", "#978b6d", "#aea693", "#c7c2b8", "#e1dfdb", "#f3f3f1"]
+      },
+      "line-pill": {
+        "role": "neutral",
+        "displayName": "胶囊描边",
+        "canonical": "#d6d1c4",
+        "tonalRamp": ["#2a2822", "#4e493c", "#736a54", "#988c6c", "#afa792", "#c7c3b7", "#e1dfdb", "#f3f3f1"]
+      },
+      "pill-wash": {
+        "role": "neutral",
+        "displayName": "胶囊底",
+        "canonical": "rgba(255, 255, 255, 0.32)"
+      },
+      "pill-hover": {
+        "role": "neutral",
+        "displayName": "胶囊悬停",
+        "canonical": "rgba(20, 20, 19, 0.08)"
+      },
+      "night": {
+        "role": "secondary",
+        "displayName": "夜黑",
+        "canonical": "#0b0b0b",
+        "tonalRamp": ["#262626", "#454545", "#636363", "#828282", "#a1a1a1", "#bfbfbf", "#dedede", "#f2f2f2"]
+      },
+      "night-video": {
+        "role": "secondary",
+        "displayName": "视频夜黑",
+        "canonical": "#0b0d0e",
+        "tonalRamp": ["#242729", "#3f474b", "#59676e", "#738791", "#97a4aa", "#bac1c5", "#dcdfe0", "#f2f2f3"]
+      },
+      "night-hover": {
+        "role": "secondary",
+        "displayName": "夜黑悬停",
+        "canonical": "#2b2a27",
+        "tonalRamp": ["#272725", "#474642", "#68665f", "#88857c", "#a5a39d", "#c1c0bd", "#dfdedd", "#f3f2f2"]
+      },
+      "on-night": {
+        "role": "neutral",
+        "displayName": "夜上主字",
+        "canonical": "#f7f5ef",
+        "tonalRamp": ["#2a2822", "#4e493c", "#736b54", "#988d6c", "#afa892", "#c7c3b7", "#e1e0db", "#f3f3f1"]
+      },
+      "on-night-soft": {
+        "role": "neutral",
+        "displayName": "夜上段落",
+        "canonical": "#b8b4aa",
+        "tonalRamp": ["#282724", "#494740", "#6b675c", "#8d8777", "#a8a49a", "#c3c1bb", "#e0dfdc", "#f3f2f2"]
+      },
+      "on-night-chip": {
+        "role": "neutral",
+        "displayName": "夜上小标签",
+        "canonical": "rgba(247, 245, 239, 0.78)"
+      },
+      "on-night-note": {
+        "role": "neutral",
+        "displayName": "夜上注释",
+        "canonical": "rgba(247, 245, 239, 0.62)"
+      },
+      "night-line": {
+        "role": "neutral",
+        "displayName": "夜上描边",
+        "canonical": "rgba(247, 245, 239, 0.5)"
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "主标题", "purpose": "页面主标题；首页首屏同字号，字距归零。" },
+      "headline": { "displayName": "区块标题", "purpose": "首页三段和黑底带的区块标题。" },
+      "title": { "displayName": "步骤标题", "purpose": "步骤、表单、当前档的标题。" },
+      "lead": { "displayName": "说明", "purpose": "标题下的一句说明。" },
+      "body": { "displayName": "正文", "purpose": "正文和说明段落。" },
+      "label": { "displayName": "界面文字", "purpose": "导航、页脚、按钮、状态标签。" },
+      "mono": { "displayName": "等宽数据", "purpose": "版本、日期、大小、SHA、单号、轮次、百分比、技能名。" },
+      "micro": { "displayName": "等宽小字", "purpose": "页脚版本、索引号。" }
+    },
+    "shadows": [
+      {
+        "name": "track-warn-inset",
+        "value": "inset 0 0 0 1px #141413",
+        "purpose": "订单分支段的斜线填充封边；全站唯一的 box-shadow，用作描边，不作为深度。"
+      }
+    ],
+    "motion": [
+      { "name": "motion-fast", "value": "160ms", "purpose": "悬停、焦点、按钮反馈。" },
+      { "name": "motion-fade", "value": "500ms", "purpose": "淡入。" },
+      { "name": "motion-fade-reduced", "value": "200ms", "purpose": "减少动态时只留淡入。" },
+      { "name": "motion-rise", "value": "800ms", "purpose": "首屏上浮和逐字入场。" },
+      { "name": "motion-reveal", "value": "700ms", "purpose": "滚动出现的位移和淡入。" },
+      { "name": "motion-reveal-short", "value": "450ms", "purpose": "滚动出现时的去模糊。" },
+      { "name": "motion-stagger", "value": "24ms", "purpose": "标题逐字间隔。" },
+      { "name": "motion-reveal-distance", "value": "18px", "purpose": "滚动出现的位移。" },
+      { "name": "ease-fade", "value": "cubic-bezier(0.2, 0.7, 0.1, 1)", "purpose": "透明度。" },
+      { "name": "ease-rise", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "上浮。" },
+      { "name": "ease-ui", "value": "cubic-bezier(0.165, 0.84, 0.44, 1)", "purpose": "悬停和焦点。" },
+      { "name": "hero-drift", "value": "18s ease-in-out infinite alternate", "purpose": "首屏视频占位渐变的缓慢漂移；离开视口暂停，减少动态时停止。" }
+    ],
+    "breakpoints": [
+      { "name": "wide", "value": "1100px", "purpose": "收窄分栏和间距；教程目录改成横向滚动条。" },
+      { "name": "phone", "value": "900px", "purpose": "主手机断点：顶栏静态、双栏改单栏、标题 32px、首屏视频 420px。" },
+      { "name": "rail-stack", "value": "720px", "purpose": "订单五档从五列改成竖排。" },
+      { "name": "small-phone", "value": "520px", "purpose": "小屏账号行换行、标题断句、下载页 SHA 注释隐藏。" },
+      { "name": "tiny-phone", "value": "360px", "purpose": "教程标题降到 28px。" }
+    ],
+    "assets": {
+      "rasters": [],
+      "favicon": "site/public/favicon.svg（AF 字标，SVG）",
+      "heroVideo": "site/src/styles/home.css 的 .hero-video-placeholder；CSS 渐变占位，真实素材未到",
+      "displayFont": "系统宋体栈（Songti SC → SimSun → Noto Serif SC → serif）；自托管中文子集未做，Windows 回退未验证",
+      "note": "没有真实客户 logo、评价、案例或性能数字。"
+    }
+  },
+  "components": [
+    {
+      "name": "主按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "墨黑实心，52px 高，6px 控件圆角。用于上传、下载、重试。",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">上传工作区</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 24px;border:1px solid var(--ink,#141413);border-radius:var(--radius-control,6px);background:var(--ink,#141413);color:var(--paper,#f0eee6);font-family:'PingFang SC',sans-serif;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer;transition:background-color 160ms cubic-bezier(.165,.84,.44,1),border-color 160ms cubic-bezier(.165,.84,.44,1),transform 160ms cubic-bezier(.165,.84,.44,1)}.ds-btn-primary:hover{background:var(--night-hover,#2b2a27);border-color:var(--night-hover,#2b2a27)}.ds-btn-primary:active{transform:scale(.99)}.ds-btn-primary:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}.ds-btn-primary:disabled{background:var(--paper-press,#e6e2d6);border-color:var(--line,#d9d4c7);color:var(--body-soft,#5c5a54);cursor:not-allowed;transform:none}"
+    },
+    {
+      "name": "次级按钮",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "透明底，1px 浅线描边，悬停描边转墨黑。用于再传一个、重试之外的次动作。",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">再传一个</button>",
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 24px;border:1px solid var(--line-soft,#cfc9bb);border-radius:var(--radius-control,6px);background:transparent;color:var(--ink,#141413);font-family:'PingFang SC',sans-serif;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer;transition:border-color 160ms cubic-bezier(.165,.84,.44,1),color 160ms cubic-bezier(.165,.84,.44,1),transform 160ms cubic-bezier(.165,.84,.44,1)}.ds-btn-outline:hover{border-color:var(--ink,#141413)}.ds-btn-outline:active{transform:scale(.99)}.ds-btn-outline:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}.ds-btn-outline:disabled{border-color:var(--line,#d9d4c7);color:var(--muted,#6f6b61);cursor:not-allowed;transform:none}"
+    },
+    {
+      "name": "导航胶囊",
+      "kind": "nav",
+      "refersTo": "pill",
+      "description": "顶栏和页脚的动作胶囊；悬停时深色从中间铺开，当前页用墨黑实心。",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-pill\" href=\"#\">下载</a><a class=\"ds-pill\" href=\"#\">技能清单</a><a class=\"ds-pill ds-pill-current\" href=\"#\">我的订单</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:8px}.ds-pill{display:inline-flex;align-items:center;padding:7px 15px;border:1px solid var(--line-pill,#d6d1c4);border-radius:999px;background-color:var(--pill-wash,rgba(255,255,255,.32));background-image:linear-gradient(var(--pill-hover,rgba(20,20,19,.08)),var(--pill-hover,rgba(20,20,19,.08)));background-repeat:no-repeat;background-position:center;background-size:0% 100%;color:var(--ink-soft,#3d3d3a);font-family:'PingFang SC',sans-serif;font-size:14px;line-height:1.2;text-decoration:none;transition:background-size 240ms cubic-bezier(.165,.84,.44,1),border-color 200ms cubic-bezier(.165,.84,.44,1),color 200ms cubic-bezier(.165,.84,.44,1),transform 160ms cubic-bezier(.165,.84,.44,1)}.ds-pill:hover{background-size:100% 100%;border-color:var(--line-soft,#cfc9bb);color:var(--ink,#141413)}.ds-pill:active{transform:scale(.97)}.ds-pill:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}.ds-pill-current{background-color:var(--ink,#141413);background-image:none;border-color:var(--ink,#141413);color:var(--on-night,#f7f5ef)}"
+    },
+    {
+      "name": "状态标签",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "胶囊状态标签。默认、当前、提醒三种；提醒用虚线描边，不只靠颜色。",
+      "html": "<span class=\"ds-chip\">已收到</span> <span class=\"ds-chip ds-chip-active\">待客户验收</span> <span class=\"ds-chip ds-chip-warn\">校验未通过</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;padding:4px 10px;border:1px solid var(--line-pill,#d6d1c4);border-radius:999px;background:var(--paper-raised,#f7f5ef);color:var(--body,#4a4843);font-family:'PingFang SC',sans-serif;font-size:12px;font-weight:600;line-height:1.4;white-space:nowrap}.ds-chip-active{background:var(--ink,#141413);border-color:var(--ink,#141413);color:var(--paper,#f0eee6)}.ds-chip-warn{border-style:dashed;border-color:var(--ink,#141413);background:transparent;color:var(--ink,#141413)}"
+    },
+    {
+      "name": "邮箱输入框",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "48px 高，抬起的纸底，1px 暖灰描边；聚焦转墨黑并换回纸底。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">邮箱</span><input class=\"ds-input\" type=\"email\" placeholder=\"you@example.com\" /></label>",
+      "css": ".ds-field{display:block;font-family:'PingFang SC',sans-serif}.ds-field-label{display:block;margin-bottom:8px;color:var(--ink-soft,#3d3d3a);font-size:14px;font-weight:600;line-height:1.4}.ds-input{width:100%;height:48px;padding:0 14px;border:1px solid var(--muted-strong,#6a665c);border-radius:var(--radius-control,6px);background:var(--paper-raised,#f7f5ef);color:var(--ink,#141413);font-family:'PingFang SC',sans-serif;font-size:16px;line-height:1.4;box-sizing:border-box;transition:border-color 160ms cubic-bezier(.165,.84,.44,1),background-color 160ms cubic-bezier(.165,.84,.44,1)}.ds-input:hover{border-color:var(--ink-soft,#3d3d3a)}.ds-input:focus{border-color:var(--ink,#141413);background:var(--paper,#f0eee6);outline:none}.ds-input:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}"
+    },
+    {
+      "name": "拖放区",
+      "kind": "custom",
+      "refersTo": "drop-zone",
+      "description": "上传页唯一的大面。208px 高，虚线边界，拖入或悬停时转墨黑。",
+      "html": "<button class=\"ds-drop\" type=\"button\"><span class=\"ds-drop-mark\">ZIP</span><span class=\"ds-drop-title\">把 zip 拖到这里</span><span class=\"ds-drop-sub\">或点这里选择文件</span><span class=\"ds-drop-limit\">只收 .zip · 50 MB 以内</span></button>",
+      "css": ".ds-drop{display:grid;place-items:center;gap:4px;width:100%;min-height:208px;padding:32px 20px;border:1px dashed var(--line-soft,#cfc9bb);border-radius:var(--radius-control,6px);background:var(--paper-raised,#f7f5ef);color:var(--ink,#141413);font-family:'PingFang SC',sans-serif;text-align:center;cursor:pointer;transition:border-color 160ms cubic-bezier(.165,.84,.44,1),background-color 160ms cubic-bezier(.165,.84,.44,1)}.ds-drop:hover{border-color:var(--ink,#141413);background:var(--paper-press,#e6e2d6)}.ds-drop:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}.ds-drop-mark{display:grid;place-items:center;width:44px;height:44px;margin-bottom:6px;border:1px solid var(--line,#d9d4c7);border-radius:var(--radius-control,6px);background:var(--paper,#f0eee6);color:var(--ink-soft,#3d3d3a);font-family:'SF Mono',ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;line-height:1}.ds-drop-title{font-size:18px;font-weight:600;line-height:1.4}.ds-drop-sub{color:var(--body-soft,#5c5a54);font-size:15px;line-height:1.5}.ds-drop-limit{margin-top:6px;color:var(--muted-strong,#6a665c);font-family:'SF Mono',ui-monospace,monospace;font-size:12.5px;line-height:1.5}"
+    },
+    {
+      "name": "五档进度轨",
+      "kind": "custom",
+      "refersTo": "progress-rail",
+      "description": "订单详情的五档：34px 圆点、1px 连线、等宽日期；完成墨黑、当前 2px 圈、分支虚线。",
+      "html": "<ol class=\"ds-rail\"><li class=\"ds-rail-step\" data-state=\"done\" data-line=\"done\"><span class=\"ds-rail-dot\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M3 8.5 6.5 12 13 4.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-rail-label\">已收到</span><span class=\"ds-rail-date\">11-08 09:10</span></li><li class=\"ds-rail-step\" data-state=\"done\" data-line=\"done\"><span class=\"ds-rail-dot\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M3 8.5 6.5 12 13 4.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-rail-label\">安排中</span><span class=\"ds-rail-date\">11-08 10:20</span></li><li class=\"ds-rail-step\" data-state=\"current\" data-line=\"current\"><span class=\"ds-rail-dot\">3</span><span class=\"ds-rail-label\">开发中</span><span class=\"ds-rail-date\">11-09 14:00</span></li><li class=\"ds-rail-step\" data-state=\"pending\"><span class=\"ds-rail-dot\">4</span><span class=\"ds-rail-label\">待客户验收</span><span class=\"ds-rail-date\">还没到</span></li><li class=\"ds-rail-step\" data-state=\"pending\"><span class=\"ds-rail-dot\">5</span><span class=\"ds-rail-label\">已完成</span><span class=\"ds-rail-date\">还没到</span></li></ol>",
+      "css": ".ds-rail{display:grid;grid-template-columns:repeat(5,1fr);margin:0;padding:0;list-style:none;font-family:'PingFang SC',sans-serif}.ds-rail-step{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;padding:4px 0;color:var(--muted,#6f6b61);text-align:center}.ds-rail-step:not(:last-child)::after{content:'';position:absolute;top:20px;right:calc(-50% + 21px);left:calc(50% + 21px);height:1px;background:var(--line,#d9d4c7)}.ds-rail-step[data-line=\"done\"]:not(:last-child)::after{background:var(--ink,#141413)}.ds-rail-dot{display:grid;width:34px;height:34px;flex:none;place-items:center;border:1px solid var(--line,#d9d4c7);border-radius:50%;background:var(--paper,#f0eee6);color:var(--muted,#6f6b61);font-family:'SF Mono',ui-monospace,monospace;font-size:12px;line-height:1;z-index:1}.ds-rail-dot svg{width:16px;height:16px}.ds-rail-step[data-state=\"done\"] .ds-rail-dot{border-color:var(--ink,#141413);background:var(--ink,#141413);color:var(--paper,#f0eee6)}.ds-rail-step[data-state=\"current\"] .ds-rail-dot{border:2px solid var(--ink,#141413);color:var(--ink,#141413);font-weight:600}.ds-rail-step[data-state=\"warn\"] .ds-rail-dot{border-color:var(--ink,#141413);border-style:dashed;color:var(--ink,#141413)}.ds-rail-label{color:var(--body-soft,#5c5a54);font-size:13px;font-weight:600;line-height:1.4}.ds-rail-step[data-state=\"done\"] .ds-rail-label{color:var(--ink-soft,#3d3d3a)}.ds-rail-step[data-state=\"current\"] .ds-rail-label,.ds-rail-step[data-state=\"warn\"] .ds-rail-label{color:var(--ink,#141413)}.ds-rail-step[data-state=\"pending\"] .ds-rail-label{color:var(--muted,#6f6b61);font-weight:400}.ds-rail-date{color:var(--muted,#6f6b61);font-family:'SF Mono',ui-monospace,monospace;font-size:11px;line-height:1.4}"
+    },
+    {
+      "name": "文件台账行",
+      "kind": "custom",
+      "refersTo": "file-ledger",
+      "description": "上传页选好的文件：ZIP 徽章、文件名、等宽体积、换一个按钮。示例体积 41,456 字节是 2026-11-07 设计样品，当前值见 customer-kit/release.json。",
+      "html": "<div class=\"ds-file\"><span class=\"ds-file-badge\">ZIP</span><div class=\"ds-file-main\"><p class=\"ds-file-name\">客户工作区-v1.zip</p><p class=\"ds-file-size\">41,456 字节 · 40.5 KB</p></div><button class=\"ds-file-replace\" type=\"button\">换一个</button></div>",
+      "css": ".ds-file{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line,#d9d4c7);border-radius:var(--radius-control,6px);background:var(--paper-raised,#f7f5ef);font-family:'PingFang SC',sans-serif}.ds-file-badge{display:grid;place-items:center;width:34px;height:34px;flex:none;border:1px solid var(--line,#d9d4c7);border-radius:var(--radius-control,6px);background:var(--paper-press,#e6e2d6);color:var(--ink-soft,#3d3d3a);font-family:'SF Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1}.ds-file-main{min-width:0}.ds-file-name{margin:0;color:var(--ink,#141413);font-size:15px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}.ds-file-size{margin:2px 0 0;color:var(--muted,#6f6b61);font-family:'SF Mono',ui-monospace,monospace;font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.4}.ds-file-replace{min-height:44px;margin-left:auto;padding:0 12px;flex:none;border:1px solid var(--line,#d9d4c7);border-radius:var(--radius-control,6px);background:transparent;color:var(--ink-soft,#3d3d3a);font-family:'PingFang SC',sans-serif;font-size:14px;font-weight:600;line-height:1.4;cursor:pointer;transition:border-color 160ms cubic-bezier(.165,.84,.44,1),color 160ms cubic-bezier(.165,.84,.44,1)}.ds-file-replace:hover{border-color:var(--ink,#141413);color:var(--ink,#141413)}.ds-file-replace:focus-visible{outline:2px solid var(--slate,#5f7385);outline-offset:3px}"
+    },
+    {
+      "name": "已备好落款章",
+      "kind": "custom",
+      "refersTo": "seal",
+      "description": "下载页文件区右下的印章。内框加外框、16% 暖棕底、旋转 -2.5 度。",
+      "html": "<div class=\"ds-seal\"><span class=\"ds-seal-word\">已备好</span><span>v1 · 2026-11-07</span></div>",
+      "css": ".ds-seal{display:inline-grid;gap:1px;justify-items:center;padding:10px 18px;border:1px solid color-mix(in srgb,var(--ink,#141413) 58%,var(--paper,#f0eee6));outline:1px solid color-mix(in srgb,var(--ink,#141413) 32%,var(--paper,#f0eee6));outline-offset:2px;background:color-mix(in srgb,var(--tan,#c8b69b) 16%,transparent);color:var(--ink,#141413);font-family:'SF Mono',ui-monospace,monospace;font-size:12px;line-height:1.6;letter-spacing:.14em;text-align:center;transform:rotate(-2.5deg)}.ds-seal-word{font-family:'Songti SC',SimSun,serif;font-size:15px;line-height:1.4;letter-spacing:.34em;text-indent:.34em}"
+    },
+    {
+      "name": "夜黑带动作",
+      "kind": "button",
+      "refersTo": "button-night",
+      "description": "首页回传带的两个动作：纸色实心和透明描边，文字反白。",
+      "html": "<div class=\"ds-night-actions\"><a class=\"ds-night-action\" href=\"#\">上传工作区</a><a class=\"ds-night-action ds-night-action-outline\" href=\"#\">我的订单</a></div>",
+      "css": ".ds-night-actions{display:flex;flex-wrap:wrap;gap:14px;padding:24px;background:var(--night,#0b0b0b);font-family:'PingFang SC',sans-serif}.ds-night-action{display:inline-flex;align-items:center;justify-content:center;padding:14px 24px;border:1px solid var(--on-night,#f7f5ef);border-radius:var(--radius-control,6px);background:var(--on-night,#f7f5ef);color:var(--ink,#141413);font-size:16px;font-weight:600;line-height:1.4;text-decoration:none;transition:background-color 160ms cubic-bezier(.165,.84,.44,1),border-color 160ms cubic-bezier(.165,.84,.44,1),color 160ms cubic-bezier(.165,.84,.44,1)}.ds-night-action:hover{border-color:var(--paper-press,#e6e2d6);background:var(--paper-press,#e6e2d6)}.ds-night-action:focus-visible{outline:2px solid var(--on-night,#f7f5ef);outline-offset:3px}.ds-night-action-outline{border-color:var(--night-line,rgba(247,245,239,.5));background:transparent;color:var(--on-night,#f7f5ef)}.ds-night-action-outline:hover{border-color:var(--night-hover,#2b2a27);background:var(--night-hover,#2b2a27)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "纸面操作台",
+    "overview": "afkfactory 官网是客户交回工作区的操作台。客户从微信点开链接，下载工作区，按三步装好，和 agent（客户电脑上的智能体）说清需求，做完把整包传回来，再在订单页看进度。公开页是首页、下载、技能清单、教程；账号区是登录、上传、订单列表和订单详情。读者是不懂技术的客户，手机和电脑都会用。\n\n页面的材料只有三样：暖白纸、墨线、宋体标题。底色是纸，分隔是 1px 细线，标题是宋体，正文是苹方，版本、哈希、时间、单号用等宽。没有卡片墙，没有阴影，没有第二种强调色。夜黑只出现在整段转折处：首页的三步装法和回传带。",
+    "keyCharacteristics": [
+      "纸色打底，细线分栏，页面不用卡片和阴影。",
+      "宋体只做标题，苹方做正文，等宽只给可核对的数据。",
+      "暖棕和蓝灰是信号，面积很小，不铺满任何一块。",
+      "夜黑带只包整段内容，不包单张卡片。",
+      "焦点、错误、分支状态同时用文字和形状说明，不只靠颜色。"
+    ],
+    "rules": [
+      { "name": "The Paper Ground Rule", "body": "页面底色只用纸色。纸色已经是最亮的一层，不再换纯白，也不在纸面上铺装饰渐变。", "section": "colors" },
+      { "name": "The Four-Color Rule", "body": "色相只有纸、墨、暖棕、蓝灰，加夜黑和纸上的暖灰阶。新颜色先回方向契约，不从截图里吸。首屏视频占位的渐变是临时影像，不算色板；真实素材到位后替换。", "section": "colors" },
+      { "name": "The Rare Accent Rule", "body": "暖棕和蓝灰只做信号。暖棕落在编号、落款和列表圆点；蓝灰落在焦点、当前进度和链接悬停。两者都不铺面。", "section": "colors" },
+      { "name": "The Serif-Heading Rule", "body": "标题用宋体，正文用苹方。等宽不写句子，只写可核对的值和标识。", "section": "typography" },
+      { "name": "The Data Is Mono Rule", "body": "版本、日期、大小、SHA、单号、轮次、百分比一律等宽，数字用 tabular-nums。读者要能一眼比对。", "section": "typography" },
+      { "name": "The Measure Rule", "body": "说明段最宽 640px，正文栏最宽 760px，教程正文最宽 840px。超过就断行，不拉满通栏。", "section": "typography" },
+      { "name": "The Gutter Rule", "body": "背景可以通栏，文字不行。任何正文离视口边缘不少于 64px，手机不少于 24px。", "section": "layout" },
+      { "name": "The Flat-By-Default Rule", "body": "表面默认平放。要分组用细线和纸色阶，要强调用字重和面积。不要加投影、浮起的卡片或第二层边框。", "section": "elevation" },
+      { "name": "The Night Band Rule", "body": "夜黑带只包整段内容（首页三步、首页回传带、首屏视频面板），不包单张卡片。带上的文字用 on-night 系列，焦点框换成纸色。按钮悬停用的 --night-hover 是状态，不铺成面。", "section": "elevation" },
+      { "name": "The Radius Ladder Rule", "body": "圆角只有三档：胶囊 999px、控件 6px、进度点 50% 正圆。视频、大面、整段背景保持直角。", "section": "shapes" },
+      { "name": "The Square Media Rule", "body": "全幅媒体不切圆角，不加黑边。首屏视频从页面里长出来，四角是直角。", "section": "shapes" },
+      { "name": "The 44px Rule", "body": "手机上的可点目标不小于 44×44px。行内链接按 WCAG 2.5.8 的例外处理。", "section": "components" },
+      { "name": "The Status-in-Words Rule", "body": "状态先写文字，再用形状和颜色补充。只换颜色不加字，算缺陷。", "section": "components" }
+    ],
+    "dos": [
+      "Do 从纸色底、墨色字、宋体标题、一句说明、1px 细线开始一页。",
+      "Do 用细线和纸色阶分组；通栏背景可以换纸色或夜黑，文字仍留页边距。",
+      "Do 把版本、日期、大小、SHA、单号、轮次、百分比写成等宽，数字用 tabular-nums。",
+      "Do 把暖棕和蓝灰留在小面积信号上：编号、落款、圆点、焦点、当前进度、链接悬停。",
+      "Do 用夜黑带隔开整段转折，带上的焦点框换成纸色。",
+      "Do 状态先写文字，再用形状和颜色补充；错误写清发生了什么、下一步做什么。",
+      "Do 保持 44px 触控、2px 焦点框、4.5:1 正文对比度。"
+    ],
+    "donts": [
+      "Don't 把页面做成卡片墙。容器只服务单件事：拖放区、文件行、当前档提醒、表单面板。",
+      "Don't 用投影或浮起效果做层级；分支斜线段的 1px 内描边是描边，不是阴影。",
+      "Don't 新增色相或从截图里吸色。色板只有纸、墨、暖棕、蓝灰、夜黑和暖灰阶。",
+      "Don't 给全幅视频、黑底带或页面大面切圆角。圆角只有胶囊和 6px 控件。",
+      "Don't 用 --slate 原色写正文或小字；当文字用 --slate-text。",
+      "Don't 在标题上加减眉题（kicker / eyebrow）。小号字距可以标列表、目录、状态和编号，不放在标题上方充场面。",
+      "Don't 把 01 / 02 / 03 当章节装饰。编号只给必须按顺序走的流程：安装三步、教程五步、订单五档。",
+      "Don't 用 emoji、图标字体或 Unicode 符号搭一套图标；现有 → 和 ← 是文字标点，勾和眼睛是内联 SVG。",
+      "Don't 用等宽字写句子。等宽只给数据、版本、哈希、编号和标识。",
+      "Don't 在纸面上铺装饰渐变。唯一的渐变在首屏视频占位里。",
+      "Don't 把当前系统宋体栈当最终字形。锁定字形后自托管中文子集，Windows 回退要复验。"
+    ]
+  }
+}

@@ -1,0 +1,621 @@
+/* 下载页：文件名、文件数据、下载动作，一层层往下。 */
+
+/* 页面标题直接落到文件区，不需要页头那条细线。 */
+.download-page .page-head {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.download-file {
+  --muted: var(--body-soft);
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: var(--space-64);
+  align-items: start;
+  padding: var(--space-32);
+  border-top: var(--line-width-strong) solid var(--clay);
+  background: var(--surface-warm);
+}
+
+.download-filename {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.download-nowrap {
+  white-space: nowrap;
+}
+
+/* 手机上先提醒去电脑，再让下载按钮出现。桌面不显示。 */
+.download-device-note {
+  display: none;
+  margin: var(--space-20) 0 0;
+  padding: var(--space-12) var(--space-14);
+  border: var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--paper-raised);
+  color: var(--body);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+
+.download-spec {
+  margin: 0;
+}
+
+.download-spec-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: var(--space-16);
+  align-items: baseline;
+  padding: var(--space-12) 0;
+  border-bottom: var(--rule);
+}
+
+.download-spec-item:first-child {
+  padding-top: 0;
+}
+
+.download-spec-item dt {
+  color: var(--olive-text);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+}
+
+.download-spec-item dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* 已备好落款：像工厂在纸包上盖的章，版本和日期与数据栏一致。 */
+.download-seal {
+  display: inline-grid;
+  gap: 1px;
+  justify-items: center;
+  margin: var(--space-24) 0 0 auto;
+  padding: var(--space-10) var(--space-18);
+  border: var(--line-width) solid var(--clay-text);
+  outline: var(--line-width) solid
+    color-mix(in srgb, var(--clay) 42%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--oat) 14%, var(--surface-warm));
+  color: var(--clay-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+  letter-spacing: 0.14em;
+  text-align: center;
+  transform: rotate(-2.5deg);
+}
+
+.download-seal-word {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+}
+
+.download-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-16);
+  margin-top: var(--space-32);
+}
+
+.download-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-14);
+  min-height: 52px;
+  padding: var(--space-14) var(--space-24);
+  border-radius: var(--radius-control);
+  background: var(--clay);
+  color: var(--on-accent);
+  font-size: var(--text-control);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  transition:
+    background-color var(--motion-fast) var(--ease-ui),
+    transform var(--motion-fast) var(--ease-ui);
+}
+
+.download-button:hover {
+  background: var(--clay-deep);
+}
+
+.download-button:active {
+  transform: scale(0.99);
+}
+
+.download-button-size {
+  padding-left: var(--space-14);
+  border-left: var(--line-width) solid
+    color-mix(in srgb, var(--on-accent) 32%, transparent);
+  color: color-mix(in srgb, var(--on-accent) 90%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+}
+
+.download-action-note {
+  max-width: 420px;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.download-action-note a,
+.download-sha-body p a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.download-action-note a:hover,
+.download-sha-body p a:hover {
+  color: var(--slate-text);
+}
+
+.download-inline-next {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--text-ui);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.download-inline-next:hover {
+  color: var(--slate-text);
+}
+
+.download-sha {
+  margin-top: var(--space-64);
+  padding-top: var(--space-32);
+  border-top: var(--rule);
+}
+
+.download-sha summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+  min-height: 44px;
+  padding-bottom: var(--space-12);
+  border-bottom: var(--rule);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.download-sha-note {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  letter-spacing: 0.04em;
+}
+
+.download-sha-turn {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-micro);
+  letter-spacing: 0.04em;
+}
+
+.download-sha-turn::before {
+  content: "展开";
+}
+
+.download-sha[open] .download-sha-turn::before {
+  content: "收起";
+}
+
+@media (max-width: 520px) {
+  .download-sha-note {
+    display: none;
+  }
+}
+
+.download-sha summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 加号，展开时转成叉。 */
+.download-sha summary::after {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background:
+    linear-gradient(var(--ink), var(--ink)) center / 14px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) center / 1px 14px no-repeat;
+  transition: transform var(--motion-fast) var(--ease-ui);
+}
+
+.download-sha[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.download-sha-body {
+  max-width: 760px;
+  padding-top: var(--space-20);
+}
+
+.download-sha-body p {
+  margin: 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.download-hash-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-12);
+  margin-top: var(--space-16);
+}
+
+.download-hash {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-12) var(--space-14);
+  border: var(--line-width) solid
+    color-mix(in srgb, var(--olive) 38%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--surface-cool);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.download-copy {
+  flex: none;
+  min-width: 128px;
+  min-height: 44px;
+  padding: 0 var(--space-16);
+  border: var(--rule-ink);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-ui),
+    color var(--motion-fast) var(--ease-ui),
+    transform var(--motion-fast) var(--ease-ui);
+}
+
+.download-copy:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.download-copy:active {
+  transform: scale(0.98);
+}
+
+.download-sha-body > .download-copy-status {
+  min-height: 20px;
+  margin-top: var(--space-6);
+  color: var(--muted);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+}
+
+.download-command {
+  margin-top: var(--space-20);
+}
+
+.download-command p {
+  margin: 0 0 var(--space-8);
+  color: var(--body);
+  font-size: var(--text-ui);
+}
+
+.download-command code {
+  display: block;
+  overflow-x: auto;
+  padding: var(--space-12) var(--space-14);
+  border: var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.download-sha-body > p:last-child {
+  margin-top: var(--space-20);
+}
+
+.download-systems {
+  margin-top: var(--space-64);
+  padding-top: var(--space-32);
+  border-top: var(--rule);
+}
+
+.download-systems h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.download-systems-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: var(--space-64);
+  margin-top: var(--space-20);
+}
+
+.download-systems p {
+  margin: 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.download-systems a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.download-systems a:hover {
+  color: var(--slate-text);
+}
+
+.download-systems .download-hint {
+  margin-top: var(--space-16);
+  padding-top: var(--space-12);
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+
+.download-systems .download-dsh-link {
+  margin-top: var(--space-8);
+}
+
+.download-dsh-link a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.download-steps {
+  margin-top: var(--space-64);
+  padding-top: var(--space-32);
+  border-top: var(--rule);
+}
+
+.download-steps h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.download-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-32);
+  margin-top: var(--space-24);
+  border-top: var(--rule-ink);
+}
+
+.download-step {
+  padding-top: var(--space-20);
+}
+
+.download-step b {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+}
+
+.download-step h3 {
+  margin: var(--space-10) 0 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.download-step p {
+  margin: var(--space-8) 0 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.download-step .download-step-check {
+  padding-top: var(--space-12);
+  border-top: 1px dashed var(--line);
+  color: var(--body);
+}
+
+.download-steps-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-24);
+  color: var(--ink);
+  font-size: var(--text-control);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.download-steps-link:hover {
+  color: var(--slate-text);
+}
+
+.download-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-32);
+  margin-top: var(--space-64);
+  padding-top: var(--space-24);
+  border-top: var(--line-width-strong) solid var(--clay);
+}
+
+.download-next h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-regular);
+  line-height: 1.3;
+}
+
+.download-next p {
+  margin: var(--space-8) 0 0;
+  color: var(--body-soft);
+  font-size: var(--text-body);
+  line-height: 1.6;
+}
+
+.download-next-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: var(--text-control);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.download-next-link:hover {
+  color: var(--slate-text);
+}
+
+@media (max-width: 900px) {
+  .download-device-note {
+    display: block;
+  }
+
+  .download-file {
+    grid-template-columns: 1fr;
+    gap: var(--space-32);
+    padding: var(--space-20);
+  }
+
+  .download-filename {
+    font-size: var(--text-brand);
+  }
+
+  .download-spec-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .download-action {
+    align-items: stretch;
+  }
+
+  .download-button {
+    justify-content: space-between;
+    min-height: 56px;
+  }
+
+  .download-action-note {
+    max-width: none;
+  }
+
+  .download-sha,
+  .download-systems,
+  .download-steps {
+    margin-top: var(--space-48);
+    padding-top: var(--space-24);
+  }
+
+  .download-systems-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-24);
+    margin-top: var(--space-16);
+  }
+
+  .download-step-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: var(--space-16);
+  }
+
+  .download-step {
+    padding-top: var(--space-20);
+  }
+
+  .download-step + .download-step {
+    margin-top: var(--space-20);
+    border-top: var(--rule);
+  }
+
+  .download-hash-row {
+    flex-direction: column;
+  }
+
+  .download-copy {
+    width: 100%;
+  }
+
+  .download-command code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .download-next {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-16);
+    margin-top: var(--space-48);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-sha summary::after {
+    transition: none;
+  }
+
+  .download-button:active,
+  .download-copy:active {
+    transform: none;
+  }
+}

@@ -43,7 +43,9 @@ zip 直接打 `package/`，不套外层文件夹，解压后根目录就是工�
 
 改版本号或日期时，要同时改三处：`manifest.json`、`package/AGENTS.md` 第 3 行、`package/README.txt` 前两行。`build.sh` 只用 `manifest.json` 生成包名和 `技能清单.md`，不会改另外两处。
 
-发布用 `deploy/publish.sh`，需要服务器地址和私钥，由运营者跑：
+发布用 `deploy/publish.sh`，需要服务器地址和私钥，由运营者跑。发布成功后，脚本把版本、日期、文件名、大小、SHA256 写进 `customer-kit/release.json`。官网下载页读这份记录，页面数字和服务器上的文件始终一致。文件要一起提交。
+
+2026-11-07 已改：`build.sh` 用 `jq` 读 `manifest.json` 的版本号，包名 `客户工作区-v1`，zip 不套层。构建时重写 `package/技能清单.md`。本机构建一次，解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
 
 ```bash
 AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
@@ -52,6 +54,8 @@ AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
 脚本会重打包、上传、在服务器上核对 SHA256。I-0077 只在本机构建并记录 SHA256，没有上传。
 
 ### 构建记录
+
+2026-11-07 的记录是历史；当前包以 2026-11-14 的构建记录为准。
 
 - 2026-11-07 第一次构建：`customer-kit/dist/客户工作区-v1.zip`，本机解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
 - 2026-11-07 第二次构建（#35 发布用，含 #95 改过的客户规则）：`customer-kit/dist/客户工作区-v1.zip`，41461 字节，SHA256 `49d3d89a8ccea55c76c19b84e1fbe6375d33b3d2a2f3fc9922a7533ae97038a6`。20 个文件，`unzip` 和 `ditto` 各解压一次，`diff -r` 与 `package/` 一致，`shasum -c` 通过。`技能清单.md` 带 UTF-8 标记。包内时间戳固定成 `manifest.json` 的日期，同一份内容连打两次，SHA256 一样。

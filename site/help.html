@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      document.documentElement.classList.add('js-motion')
+      setTimeout(function () {
+        if (!window.__afkMotionReady) document.documentElement.classList.remove('js-motion')
+      }, 2500)
+    </script>
+    <meta name="theme-color" content="#f0eee6" />
+    <script>
+      ;(function () {
+        var stored = null
+        try {
+          stored = window.localStorage.getItem('afk-theme')
+        } catch (error) {}
+        var dark =
+          stored === 'dark' ||
+          (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) {
+          document.documentElement.setAttribute('data-theme', 'dark')
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', '#141413')
+        }
+      })()
+    </script>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>帮助与客服 · afkfactory</title>
+    <meta
+      name="description"
+      content="卡住了怎么找客服：发哪三样、先别做什么、常见卡点回到教程哪一步。"
+    />
+  </head>
+  <body>
+    <div id="root" data-page="help"><!--app-html--></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

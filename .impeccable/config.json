@@ -1,0 +1,44 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "site/dist/**/*.html"
+        ],
+        "createdAt": "2026-11-14T03:44:27.275Z",
+        "reason": "暖白纸 #f0eee6 是方向契约 .impeccable/surfaces/site-index-html.md 定下的底色。2026-11-14 运营者要求扩充强调色，纸底不变；检测器的默认建议仍不适用于这个已定的世界。"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "site/dist/index.html"
+        ],
+        "createdAt": "2026-11-14T03:44:35.191Z",
+        "reason": "静态扫描把首屏视频里的白字当成纸色背景，实际背景是深色渐变；1440 URL 扫描不报，渲染后对比度合格。"
+      },
+      {
+        "rule": "repeating-stripes-gradient",
+        "value": "*",
+        "files": [
+          "site/dist/**/*.html"
+        ],
+        "createdAt": "2026-11-14T03:44:47.163Z",
+        "reason": "订单五档里的分支状态（校验未通过、已驳回）用斜线填充做非颜色提示，是状态编码，不是装饰。"
+      },
+      {
+        "rule": "numbered-section-labels",
+        "value": "*",
+        "files": [
+          "site/dist/index.html"
+        ],
+        "createdAt": "2026-11-14T03:44:47.179Z",
+        "reason": "首页三步是必须按顺序走的流程，01/02/03 承载顺序信息，不是章节装饰。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,173 @@
+/*
+ * 设计基础：颜色、字体、字号、间距、线宽。
+ * 值来自方向契约 .impeccable/surfaces/site-index-html.md 和选定草图
+ * .impeccable/mocks/decision/refined-v1-anthropic-top.html。
+ * 变量清单见 site/design/tokens.md。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 颜色：纸、墨、暖棕、蓝灰 */
+  --paper: #f0eee6;
+  --paper-raised: #f7f5ef;
+  --paper-press: #e6e2d6;
+  --ink: #141413;
+  --ink-soft: #3d3d3a;
+  --body: #4a4843;
+  --body-soft: #5c5a54;
+  --muted: #6f6b61;
+  --muted-strong: #6a665c;
+  --tan: #c8b69b;
+  --slate: #5f7385;
+  /* 蓝灰当文字时压深一档，纸上从 4.23:1 到 4.81:1；焦点框仍用 --slate。 */
+  --slate-text: color-mix(in srgb, var(--slate) 90%, var(--ink));
+
+  /* 强调色：取自 Anthropic 官网的纸面配色，只做色块和小面积标记。 */
+  --clay: #d97757;
+  --oat: #e3dacc;
+  --blue: #6a9bcc;
+  --olive: #788c5d;
+  --mint: #bcd1ca;
+  --clay-text: color-mix(in srgb, var(--clay) 62%, var(--ink));
+  --blue-text: color-mix(in srgb, var(--blue) 60%, var(--ink));
+  --olive-text: color-mix(in srgb, var(--olive) 68%, var(--ink));
+  /* 亮色块上的字始终用深墨，不随明暗模式翻转。 */
+  --on-accent: #141413;
+  --clay-deep: color-mix(in srgb, var(--clay) 88%, #141413);
+  /* 带色纸面：亮模式是浅色纸，暗模式换成深色纸，字色跟着 --ink 走。 */
+  --surface-warm: #e9e1d1;
+  --surface-cool: #dfe8e3;
+
+  /* 细线与胶囊 */
+  --line: #d9d4c7;
+  --line-soft: #cfc9bb;
+  --line-pill: #d6d1c4;
+  --pill-wash: rgba(255, 255, 255, 0.32);
+  --pill-hover: rgba(20, 20, 19, 0.08);
+
+  /* 黑底区 */
+  --night: #0b0b0b;
+  --night-video: #0b0d0e;
+  --night-hover: #2b2a27;
+  --on-night: #f7f5ef;
+  --on-night-soft: #b8b4aa;
+  --on-night-chip: rgba(247, 245, 239, 0.78);
+  --on-night-note: rgba(247, 245, 239, 0.62);
+  --night-line: rgba(247, 245, 239, 0.5);
+
+  /* 顶栏玻璃 */
+  --glass-highlight: rgba(255, 255, 255, 0.42);
+  --glass-shadow: rgba(20, 20, 19, 0.06);
+
+  /* 字体 */
+  --font-serif: "Songti SC", "SimSun", "Noto Serif SC", serif;
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* 字重 */
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* 字号 */
+  --text-brand: 20px;
+  --text-display: 44px;
+  --text-display-narrow: 32px;
+  --text-section: 38px;
+  --text-section-narrow: 32px;
+  --text-subhead: 26px;
+  --text-lead: 16.5px;
+  --text-control: 16px;
+  --text-body: 15px;
+  --text-ui: 14px;
+  --text-pill-narrow: 12.5px;
+  --text-mono: 12.5px;
+  --text-micro: 12px;
+
+  /* 间距 */
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-28: 28px;
+  --space-32: 32px;
+  --space-40: 40px;
+  --space-48: 48px;
+  --space-56: 56px;
+  --space-64: 64px;
+  --space-80: 80px;
+  --space-96: 96px;
+  --space-120: 120px;
+
+  /* 页面留白 */
+  --gutter: 64px;
+  --gutter-narrow: 24px;
+
+  /* 线宽 */
+  --line-width: 1px;
+  --line-width-strong: 2px;
+  --rule: var(--line-width) solid var(--line);
+  --rule-soft: var(--line-width) solid var(--line-soft);
+  --rule-ink: var(--line-width) solid var(--ink);
+  --rule-pill: var(--line-width) solid var(--line-pill);
+
+  /* 圆角：胶囊和控件两档，视频面板保持直角 */
+  --radius-pill: 999px;
+  --radius-control: 6px;
+
+  /* 关键尺寸 */
+  --nav-height: 80px;
+  --video-height: 640px;
+  --video-height-narrow: 420px;
+
+  /* 动效：时长、缓动、位移、逐字间隔 */
+  --motion-fast: 160ms;
+  --motion-fade: 500ms;
+  --motion-fade-reduced: 200ms;
+  --motion-rise: 800ms;
+  --motion-reveal: 700ms;
+  --motion-reveal-short: 450ms;
+  --motion-reveal-distance: 18px;
+  --motion-stagger: 24ms;
+  --ease-fade: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --ease-rise: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ui: cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* 夜间：纸面和墨色对调，强调色保留。色块上的字仍用深墨。 */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #141413;
+  --paper-raised: #1f1e1d;
+  --paper-press: #30302e;
+  --ink: #faf9f5;
+  --ink-soft: #e8e6dc;
+  --body: #c9c6bd;
+  --body-soft: #b0aea5;
+  --muted: #9a978e;
+  --muted-strong: #87867f;
+  --tan: #d4a27f;
+  --slate: #8fa9bd;
+
+  --line: #30302e;
+  --line-soft: #262624;
+  --line-pill: #3d3d3a;
+  --pill-wash: rgba(250, 249, 245, 0.06);
+  --pill-hover: rgba(250, 249, 245, 0.1);
+
+  --glass-highlight: rgba(250, 249, 245, 0.1);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+
+  --surface-warm: #2a2521;
+  --surface-cool: #1f2824;
+}
