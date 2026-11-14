@@ -613,6 +613,8 @@
       seen[dedupe] = true;
       var a = LAST.nodes[fromKey], b = LAST.nodes[toKey];
       if (!a || !b) return;
+      /* 推翻根决定的票会「产出」新根；根在顶部，这条回边横穿全图，票卡已写产出，不画。 */
+      if (kind === "produced" && toKey === LAST.rootKey) return;
       var cls = ["edge-a"];
       if (kind === "produced") cls.push("strong");
       else if (kind === "derived") {

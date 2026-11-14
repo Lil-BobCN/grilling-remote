@@ -100,4 +100,32 @@ assert.ok(html.indexOf("依赖前提 P-4") >= 0, "所有前提都画，不只前
 assert.ok(html.indexOf("由 #T1 产出 · 4 条前提") >= 0, "节点 meta 按原型写前提数");
 assert.ok(html.indexOf("还有 ") < 0, "不再写「还有 N 条前提」");
 
+/* 推翻根决定的票会「产出」新根：那条回边不画，避免一条长线横穿全图。 */
+const overturnBoard = {
+  map: { id: "2", title: "根被推翻", fragments: ["一。"] },
+  root: { id: "D-R", statement: "新根", fragments: [{ id: "D-R#1", index: 1, text: "一。" }] },
+  fragments: [{ id: "D-R#1", index: 1, text: "一。" }],
+  groups: [
+    { key: "decision:D-R", root: true, ticket: null, main: "D-R", decisions: ["D-R"] },
+    { key: "decision:D-1", root: false, ticket: "T1", main: "D-1", decisions: ["D-1"] },
+  ],
+  decisions: [
+    { id: "D-R", statement: "新根", status: "active", premises: [], root_of: "2" },
+    { id: "D-1", statement: "另一条决定", status: "active", premises: [], source_ticket: "T1" },
+  ],
+  tickets: [
+    { id: "T1", title: "推翻根的票", type: "task", state: "open", work: "未领取",
+      derived_from: ["D-R"], derived_from_inferred: [], covers: [],
+      produces: ["D-R", "D-1"], split_reason: "" },
+  ],
+  edges: [
+    { kind: "derived", from: "decision:D-R", to: "ticket:T1" },
+    { kind: "produced", from: "ticket:T1", to: "decision:D-R" },
+    { kind: "produced", from: "ticket:T1", to: "decision:D-1" },
+  ],
+};
+const overturnHtml = window.BoardGraph.render(overturnBoard, {}).html;
+assert.strictEqual((overturnHtml.match(/edge-a strong/g) || []).length, 1,
+  "票到根的回边不画，只画票到普通决定的产出边");
+
 console.log("ok 五层树：层数、父节点、主/次要/跨层边、根部母线、前提块");
