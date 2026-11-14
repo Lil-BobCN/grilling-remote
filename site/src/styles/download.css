@@ -75,6 +75,36 @@
   overflow-wrap: anywhere;
 }
 
+/* 已备好落款：像工厂在纸包上盖的章，版本和日期与数据栏一致。 */
+.download-seal {
+  display: inline-grid;
+  gap: 1px;
+  justify-items: center;
+  margin: var(--space-24) 0 0 auto;
+  padding: var(--space-10) var(--space-18);
+  border: var(--line-width) solid
+    color-mix(in srgb, var(--ink) 58%, var(--paper));
+  outline: var(--line-width) solid
+    color-mix(in srgb, var(--ink) 32%, var(--paper));
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--tan) 16%, transparent);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+  letter-spacing: 0.14em;
+  text-align: center;
+  transform: rotate(-2.5deg);
+}
+
+.download-seal-word {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+}
+
 .download-action {
   display: flex;
   flex-direction: column;
@@ -136,7 +166,7 @@
 
 .download-action-note a:hover,
 .download-sha-body p a:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .download-inline-next {
@@ -151,7 +181,7 @@
 }
 
 .download-inline-next:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .download-sha {
@@ -361,7 +391,7 @@
 }
 
 .download-systems a:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .download-systems .download-hint {
@@ -421,7 +451,7 @@
 }
 
 .download-next-link:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 @media (max-width: 900px) {

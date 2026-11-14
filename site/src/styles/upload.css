@@ -565,7 +565,7 @@
 }
 
 .upload-help-link:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 /* 成功 */
@@ -747,7 +747,7 @@
 }
 
 .upload-side-link:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 /* 窄屏 */

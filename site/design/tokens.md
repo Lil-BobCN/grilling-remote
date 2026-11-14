@@ -19,6 +19,7 @@
 | `--muted-strong` | `#6a665c` | 等宽小字 |
 | `--tan` | `#c8b69b` | 暖棕，方向契约的第四色 |
 | `--slate` | `#5f7385` | 焦点框 |
+| `--slate-text` | `color-mix(in srgb, var(--slate) 90%, var(--ink))` | 蓝灰当文字（链接悬停）；纸上 4.81:1 |
 | `--line` | `#d9d4c7` | 细线分隔 |
 | `--line-soft` | `#cfc9bb` | 元信息上方细线 |
 | `--line-pill` | `#d6d1c4` | 胶囊描边 |

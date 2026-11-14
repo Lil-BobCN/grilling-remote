@@ -117,7 +117,7 @@
 }
 
 .tutorial-alt-action:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .tutorial-hero-meta {
@@ -196,7 +196,7 @@
 }
 
 .tutorial-alt-route a:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 /* 目录和正文 */
@@ -417,7 +417,7 @@
 }
 
 .tutorial-inline-action:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 /* 你会看到 */
@@ -973,7 +973,7 @@
 }
 
 .tutorial-stuck-go:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .tutorial-next {
@@ -1004,7 +1004,7 @@
 }
 
 .tutorial-next a:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 /* 客服 */

@@ -119,7 +119,7 @@
 }
 
 .skills-next-link:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .skills-next-link-quiet {

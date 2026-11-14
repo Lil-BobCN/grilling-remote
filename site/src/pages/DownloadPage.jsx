@@ -55,7 +55,7 @@ export default function DownloadPage() {
       scaffold={false}
       className="download-page"
     >
-      <section className="download-file" aria-labelledby="download-file-title">
+      <section className="download-file download-file--stamp" aria-labelledby="download-file-title">
         <div className="download-file-main">
           <h2 id="download-file-title" className="download-filename">
             {release.file}
@@ -89,22 +89,31 @@ export default function DownloadPage() {
           </div>
         </div>
 
-        <dl className="download-spec">
-          <div className="download-spec-item">
-            <dt>当前版本</dt>
-            <dd>{release.version}</dd>
-          </div>
-          <div className="download-spec-item">
-            <dt>日期</dt>
-            <dd>{release.date}</dd>
-          </div>
-          <div className="download-spec-item">
-            <dt>大小</dt>
-            <dd>
-              {size} 字节（{sizeKb} KB）
-            </dd>
-          </div>
-        </dl>
+        <div className="download-spec-wrap">
+          <dl className="download-spec">
+            <div className="download-spec-item">
+              <dt>当前版本</dt>
+              <dd>{release.version}</dd>
+            </div>
+            <div className="download-spec-item">
+              <dt>日期</dt>
+              <dd>{release.date}</dd>
+            </div>
+            <div className="download-spec-item">
+              <dt>大小</dt>
+              <dd>
+                {size} 字节（{sizeKb} KB）
+              </dd>
+            </div>
+          </dl>
+
+          <p className="download-seal" aria-hidden="true">
+            <span className="download-seal-word">已备好</span>
+            <span>
+              {release.version} · {release.date}
+            </span>
+          </p>
+        </div>
       </section>
 
       <details className="download-sha">
