@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "date": "2026-11-07",
+  "date": "2026-11-14",
   "skills": [
     {"name": "grilling", "summary": "一次问一件事，把模糊的想法问清楚", "when": "聊需求、定终点的时候"},
     {"name": "domain-modeling", "summary": "把需求里的词定清楚，写进词表", "when": "同一个词有几种意思的时候"},
