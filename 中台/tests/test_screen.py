@@ -112,6 +112,27 @@ class TestBoard(Base):
         new_id = event["payload"]["new_decision"]["id"]
         self.assertEqual(self.store.state["decisions"][new_id]["source_ticket"], t1)
 
+    def test_ticket_group_excludes_root_decision(self):
+        map_id, root = self.make_map()
+        t1 = self.make_ticket(map_id, root["id"], "既产决定又推翻根")
+        d1 = self.board.decision_create("agent:test", "普通决定", source_ticket=t1)
+        self.append(d1)
+        event = self.board.decision_overturn(
+            "agent:test", root["id"], "新根决定", source_ticket=t1,
+            fragments=["第一句。", "第二句。"])
+        self.append(event)
+        new_id = event["payload"]["new_decision"]["id"]
+
+        view = board_view(self.store, map_id)
+        keys = [g["key"] for g in view["groups"]]
+        self.assertEqual(len(keys), len(set(keys)), "分组 key 不能重复")
+        group = [g for g in view["groups"] if g["ticket"] == t1][0]
+        self.assertEqual(group["main"], d1["target"])
+        self.assertNotIn(new_id, group["decisions"])
+        root_group = [g for g in view["groups"] if g["root"]][0]
+        self.assertEqual(root_group["decisions"], [new_id])
+
+
     def test_signals(self):
         map_id, root = self.make_map()
         # 缺口：第二句没有票接

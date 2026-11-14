@@ -336,6 +336,9 @@ def board_view(store, map_id=None):
         })
     for ticket in tickets:
         produced = [d for d in decisions if d.get("source_ticket") == ticket["id"]]
+        # 推翻根决定时，新根决定继承了来源票；根决定已单列在根组，这里不能再建一个同 key 的组。
+        if root:
+            produced = [d for d in produced if d["id"] != root["id"]]
         if not produced:
             continue
         produced.sort(key=lambda d: (
