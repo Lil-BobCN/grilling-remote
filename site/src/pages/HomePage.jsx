@@ -226,8 +226,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="home-steps" aria-labelledby="home-steps-title">
-        <h2 id="home-steps-title" className="home-section-title" data-reveal>
+      <section
+        className="home-steps home-steps--night"
+        aria-labelledby="home-steps-title"
+      >
+        <h2
+          id="home-steps-title"
+          className="home-section-title"
+          data-reveal
+        >
           三步装好
         </h2>
         <div className="home-step-grid">

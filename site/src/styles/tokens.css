@@ -18,6 +18,8 @@
   --muted-strong: #6a665c;
   --tan: #c8b69b;
   --slate: #5f7385;
+  /* 蓝灰当文字时压深一档，纸上从 4.23:1 到 4.81:1；焦点框仍用 --slate。 */
+  --slate-text: color-mix(in srgb, var(--slate) 90%, var(--ink));
 
   /* 细线与胶囊 */
   --line: #d9d4c7;

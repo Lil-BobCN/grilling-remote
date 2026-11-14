@@ -298,6 +298,46 @@ html.js-motion .hero-video {
   background: var(--paper-raised);
 }
 
+/* 三步装好：深色带。colorize 审阅选定，暖棕只落在步骤号上。 */
+.home-steps--night {
+  background: var(--night);
+  color: var(--on-night);
+}
+
+.home-steps--night .home-section-title {
+  color: var(--on-night);
+}
+
+.home-steps--night .home-step-grid {
+  border-top: var(--line-width) solid var(--night-line);
+}
+
+.home-steps--night .home-step b {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  margin-bottom: var(--space-4);
+  padding: 0 var(--space-10);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--tan) 85%, var(--night-hover));
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+}
+
+.home-steps--night .home-step h3 {
+  color: var(--on-night);
+}
+
+.home-steps--night .home-step p {
+  color: var(--on-night-soft);
+}
+
+.home-steps--night .home-step span {
+  border-top-color: var(--night-line);
+  color: var(--on-night-note);
+}
+
 .home-section-title {
   margin: 0;
   font-family: var(--font-serif);
@@ -411,7 +451,7 @@ html.js-motion .hero-video {
 }
 
 .home-skills-link:hover {
-  color: var(--slate);
+  color: var(--slate-text);
 }
 
 .home-skill-list {
@@ -566,6 +606,10 @@ html.js-motion .hero-video {
   .home-step {
     padding: var(--space-18) 0 0;
     border-top: var(--rule-ink);
+  }
+
+  .home-steps--night .home-step {
+    border-top-color: var(--night-line);
   }
 
   .home-skill-list li {
