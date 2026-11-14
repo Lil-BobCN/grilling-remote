@@ -14,6 +14,7 @@
 | `1440-download.png`、`1920-download.png`、`390-download.png` | 下载 |
 | `1440-skills.png`、`1920-skills.png`、`390-skills.png` | 技能清单 |
 | `1440-tutorial.png`、`1920-tutorial.png`、`390-tutorial.png` | 教程 |
+| `1440-help.png`、`1920-help.png`、`390-help.png` | 帮助与客服（二维码位是上线前补的占位） |
 | `1440-app.png`、`1920-app.png`、`390-app.png` | 登录 |
 | `1440-app-upload.png`、`1920-app-upload.png` | 上传（没连上服务的状态） |
 | `390-app-upload.png` | 上传表单在 390 的单栏重排（临时 mock 的登录态） |

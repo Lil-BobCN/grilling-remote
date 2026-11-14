@@ -167,7 +167,7 @@ function LoginPanel({ notice, onLogin }) {
         >
           {busy ? '正在登录…' : '登录'}
         </button>
-        <a className="upload-help-link" href="/tutorial#support">
+        <a className="upload-help-link" href="/help">
           忘了密码？找客服
         </a>
       </div>
@@ -252,7 +252,7 @@ function SideNotes() {
       <p className="upload-side-help">
         卡在这一步？截一张屏幕，把窗口边框和报错带上，发给客服。微信为主，电话兜底。
       </p>
-      <a className="upload-side-link" href="/tutorial#support">
+      <a className="upload-side-link" href="/help">
         怎么找客服 →
       </a>
     </aside>

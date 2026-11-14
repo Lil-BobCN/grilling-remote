@@ -399,7 +399,7 @@ function Side({ order, view }) {
       <section className="order-side-block">
         <h3>有问题</h3>
         <p>在微信里直接说。电话只在微信联系不上时用。</p>
-        <a className="order-side-link" href="/tutorial#support">
+        <a className="order-side-link" href="/help">
           怎么找客服 →
         </a>
       </section>
@@ -559,7 +559,7 @@ export default function OrderDetailPage({ id, session, onLogout }) {
             再试一次
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/tutorial#support">找客服</a>。
+            一直打不开，<a href="/help">找客服</a>。
           </p>
         </section>
       </DetailShell>
@@ -576,7 +576,7 @@ export default function OrderDetailPage({ id, session, onLogout }) {
             回我的订单
           </a>
           <p className="orders-notice-hint">
-            确定没走错？<a href="/tutorial#support">找客服</a>。
+            确定没走错？<a href="/help">找客服</a>。
           </p>
         </section>
       </DetailShell>

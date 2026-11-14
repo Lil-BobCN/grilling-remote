@@ -126,7 +126,7 @@ export default function AccountApp() {
             再试一次
           </button>
           <p className="orders-notice-hint">
-            一直打不开，<a href="/tutorial#support">找客服</a>。
+            一直打不开，<a href="/help">找客服</a>。
           </p>
         </section>
       </main>

@@ -103,7 +103,8 @@ export default function LoginPage() {
           </div>
 
           <p className="login-note">
-            账号由我们开通，密码通过微信发给你。忘了密码，微信找客服重设。
+            账号由我们开通，密码通过微信发给你。忘了密码，
+            <a href="/help">微信找客服</a>重设。
           </p>
         </section>
 
@@ -183,6 +184,9 @@ export default function LoginPage() {
                 <p>
                   在微信里跟客服说「重设密码」，我们会发一个新的给你。电话只在微信联系不上时用。
                 </p>
+                <a className="login-forgot-link" href="/help">
+                  怎么找客服 →
+                </a>
               </div>
             ) : null}
 
@@ -194,7 +198,7 @@ export default function LoginPage() {
           </form>
 
           <p className="login-hint">
-            还没有账号？首期邀请制。要开通，微信找客服。
+            还没有账号？首期邀请制。要开通，<a href="/help">微信找客服</a>。
           </p>
         </section>
       </div>

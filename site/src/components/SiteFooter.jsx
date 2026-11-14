@@ -4,7 +4,7 @@ export default function SiteFooter({ help = true }) {
   return (
     <footer className="site-footer" data-reveal>
       {help ? (
-        <a className="footer-help" href="/tutorial#support">
+        <a className="footer-help" href="/help">
           帮助与客服
         </a>
       ) : null}

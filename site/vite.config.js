@@ -9,6 +9,7 @@ const publicAliases = new Map([
   ['/download', '/download.html'],
   ['/skills', '/skills.html'],
   ['/tutorial', '/tutorial.html'],
+  ['/help', '/help.html'],
 ])
 
 /**
@@ -69,6 +70,7 @@ export default defineConfig({
         download: resolve(root, 'download.html'),
         skills: resolve(root, 'skills.html'),
         tutorial: resolve(root, 'tutorial.html'),
+        help: resolve(root, 'help.html'),
         app: resolve(root, 'app/index.html'),
       },
     },

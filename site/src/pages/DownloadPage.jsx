@@ -84,7 +84,7 @@ export default function DownloadPage() {
               没下完时，浏览器会给文件名加一个后缀。
               <span className="download-nowrap">等后缀消失，再解压。</span>
               <span className="download-nowrap">
-                下不动？<a href="/tutorial#support">找客服</a>。
+                下不动？<a href="/help">找客服</a>。
               </span>
             </p>
             <a className="download-inline-next" href="/tutorial">
@@ -163,7 +163,7 @@ export default function DownloadPage() {
             <code>{`certutil -hashfile "%USERPROFILE%\\Downloads\\${release.file}" SHA256`}</code>
           </div>
           <p>
-            对不上，先确认下的是最新版，再<a href="/tutorial#support">找客服</a>。
+            对不上，先确认下的是最新版，再<a href="/help">找客服</a>。
           </p>
         </div>
       </details>
@@ -199,7 +199,7 @@ export default function DownloadPage() {
               </a>
             </p>
             <p className="download-hint">
-              装不上，或工作区打不开：<a href="/tutorial#support">找客服</a>。
+              装不上，或工作区打不开：<a href="/help">找客服</a>。
             </p>
           </div>
         </div>
