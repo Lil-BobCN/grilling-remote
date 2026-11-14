@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import release from '../../../customer-kit/release.json'
+import manifest from '../../../customer-kit/manifest.json'
 import '../styles/tutorial.css'
 
 const downloadHref = encodeURI(`/downloads/${release.file}`)
@@ -281,7 +282,7 @@ export default function TutorialPage() {
               <div>
                 <b>客户工作区 {release.version}</b>
                 <p>
-                  {sizeKb} KB。九个技能和规则都在里面，解压就能用。
+                  {sizeKb} KB。{manifest.skills.length} 个技能和规则都在里面，解压就能用。
                 </p>
               </div>
             </li>
@@ -401,7 +402,7 @@ export default function TutorialPage() {
                 </span>
                 <div>
                   <h3>下载客户工作区</h3>
-                  <p>九个技能、规则和说明都在里面，解压就能用，不用再装配。</p>
+                  <p>{manifest.skills.length} 个技能、规则和说明都在里面，解压就能用，不用再装配。</p>
 
                   <p className="tutorial-file-meta">
                     {release.file} · {size} 字节（{sizeKb} KB） ·{' '}
@@ -589,7 +590,7 @@ export default function TutorialPage() {
                     会先判断这件事是大还是小。
                   </p>
                   <p>
-                    agent 会先检查三样文件在不在，然后讲一段话，再问你想做什么。一次只问一小轮。
+                    agent 会先检查三样文件在不在，然后讲一段话，再问你想做什么。一轮列出几个问题，答完一轮再问下一轮。
                   </p>
                 </div>
               </li>

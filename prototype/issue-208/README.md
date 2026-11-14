@@ -1,5 +1,7 @@
 # 官网下载页、清单页、上传页样品（#208）
 
+> 2026-11-14 起本目录是历史样品，已废弃。当前技能数和版本数据以 `customer-kit/manifest.json` 和 `customer-kit/release.json` 为准。
+
 一句话：三个单文件样品，定官网下载页、技能清单页、上传页的样子和文案位置。视觉跟教程页（`prototype/issue-31/tutorial.html`）同一套。
 
 ## 怎么开

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import RiseChars from '../components/RiseChars.jsx'
+import manifest from '../../../customer-kit/manifest.json'
+import release from '../../../customer-kit/release.json'
 import '../styles/home.css'
 
 const titleSegments = [
@@ -10,7 +12,7 @@ const titleSegments = [
 const reasons = [
   {
     title: '打开就能用',
-    text: '九个技能和一套规则都装好了，不用自己配。',
+    text: `${manifest.skills.length} 个技能和一套规则都装好了，不用自己配。`,
   },
   {
     title: '文件留在你电脑',
@@ -43,18 +45,8 @@ const steps = [
   },
 ]
 
-// 来源：customer-kit/manifest.json。清单页 I-0065 会直接读 manifest。
-const skills = [
-  { name: 'grilling', summary: '一次问一件事，把模糊的想法问清楚。' },
-  { name: 'domain-modeling', summary: '把需求里的词定清楚，写进词表。' },
-  { name: 'wayfinder', summary: '把大需求拆成一张张小议题，一次做一张。' },
-  { name: 'prototype', summary: '先做个粗糙的样子给你看，边看边改。' },
-  { name: 'research', summary: '去查资料，把查到的结论写成文件。' },
-  { name: 'wait-what', summary: '你没听懂时，把刚才那段重新讲一遍。' },
-  { name: 'next', summary: '看进度，说下一张做哪张，并给出可复制的一行。' },
-  { name: 'map-gate', summary: '写结论前查一遍，有没有推翻前面定过的事。' },
-  { name: 'wrap-up', summary: '收尾时列出新想法和冲突，核对进度。' },
-]
+// 来源：customer-kit/manifest.json。清单页 I-0065 也直接读 manifest。
+const skills = manifest.skills
 
 export default function HomePage() {
   const heroRef = useRef(null)
@@ -149,9 +141,9 @@ export default function HomePage() {
             className="home-hero-meta motion-rise"
             style={{ '--motion-delay': '340ms' }}
           >
-            客户工作区 v1
+            客户工作区 {release.version}
             <br />
-            41,456 字节 · 2026-11-07
+            {release.size.toLocaleString('en-US')} 字节 · {release.date}
             <br />
             支持 macOS 和 Windows 64 位
           </p>
@@ -183,7 +175,7 @@ export default function HomePage() {
                 className="hero-video-note motion-rise"
                 style={{ '--motion-delay': '480ms' }}
               >
-                九个技能先把需求问透；再用 AI 时代的<span className="home-keep">低成本</span>开发，把想法做出来。
+                {manifest.skills.length} 个技能先把需求问透；再用 AI 时代的<span className="home-keep">低成本</span>开发，把想法做出来。
               </p>
             </div>
             <div
@@ -267,7 +259,7 @@ export default function HomePage() {
         <div className="home-skills-grid">
           <div data-reveal>
             <h2 id="home-skills-title" className="home-section-title">
-              九个技能，<br />装好就能用。
+              {manifest.skills.length} 个技能，<br />装好就能用。
             </h2>
             <p className="home-section-lede">
               不用学，也不用记名字。agent 会主动帮你判断，选对技能。

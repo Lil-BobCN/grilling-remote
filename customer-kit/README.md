@@ -55,6 +55,8 @@ AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
 
 ### 构建记录
 
+2026-11-07 的记录是历史；当前包以 2026-11-14 的构建记录为准。
+
 - 2026-11-07 第一次构建：`customer-kit/dist/客户工作区-v1.zip`，本机解压到空目录核对过：根目录有 `AGENTS.md` 和 `.dsh`，技能 9 个，无 `.DS_Store`，`shasum -c` 通过。Mac 和 Windows 右键压缩是否带上隐藏目录，仍未测。
 - 2026-11-07 第二次构建（#35 发布用，含 #95 改过的客户规则）：`customer-kit/dist/客户工作区-v1.zip`，41461 字节，SHA256 `49d3d89a8ccea55c76c19b84e1fbe6375d33b3d2a2f3fc9922a7533ae97038a6`。20 个文件，`unzip` 和 `ditto` 各解压一次，`diff -r` 与 `package/` 一致，`shasum -c` 通过。`技能清单.md` 带 UTF-8 标记。包内时间戳固定成 `manifest.json` 的日期，同一份内容连打两次，SHA256 一样。
 - 2026-11-07 第三次构建（#113 发布用，含 #109 登录后上传说法）：`customer-kit/dist/客户工作区-v1.zip`，41456 字节，SHA256 `ad5931acb522aa41d1a2d99173d8df45a99b5c60a29cc6bcdef44682ecc66105`。20 个文件，`unzip` 和 `ditto` 各解压一次，`diff -r` 与 `package/` 一致，`shasum -c` 通过。包内 `README.txt` 去掉了「Windows 未实机验证」，和官网「只写支持」的口径一致。同一份内容连打两次，SHA256 一样。已发布到 https://afkfactory.dev/downloads/客户工作区-v1.zip；公网取回 41456 字节，SHA256 与 `.sha256` 一致，下载响应头 `cache-control: no-cache`。
