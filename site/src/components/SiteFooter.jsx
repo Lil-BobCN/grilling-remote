@@ -13,6 +13,7 @@ export default function SiteFooter({ help = true }) {
         <a href="/skills">技能清单</a>
         <a href="/tutorial">教程</a>
         <a href="/app/upload">上传</a>
+        <a href="/app">登录</a>
         <a href="/app/orders">我的订单</a>
       </div>
       <p className="footer-meta">

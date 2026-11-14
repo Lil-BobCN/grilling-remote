@@ -13,7 +13,7 @@ export default function SkillsPage() {
       scaffold={false}
       className="skills-page"
     >
-      <p className="skills-meta">
+      <p className="skills-meta" data-reveal="fade" style={{ '--reveal-delay': '120ms' }}>
         <span>共 {skills.length} 个</span>
         <span aria-hidden="true">·</span>
         <span>{manifest.version}</span>
@@ -23,7 +23,11 @@ export default function SkillsPage() {
 
       <ol className="skills-list">
         {skills.map((skill, index) => (
-          <li key={skill.name}>
+          <li
+            key={skill.name}
+            data-reveal="row"
+            style={{ '--reveal-delay': `${Math.min(index * 55, 330)}ms` }}
+          >
             <span className="skills-index" aria-hidden="true">
               {String(index + 1).padStart(2, '0')}
             </span>
@@ -39,7 +43,11 @@ export default function SkillsPage() {
         ))}
       </ol>
 
-      <section className="skills-next" aria-labelledby="skills-next-title">
+      <section
+        className="skills-next"
+        aria-labelledby="skills-next-title"
+        data-reveal="panel"
+      >
         <div>
           <h2 id="skills-next-title">技能跟着工作区走</h2>
           <p>下载解压，用 dsh 打开，技能就在里面。第一次说什么，教程里写了。</p>

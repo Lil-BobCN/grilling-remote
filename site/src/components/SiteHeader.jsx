@@ -1,4 +1,8 @@
 import { useEffect, useRef } from 'react'
+import ThemeToggle from './ThemeToggle.jsx'
+
+const BRAND = 'AFKFACTORY'
+const MORPH_DISTANCE = 480
 
 export default function SiteHeader({ current }) {
   const headerRef = useRef(null)
@@ -11,6 +15,8 @@ export default function SiteHeader({ current }) {
     const narrow = window.matchMedia('(max-width: 900px)')
     let frame = 0
     let last = ''
+    let lastGlass = null
+    let glassOverride = false
 
     const setProgress = (value) => {
       if (value === last) return
@@ -18,21 +24,44 @@ export default function SiteHeader({ current }) {
       header.style.setProperty('--hp', value)
     }
 
+    // 减少动态时不做字标变形，但顶栏仍要在滚动后收成不透明的磨砂面。
+    const setGlass = (value) => {
+      glassOverride = true
+      if (value === lastGlass) return
+      lastGlass = value
+      header.style.setProperty('--hp-glass', value)
+    }
+
+    const clearGlass = () => {
+      if (!glassOverride) return
+      glassOverride = false
+      lastGlass = null
+      header.style.removeProperty('--hp-glass')
+    }
+
     const update = () => {
       frame = 0
 
-      if (reduced.matches || narrow.matches) {
+      if (narrow.matches) {
         setProgress('0')
+        setGlass('0')
         return
       }
 
+      if (reduced.matches) {
+        setProgress('0')
+        setGlass(window.scrollY > 8 ? '1' : '0')
+        return
+      }
+
+      clearGlass()
       const maxScroll = Math.max(
         1,
         document.documentElement.scrollHeight - window.innerHeight,
       )
-      const end = Math.min(120, maxScroll)
+      const end = Math.min(MORPH_DISTANCE, maxScroll)
       const raw = Math.min(1, Math.max(0, window.scrollY / end))
-      setProgress((raw * raw * (3 - 2 * raw)).toFixed(4))
+      setProgress(raw.toFixed(4))
     }
 
     const schedule = () => {
@@ -89,13 +118,30 @@ export default function SiteHeader({ current }) {
           aria-current={current === 'home' ? 'page' : undefined}
         >
           <span className="brand-full" aria-hidden="true">
-            AFKFACTORY
-          </span>
-          <span className="brand-mark" aria-hidden="true">
-            AFK
+            {[...BRAND].map((letter, index) => (
+              <span
+                className="brand-letter"
+                style={{
+                  '--letter-index': index,
+                  '--letter-start':
+                    index < 3 ? 2 : 0.12 + (BRAND.length - 1 - index) * 0.065,
+                }}
+                key={index}
+              >
+                {letter}
+              </span>
+            ))}
           </span>
         </a>
         <div className="nav-right">
+          <ThemeToggle />
+          <a
+            className="pill"
+            href="/app"
+            aria-current={current === 'login' ? 'page' : undefined}
+          >
+            登录
+          </a>
           <a
             className="pill"
             href="/app/orders"
