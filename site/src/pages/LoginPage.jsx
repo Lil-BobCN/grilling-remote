@@ -66,9 +66,13 @@ export default function LoginPage() {
       await login(cleanEmail, password)
       window.location.assign(safeNext())
     } catch (requestError) {
-      setError(
-        requestError.status === 401 ? l.errorWrong : l.errorNetwork,
-      )
+      if (requestError.status === 401) {
+        setError(l.errorWrong)
+      } else if (requestError.status === 403) {
+        setError(copy.account.disabled.loginError)
+      } else {
+        setError(l.errorNetwork)
+      }
       setBusy(false)
     }
   }
@@ -189,7 +193,7 @@ export default function LoginPage() {
 
             {error ? (
               <p className="login-error" id="login-error" role="alert">
-                {error}
+                <Rich parts={error} />
               </p>
             ) : null}
           </form>

@@ -524,6 +524,7 @@ function DetailShell({ session, onLogout, children }) {
 export default function OrderDetailPage({ id, session, onLogout }) {
   const { copy } = useI18n()
   const d = copy.account.detail
+  const disabled = copy.account.disabled
   const [state, setState] = useState('loading')
   const [order, setOrder] = useState(null)
   const [missingOrder, setMissingOrder] = useState(false)
@@ -551,6 +552,10 @@ export default function OrderDetailPage({ id, session, onLogout }) {
       if (error.status === 404) {
         setMissingOrder(true)
         setState('ready')
+        return
+      }
+      if (error.status === 403) {
+        setState('disabled')
         return
       }
       setState('error')
@@ -588,6 +593,20 @@ export default function OrderDetailPage({ id, session, onLogout }) {
           <p className="orders-notice-hint">
             <Rich parts={d.helpHint} />
           </p>
+        </section>
+      </DetailShell>
+    )
+  }
+
+  if (state === 'disabled') {
+    return (
+      <DetailShell session={session} onLogout={onLogout}>
+        <section className="orders-notice" role="alert">
+          <h2>{disabled.title}</h2>
+          <p>{disabled.body}</p>
+          <a className="account-button" href="/help">
+            {disabled.action}
+          </a>
         </section>
       </DetailShell>
     )

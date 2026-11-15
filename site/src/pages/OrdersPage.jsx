@@ -98,6 +98,7 @@ function OrderRow({ order, view }) {
 export default function OrdersPage({ session, onLogout }) {
   const { lang, copy } = useI18n()
   const o = copy.account.orders
+  const disabled = copy.account.disabled
   const [state, setState] = useState('loading')
   const [orders, setOrders] = useState([])
 
@@ -112,6 +113,10 @@ export default function OrdersPage({ session, onLogout }) {
         window.location.replace(
           `/app?next=${encodeURIComponent('/app/orders')}`,
         )
+        return
+      }
+      if (error.status === 403) {
+        setState('disabled')
         return
       }
       setState('error')
@@ -171,6 +176,16 @@ export default function OrdersPage({ session, onLogout }) {
           <p className="orders-notice-hint">
             <Rich parts={o.helpHint} />
           </p>
+        </section>
+      ) : null}
+
+      {state === 'disabled' ? (
+        <section className="orders-notice" role="alert">
+          <h2>{disabled.title}</h2>
+          <p>{disabled.body}</p>
+          <a className="account-button" href="/help">
+            {disabled.action}
+          </a>
         </section>
       ) : null}
 
