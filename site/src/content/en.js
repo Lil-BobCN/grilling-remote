@@ -349,7 +349,6 @@ export const en = {
       copied: 'Copied',
       copyFailed: 'Could not copy. Select the text and copy it manually.',
       stuckTitle: 'Stuck at this step?',
-      stuckAria: 'Stuck at this step',
       stuckLink: 'How to reach support →',
       checkTitle: 'You will see',
       doLabel: 'Do this',

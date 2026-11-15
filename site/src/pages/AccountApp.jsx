@@ -116,6 +116,7 @@ export default function AccountApp() {
   } else if (sessionState === 'loading') {
     content = (
       <main id="main" className="page account-page" aria-busy="true">
+        <h1 className="sr-only">{copy.account.orders.title}</h1>
         <p className="orders-loading-text" role="status">
           {a.loading}
         </p>
@@ -129,6 +130,7 @@ export default function AccountApp() {
   } else if (sessionState === 'error') {
     content = (
       <main id="main" className="page account-page">
+        <h1 className="sr-only">{copy.account.orders.title}</h1>
         <section className="orders-notice" role="alert">
           <h2>{a.errorTitle}</h2>
           <p>{a.errorBody}</p>

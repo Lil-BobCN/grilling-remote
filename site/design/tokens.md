@@ -98,7 +98,7 @@
 | `--font-serif` | "Source Serif 4" → Songti SC → SimSun → Noto Serif SC → serif | 英文标题 |
 | `--font-sans` | "Instrument Sans" → PingFang SC → Hiragino Sans GB → Microsoft YaHei → Noto Sans SC → system-ui | 英文正文和界面 |
 
-这两个字体是 Anthropic 官网衬线标题加无衬线正文的开源近似，文件在 `site/public/fonts/`，OFL 许可证同目录。Google Fonts 的 latin 子集：Source Serif 4 约 122 KB，Instrument Sans 约 30 KB。中文页不引用这两个字体，浏览器不会下载；英文页由 `<head>` 里的脚本预加载。
+这两个字体是 Anthropic 官网衬线标题加无衬线正文的开源近似，文件在 `site/public/fonts/`，OFL 许可证同目录。Source Serif 4 用拉丁子集，切成 400 和 700 两份静态字体，各约 19 KB，光学尺寸固定 50；Instrument Sans 约 30 KB。中文页不引用这两个字体，浏览器不会下载；英文页由 `<head>` 里的脚本预加载常规字重，粗体只在页面用到时下载。
 
 英文模式的字号覆盖：
 

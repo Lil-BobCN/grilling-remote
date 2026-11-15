@@ -93,7 +93,7 @@ function Stuck({ text, shot }) {
   const common = copy.tutorial.common
 
   return (
-    <aside className="tutorial-stuck" aria-label={common.stuckAria}>
+    <div className="tutorial-stuck">
       <div>
         <p className="tutorial-stuck-title">{common.stuckTitle}</p>
         <p className="tutorial-script">
@@ -105,7 +105,7 @@ function Stuck({ text, shot }) {
       <a className="tutorial-stuck-go" href="/help">
         {common.stuckLink}
       </a>
-    </aside>
+    </div>
   )
 }
 
