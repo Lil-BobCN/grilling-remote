@@ -21,7 +21,7 @@
 | `owner` | 实现者 | 一个 PR 从做到合。一票一个会话，TDD | D2、E1 | autopilot-full | claude-code（Sandcastle 容器） | flash |
 | `reviewer` | 评审者 | 标准、spec 两轴，没见过实现上下文 | D4 | autopilot-full、no-comments | claude-code（Sandcastle 容器） | flash |
 | `interrogate reviewers` | 第二模型评审者 | 高风险票，换模型再看一遍。一行填几个模型，就派几个攻击者 | D4 | interrogate、blast-radius、show-me-your-work | claude-code（Sandcastle 容器） | flash |
-| `swarm workers` | 验证 agent | 像真实用户点来点去，找回归，找到就修 | D3 | swarm、autopilot-full | claude-code（Sandcastle 容器） | flash |
+| `swarm workers` | 验证 agent | 像真实用户点来点去，找回归，找到就报；由实现者修，原验证者复验 | D3 | swarm、autopilot-full | claude-code（Sandcastle 容器） | flash |
 | `merger` | 合并者 | 票并入需求分支，解冲突 | D5 | autopilot-full | claude-code（Sandcastle 容器） | flash |
 | — | 分诊 agent | 读上线后的反馈，复现，开单 | F | 这七项不读 | claude-code（Sandcastle 容器） | flash |
 | — | 园丁 | 扫坏模式，写拦截规则 | E3 | 这七项不读 | claude-code（主机） | flash |

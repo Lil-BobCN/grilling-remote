@@ -23,7 +23,7 @@ First, read recent commits, reverts, review comments, agent instruction files, a
 
 ## Fix and prove
 
-Then fix the most frequent classes now, one commit each. Prove each new check fails on a real past mistake. Run the same command locally and in CI. Exceptions go on the offending line with a reason, an expiry date, and the operator's approval.
+Then fix the most frequent classes now, one commit each. Prove each new check fails on a real past mistake. Run the same command locally and in CI. Exceptions go on the offending line with a reason, an expiry date, and the operator's approval. In an unattended run, put the approval request in a `gate` row of the trail store per the **show-me-your-work** skill: the check, the proof that it fails on a real past mistake and passes on the fix, the expiry, and the PR link. Keep the exception off the line until the operator answers.
 
 ## Keep the rule table
 

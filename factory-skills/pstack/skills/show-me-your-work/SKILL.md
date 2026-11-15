@@ -47,6 +47,12 @@ By default the log is a working artifact, not committed. Keep it at `decisions.t
 
 Commit it only when the work is ambitious enough that a reviewer needs the trail to trust the result.
 
+In this factory, the scheduler reads the trail, so commit it on the ticket branch at `.audit/<ticket>.tsv` and push it with each finished unit. The local-only default does not apply.
+
+## Gate rows in this factory
+
+When the work needs the operator's approval or answer, write a row with phase `gate`: `decision` starts with `问：`, `result` is `open`. After the operator answers, append a row starting `答：` with `result=answered`. If the operator defers, use `parked` and list the gap in the final report. The owner writes shared gate rows; a verifier reports the question to the owner.
+
 ## Rules
 
 - Append-only. A wrong call gets a new row that supersedes it. Never edit or delete history.

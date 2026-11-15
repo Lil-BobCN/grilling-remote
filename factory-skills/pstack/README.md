@@ -12,7 +12,7 @@
 
 ## 入口
 
-`skills/poteto-mode/` 下没有 `SKILL.md`，所以没有东西会自动加载剧本。调度器给负责人的 brief 里，直接写剧本路径 `skills/poteto-mode/playbooks/autopilot-full.md`。
+`skills/poteto-mode/` 下没有 `SKILL.md`，所以没有东西会自动加载剧本。调度器给实现者（owner）的 brief 里，直接写剧本路径 `skills/poteto-mode/playbooks/autopilot-full.md`。
 
 这些技能都带 `disable-model-invocation: true`。模型不会自己调，brief 里要点名。无头模式下能不能点名调用，没验。
 
@@ -22,7 +22,7 @@
 
 七项改写：
 
-1. `skills/poteto-mode/playbooks/autopilot-full.md`：一个负责人从做到合一个 PR。验证队没写过这份代码。
+1. `skills/poteto-mode/playbooks/autopilot-full.md`：一个实现者从做到合一个 PR。验证队没写过这份代码。
 2. `skills/swarm`：同时起 N 个子 agent，各自验证，汇总成一份报告。
 3. `skills/interrogate`：不同模型各自攻击这份改动，只留跑一遍能证明的问题。
 4. `skills/blast-radius`：找出改动在别处会弄坏什么，并用运行证明那一条关键事实。
@@ -46,11 +46,13 @@
 
 容器要的凭证、客户仓的技能目录、主机 agent 的权限，见 `docs/执行侧供给.md`。
 
-调度器是普通程序，每 30 秒对账一次。它按推送、记录行、PR 状态、检查结果判断 agent 有没有卡住。agent 自己写的状态文字不作数。
+trail store 固定在票分支的 `.audit/<票号>.tsv`，随分支推送。需要运营者拍板的记录写成 `phase=gate` 的行：问的行 `result=open`，答的行 `result=answered`，运营者说先搁置写 `parked`。共享的 gate 行由实现者写，验证者只把问题报给实现者。
+
+调度器是普通程序，每 30 秒对账一次。它按推送、记录行、PR 状态、检查结果判断 agent 有没有卡住。记录行就是 `.audit/<票号>.tsv` 里的行。一条等运营者的 `open` 行不算卡住。agent 自己写的状态文字不作数。
 
 ## 合并规则
 
-以 v4 为准。验证队和评审都过了，负责人自己合。过不了，停这条线，通知运营者，附现象和试过的办法。
+以 v4 为准。验证者只报问题，实现者修，原验证者复验。验证队和评审都过了，实现者自己合。过不了，停这条线，通知运营者，附现象和试过的办法。
 
 只合验证者证明过的版本。绿灯 CI 本身不放行。
 
@@ -69,6 +71,7 @@ PR 操作只用 `gh`。令牌只限当前客户仓。PR 正文按 `/pr` 的四�
 1. 容器里能不能并行跑。
 2. 子 agent 能不能从 `.claude/skills/` 里的技能读到 `factory-skills/pstack/roles.md`。
 3. `/pr` 在容器里能不能找到。
+4. 调度器读 trail store 的实测归调度器实现票（to-spec），验收条件见 `docs/通知与事件表.md`。
 
 完整清单见 `CHANGES.md`。
 
