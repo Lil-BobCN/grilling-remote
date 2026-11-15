@@ -10,7 +10,7 @@ Adversaries try to break a change or a design. A finding survives only when a ru
 
 ## Frame
 
-The scope is what the user names. Otherwise it is the branch diff from its merge base with the base branch, through the working tree. State the intent with the **in-your-own-words** skill, from the user's message, the commits, and the PR description. Ask the caller when the intent is unclear. If no one can answer, record a gap and notify the operator.
+The scope is what the user names. Otherwise it is the branch diff from its merge base with the base branch, through the working tree. State the intent with the **in-your-own-words** skill, from the user's message, the commits, and the PR description. Ask the caller when the intent is unclear. If no one can answer, record a gap and notify the operator. Record the gap as a `gate` row in the trail store per the **show-me-your-work** skill; the caller answers if it can, and the operator answers only when the caller cannot.
 
 ## Fan out
 
