@@ -16,13 +16,25 @@ afkfactory.dev {
 	@downloads path /downloads/*
 	header @downloads Cache-Control "no-cache"
 
-	# 账号区接口反代到本机 Node 服务。服务只管 127.0.0.1，不直接对外。
-	handle /app/api/* {
-		reverse_proxy 127.0.0.1:8787
-	}
+	route {
+		# 账号区接口反代到本机 Node 服务。服务只管 127.0.0.1，不直接对外。
+		@api path /app/api/*
+		reverse_proxy @api 127.0.0.1:8787
 
-	handle {
-		file_server
+		# 公开页的干净 URL：/download 出 download.html。
+		@public path /download /skills /tutorial /help
+		rewrite @public {path}.html
+
+		# 账号区页面都回退到 app/index.html。
+		@app path /app /app/*
+		handle @app {
+			try_files {path} /app/index.html
+			file_server
+		}
+
+		handle {
+			file_server
+		}
 	}
 }
 

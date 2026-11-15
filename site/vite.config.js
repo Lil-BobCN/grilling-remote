@@ -62,6 +62,15 @@ export default defineConfig({
     fs: {
       allow: [resolve(root, '..')],
     },
+    // 本机联调账号区接口；线上由 Caddy 反代 /app/api/*。
+    proxy: {
+      '/app/api': process.env.AFK_API || 'http://127.0.0.1:8787',
+    },
+  },
+  preview: {
+    proxy: {
+      '/app/api': process.env.AFK_API || 'http://127.0.0.1:8787',
+    },
   },
   build: {
     rollupOptions: {
