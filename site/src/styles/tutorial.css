@@ -684,6 +684,17 @@ html[data-theme="dark"] .tutorial-step[data-band="mist"]::before {
   text-wrap: pretty;
 }
 
+.tutorial-note a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+  transition: color var(--motion-fast) var(--ease-ui);
+}
+
+.tutorial-note a:hover {
+  color: var(--slate-text);
+}
+
 .tutorial-note-strong {
   --muted: var(--body-soft);
   padding: var(--space-24);
@@ -943,14 +954,16 @@ html[data-theme="dark"] .tutorial-step[data-band="mist"]::before {
 }
 
 .tutorial-after,
-.tutorial-taboos {
+.tutorial-taboos,
+.tutorial-add-feature {
   margin-top: var(--space-40);
   padding-top: var(--space-24);
   border-top: var(--rule-ink);
 }
 
 .tutorial-after h3,
-.tutorial-taboos h3 {
+.tutorial-taboos h3,
+.tutorial-add-feature h3 {
   margin: 0;
   font-family: var(--font-serif);
   font-size: var(--text-subhead);

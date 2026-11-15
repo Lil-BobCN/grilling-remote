@@ -659,6 +659,23 @@ export const en = {
         note: 'Every file in the folder will be uploaded. Put only this project\'s material in it.',
         caption:
           'The conversation log is not in this folder, so it will not be uploaded. Keep the whole archive under 50 MB.',
+        addFeature: {
+          title: 'Adding a feature',
+          items: [
+            {
+              title: 'Before you send it back',
+              body: 'Tell the agent directly. It will fold the change into this order, and it stays one order when you send it back.',
+            },
+            {
+              title: 'After you send it back',
+              body: [
+                'Message ',
+                { a: '/help', text: 'support on WeChat' },
+                ' first. Do not edit the files yourself. If support says it can still be changed, make the change, zip the whole folder again, and upload it once more. If support says it is a new order, you will go through the questions again. Support will walk you through it.',
+              ],
+            },
+          ],
+        },
         stuck: {
           text: 'I am stuck at step 5. The archive will not upload.',
           shot: 'Send a screenshot of the upload page and the error. Do not retry many times.',
