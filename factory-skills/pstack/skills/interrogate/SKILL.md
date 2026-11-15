@@ -14,7 +14,7 @@ The scope is what the user names. Otherwise it is the branch diff from its merge
 
 ## Fan out
 
-Pick the adversaries from the `interrogate reviewers` line in `roles.md`. Spawn one adversary for each model on the line. If the file or the line is missing, or the line is not configured, spawn one adversary on the parent session's model.
+Pick the adversaries from the `interrogate reviewers` line in `factory-skills/pstack/roles.md`. Spawn one adversary for each model on the line. If the file or the line is missing, or the line is not configured, spawn one adversary on the parent session's model.
 
 Give each adversary its own output location (its own worktree), per the **separate-before-serializing-shared-state** principle skill. Copy the scope's uncommitted changes into each worktree.
 

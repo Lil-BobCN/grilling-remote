@@ -8,7 +8,7 @@
 
 ## 先做一件事
 
-填 `roles.md`。每个角色的 agent 和模型现在都是「待定」。没填时，技能用父会话的模型。
+读 `roles.md`。十个角色的 agent 和模型已经填好，统一用 Claude Code 和 DeepSeek Flash。空格子用父会话的模型。角色表怎么读、回退怎么算，见 `roles.md` 开头。
 
 ## 入口
 
@@ -44,6 +44,8 @@
 
 每个子 agent 一个 worktree（工作树）、一个容器。容器会死，所以决策记录要随时推送。
 
+容器要的凭证、客户仓的技能目录、主机 agent 的权限，见 `docs/执行侧供给.md`。
+
 调度器是普通程序，每 30 秒对账一次。它按推送、记录行、PR 状态、检查结果判断 agent 有没有卡住。agent 自己写的状态文字不作数。
 
 ## 合并规则
@@ -65,7 +67,7 @@ PR 操作只用 `gh`。令牌只限当前客户仓。PR 正文按 `/pr` 的四�
 ## 没验的事
 
 1. 容器里能不能并行跑。
-2. 子 agent 能不能读到 `roles.md`。
+2. 子 agent 能不能从 `.claude/skills/` 里的技能读到 `factory-skills/pstack/roles.md`。
 3. `/pr` 在容器里能不能找到。
 
 完整清单见 `CHANGES.md`。
