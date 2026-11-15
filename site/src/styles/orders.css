@@ -255,7 +255,7 @@
 }
 
 .orders-notice .account-button:hover {
-  color: var(--paper);
+  color: var(--on-night);
 }
 
 .orders-loading-text {

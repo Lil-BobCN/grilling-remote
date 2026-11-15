@@ -50,6 +50,7 @@ const TITLES = {
 export default function AccountApp() {
   const { copy } = useI18n()
   const a = copy.account.app
+  const disabled = copy.account.disabled
   const path = normalizePath()
   const route = readRoute(path)
   const [session, setSession] = useState(null)
@@ -77,6 +78,11 @@ export default function AccountApp() {
     } catch (error) {
       if (error.status === 401) {
         window.location.replace(`/app?next=${encodeURIComponent(path)}`)
+        return
+      }
+      if (error.status === 403) {
+        setSession(null)
+        setSessionState('disabled')
         return
       }
       setSessionState('error')
@@ -140,6 +146,19 @@ export default function AccountApp() {
           <p className="orders-notice-hint">
             <Rich parts={a.helpHint} />
           </p>
+        </section>
+      </main>
+    )
+  } else if (sessionState === 'disabled') {
+    content = (
+      <main id="main" className="page account-page">
+        <h1 className="sr-only">{copy.account.orders.title}</h1>
+        <section className="orders-notice" role="alert">
+          <h2>{disabled.title}</h2>
+          <p>{disabled.body}</p>
+          <a className="account-button" href="/help">
+            {disabled.action}
+          </a>
         </section>
       </main>
     )

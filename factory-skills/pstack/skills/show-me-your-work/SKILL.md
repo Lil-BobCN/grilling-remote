@@ -47,6 +47,12 @@ By default the log is a working artifact, not committed. Keep it at `decisions.t
 
 Commit it only when the work is ambitious enough that a reviewer needs the trail to trust the result.
 
+In this factory, the scheduler reads the trail, so commit it on the ticket branch at `.audit/<ticket>.tsv` and push it with each finished unit. The local-only default does not apply.
+
+## Gate rows in this factory
+
+When the work needs the operator's approval or answer, write a row with phase `gate`: `decision` starts with `问：`, `result` is `open`. After the operator answers, append a row starting `答：` with `result=answered`. If the operator defers, use `parked` and list the gap in the final report. The owner writes shared gate rows; a verifier reports the question to the owner.
+
 ## Rules
 
 - Append-only. A wrong call gets a new row that supersedes it. Never edit or delete history.
@@ -64,7 +70,7 @@ Correct the log, not the story. The audit never edits or removes a row, even an 
 
 ## Cross-model review of the trail
 
-Before handing back, spawn a subagent on a different model from the one that did the work. Read the `interrogate reviewers` line in `roles.md` for its model, and take one that differs from the model that did the work. If the file or the line is missing, or the line is not configured, use the parent session's model and add a row that says the independence check did not run. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
+Before handing back, spawn a subagent on a different model from the one that did the work. Read the `interrogate reviewers` line in `factory-skills/pstack/roles.md` for its model, and take one that differs from the model that did the work. If the file or the line is missing, or the line is not configured, use the parent session's model and add a row that says the independence check did not run. If the line is configured but every model on it matches the model that did the work, use that model and add a row that says no second model was available. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
 
 - Decisions logged with weak or absent evidence.
 - Verification steps skipped or claimed without proof in the transcript.

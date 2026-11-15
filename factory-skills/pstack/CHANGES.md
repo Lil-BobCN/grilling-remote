@@ -84,6 +84,16 @@
 4. `autopilot-full` 周边有三个缺口。没有入口技能，brief 要直接写路径。shipping 里「合并后回读 PR，因为合并队列可能只是排上队」没并入。`show-me-your-work` 默认把日志放工作目录且不提交，和 `autopilot-full` 的 trail store 不一致，以后者为准。
 5. 角色表有两处没写透。swarm 的 worker 数量由 Frame 的 shape 决定，`roles.md` 说一行填多个模型就各跑一份，两者怎么合没写。`blast-radius` 读 `interrogate reviewers` 行，该行没配置时只派一个子 agent，多模型就没有意义。
 
+## 2026-11-15 更新（I-0039）
+
+《验证循环决策》定了下面几件事，本目录跟着改：
+
+1. 验证 agent 只报，实现者修，原验证者复验。`roles.md` 的 `swarm workers` 行和 `README.md` 的合并规则改了；剧本第 4、5 步补了同一句。和「原文与 v4 不一致的地方」第 4 条一致。
+2. `correct` 的例外批准留运营者。`interrogate` 的意图问题先问调用方 agent，`no-comments` 的约束编码由调用方 agent 预批准；两者只有调用方也定不了才升级给运营者。上面「没解决的问题」第 1 条按这条读。
+3. 人工问答写 trail store 的 `phase=gate` 行。trail 固定在票分支 `.audit/<票号>.tsv`，随分支推送；调度器读 PR head。`open` 在等，`answered` 答完，`parked` 搁置。「没验的事」第 3 条的实测归调度器实现票（to-spec）。
+4. `skills/show-me-your-work/SKILL.md` 加了本工厂的覆盖：trail 提交到票分支，以及 gate 行的写法。默认的本地不提交不适用。
+5. `skills/correct/SKILL.md`、`skills/interrogate/SKILL.md`、`skills/no-comments/SKILL.md` 补了记录位置：例外批准、意图缺口、约束编码升级都指向 trail store 的 gate 行；调用方能答的记普通决定行。
+
 ## 没验的事
 结论：没有运行任何技能和脚本，包括 `log.sh`。只做了文本检查、grep 和 diff。下面是具体没验的事。
 

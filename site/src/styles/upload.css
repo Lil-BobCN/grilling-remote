@@ -528,6 +528,11 @@
   background: var(--night-hover);
 }
 
+/* 夜间模式主按钮是浅底深字，悬停到夜黑抬一档后字要跟底色一起翻过来。 */
+html[data-theme="dark"] .upload-button-primary:not(:disabled):hover {
+  color: var(--on-night);
+}
+
 .upload-button-primary:disabled {
   border-color: var(--line);
   background: var(--paper-press);

@@ -1,0 +1,52 @@
+{
+  "updated": "2026-11-15",
+  "source_ticket": "I-0047",
+  "items": [
+    {
+      "id": "domain",
+      "name": "域名 afkfactory.dev",
+      "date": "2027-11-03",
+      "remind_days": [30, 7, 1],
+      "note": "Cloudflare Registrar 自动续费，到期前 30 天第一次扣款；Cloudflare 也会发续费邮件"
+    },
+    {
+      "id": "aop-client-cert",
+      "name": "AOP 客户端证书",
+      "date": "2028-11-06",
+      "remind_days": [90, 30, 7],
+      "note": "Cloudflare zone 级 AOP 持有，序列号结尾 2C3C"
+    },
+    {
+      "id": "aop-ca",
+      "name": "AOP CA",
+      "date": "2031-11-07",
+      "remind_days": [365, 90, 30],
+      "note": "CA 私钥只在服务器 /root/aop/"
+    },
+    {
+      "id": "origin-ca",
+      "name": "源站 Origin CA",
+      "date": "2041-11-03",
+      "remind_days": [],
+      "note": "2040 年起再纳入提醒"
+    },
+    {
+      "id": "server-monthly",
+      "name": "朝晞云服务器月付",
+      "date": "2026-12-03",
+      "monthly_day": 3,
+      "time": "10:00",
+      "timezone": "控制台账单显示时间，未标时区",
+      "auto_renew": false,
+      "remind_days": [7, 0],
+      "note": "月付 ¥25；账单周期 2026-11-03 10:00 到 2026-12-03 10:00；没有自动续费，需手动续费；付款方式支付宝"
+    },
+    {
+      "id": "edge-cert",
+      "name": "Cloudflare 边缘证书",
+      "date": "2027-02-01",
+      "remind_days": [],
+      "note": "Universal SSL，Cloudflare 自动续；每月体检顺便看"
+    }
+  ]
+}

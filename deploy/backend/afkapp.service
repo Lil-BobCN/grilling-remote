@@ -1,0 +1,29 @@
+[Unit]
+Description=afkfactory backend
+Documentation=https://github.com/Lil-BobCN/grilling-remote/blob/main/docs/后端服务部署.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=afkapp
+Group=afkapp
+WorkingDirectory=/data/app/current
+EnvironmentFile=/etc/afkapp/app.env
+ExecStart=/usr/bin/node /data/app/current/server.mjs
+Restart=on-failure
+RestartSec=3
+
+# 只读系统目录，写权限只给数据目录；token 从 EnvironmentFile 注入，不进文件系统可读范围。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/data/customers /data/uploads
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afkapp
+
+[Install]
+WantedBy=multi-user.target

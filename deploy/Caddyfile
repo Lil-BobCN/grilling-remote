@@ -11,11 +11,31 @@ afkfactory.dev {
 	}
 
 	root * /data/www
-	file_server
 
 	# 下载链接固定，内容会随重打包变。不加这句，Cloudflare 会把旧 zip 留在边上。
 	@downloads path /downloads/*
 	header @downloads Cache-Control "no-cache"
+
+	route {
+		# 账号区接口反代到本机 Node 服务。服务只管 127.0.0.1，不直接对外。
+		@api path /app/api/*
+		reverse_proxy @api 127.0.0.1:8787
+
+		# 公开页的干净 URL：/download 出 download.html。
+		@public path /download /skills /tutorial /help
+		rewrite @public {path}.html
+
+		# 账号区页面都回退到 app/index.html。
+		@app path /app /app/*
+		handle @app {
+			try_files {path} /app/index.html
+			file_server
+		}
+
+		handle {
+			file_server
+		}
+	}
 }
 
 upload.afkfactory.dev {

@@ -91,12 +91,18 @@
   transition:
     background-color var(--motion-fast) var(--ease-ui),
     border-color var(--motion-fast) var(--ease-ui),
+    color var(--motion-fast) var(--ease-ui),
     transform var(--motion-fast) var(--ease-ui);
 }
 
 .account-button:hover {
   border-color: var(--night-hover);
   background: var(--night-hover);
+}
+
+/* 夜间模式主按钮是浅底深字，悬停到夜黑抬一档后字要跟底色一起翻过来。 */
+html[data-theme="dark"] .account-button:not(.account-button-quiet):not(:disabled):hover {
+  color: var(--on-night);
 }
 
 .account-button:active {
@@ -482,6 +488,16 @@
   color: var(--ink);
   font-size: var(--text-ui);
   line-height: 1.6;
+}
+
+.login-error a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.login-error a:hover {
+  color: var(--slate-text);
 }
 
 .login-hint {

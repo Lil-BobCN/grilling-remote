@@ -815,6 +815,22 @@ export default function TutorialPage() {
 
             <p className="tutorial-caption">{uploadStep.caption}</p>
 
+            <div className="tutorial-add-feature">
+              <h3>{uploadStep.addFeature.title}</h3>
+              {uploadStep.addFeature.items.map((item) => (
+                <div className="tutorial-note" key={item.title}>
+                  <b>{item.title}</b>
+                  <p>
+                    {Array.isArray(item.body) ? (
+                      <Rich parts={item.body} />
+                    ) : (
+                      item.body
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+
             <Stuck text={uploadStep.stuck.text} shot={uploadStep.stuck.shot} />
           </section>
         </div>
