@@ -283,7 +283,6 @@ export const zh = {
       copied: '已复制',
       copyFailed: '没复制上，选中文字手动复制',
       stuckTitle: '卡在这一步？',
-      stuckAria: '卡在这一步',
       stuckLink: '怎么找客服 →',
       checkTitle: '你会看到',
       doLabel: '你要做',

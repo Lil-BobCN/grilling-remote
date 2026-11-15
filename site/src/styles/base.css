@@ -577,6 +577,17 @@ html[data-theme="dark"] .pill[aria-current="page"]:hover {
     gap: var(--space-16);
   }
 
+  /* 两个字的页脚链接只有 28px 宽，左右各补 8px 到 44px，视觉不变。 */
+  .footer-links a {
+    position: relative;
+  }
+
+  .footer-links a::before {
+    content: "";
+    position: absolute;
+    inset: 0 -8px;
+  }
+
   .footer-meta {
     width: 100%;
     margin-left: 0;

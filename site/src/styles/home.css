@@ -669,6 +669,17 @@ html[data-lang="en"] .home-step span {
     gap: var(--space-10);
   }
 
+  /* 文字链接的视觉尺寸不变，用伪元素把触控区补到 44px 高。 */
+  .home-skills-link {
+    position: relative;
+  }
+
+  .home-skills-link::before {
+    content: "";
+    position: absolute;
+    inset: -10px 0;
+  }
+
   .home-skill-list li p {
     grid-column: 2;
   }
