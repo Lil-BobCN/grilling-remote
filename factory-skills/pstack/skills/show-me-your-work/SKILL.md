@@ -64,7 +64,7 @@ Correct the log, not the story. The audit never edits or removes a row, even an 
 
 ## Cross-model review of the trail
 
-Before handing back, spawn a subagent on a different model from the one that did the work. Read the `interrogate reviewers` line in `roles.md` for its model, and take one that differs from the model that did the work. If the file or the line is missing, or the line is not configured, use the parent session's model and add a row that says the independence check did not run. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
+Before handing back, spawn a subagent on a different model from the one that did the work. Read the `interrogate reviewers` line in `factory-skills/pstack/roles.md` for its model, and take one that differs from the model that did the work. If the file or the line is missing, or the line is not configured, use the parent session's model and add a row that says the independence check did not run. If the line is configured but every model on it matches the model that did the work, use that model and add a row that says no second model was available. Self-review is not a substitute. The subagent reads the audit trail and the run's transcript, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
 
 - Decisions logged with weak or absent evidence.
 - Verification steps skipped or claimed without proof in the transcript.
