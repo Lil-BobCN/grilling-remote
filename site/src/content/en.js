@@ -751,6 +751,16 @@ export const en = {
   },
 
   account: {
+    disabled: {
+      title: 'Account disabled',
+      body: 'This account has been disabled, so your orders are not available.',
+      action: 'Contact support',
+      loginError: [
+        'This account has been disabled and cannot log in. ',
+        { a: '/help', text: 'Contact support' },
+        '.',
+      ],
+    },
     bar: {
       logout: 'Log out',
       loggingOut: 'Logging out…',

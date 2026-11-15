@@ -484,6 +484,16 @@
   line-height: 1.6;
 }
 
+.login-error a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.login-error a:hover {
+  color: var(--slate-text);
+}
+
 .login-hint {
   margin: var(--space-24) 0 0;
   padding-top: var(--space-16);

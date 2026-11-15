@@ -639,6 +639,16 @@ export const zh = {
   },
 
   account: {
+    disabled: {
+      title: '账号已停用',
+      body: '这个账号停用了，现在看不了订单。',
+      action: '找客服',
+      loginError: [
+        '这个账号已停用，登录不了。',
+        { a: '/help', text: '找客服' },
+        '处理。',
+      ],
+    },
     bar: {
       logout: '退出',
       loggingOut: '正在退出…',
