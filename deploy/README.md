@@ -6,6 +6,7 @@
 | --- | --- |
 | `Caddyfile` | 服务器上 `/etc/caddy/Caddyfile` 的源。裸域改成静态托管，`upload.` 子域暂回 `ok` |
 | `publish.sh` | 重打包客户工作区，传到服务器，按 `.sha256` 复核，写 `customer-kit/release.json` |
+| `backend/` | 后端 Node 服务的占位程序、systemd 单元、安装/发布/回滚/巡检脚本。说明见 `docs/后端服务部署.md` |
 
 ## 一次性设置（要 sudo 密码，运营者跑）
 
@@ -48,3 +49,9 @@ curl -sS https://afkfactory.dev/downloads/客户工作区-v1.zip | shasum -a 256
 下载链接固定为 `.../客户工作区-v1.zip`，内容随每次重打包变。Cloudflare 默认缓存 `.zip`，不声明就会把旧包留给客户，SHA256 对不上。`no-cache` 让边缘每次都回来问源站。
 
 Cloudflare 的 Browser Cache TTL 必须是 0（Respect Existing Headers）。设成 4 小时，Cloudflare 会把源站的 `no-cache` 改成 `max-age=14400`，浏览器 4 小时内不回来问。2026-11-07 按 [#101](https://github.com/Lil-BobCN/grilling-remote/issues/101) 改过；换账号或重建 zone 时要重设。
+
+## 后端服务
+
+`deploy/backend/` 是后端 Node 服务的部署路径：占位程序、systemd 单元、环境文件样例，加上安装、打包、发布、回滚、巡检五个脚本。怎么装、怎么发布、怎么回滚、怎么看日志，写在 `docs/后端服务部署.md`。
+
+Caddyfile 里的 `/app/api/*` 已经反代到 `127.0.0.1:8787`。服务没起时这部分回 502，静态页和下载不受影响。
