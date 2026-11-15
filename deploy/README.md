@@ -1,11 +1,12 @@
 # 官网下载包发布
 
-官网静态页在本仓库 `site/`，构建产物在 `site/dist/`，部署时放服务器 `/data/www`。路由映射按 D-0097，由上线票 I-0070 落 Caddy。这里的两份是发布用的源：
+官网静态页在本仓库 `site/`，构建产物在 `site/dist/`，部署时放服务器 `/data/www`。路由映射按 D-0097，由上线票 I-0070 落 Caddy。这里的文件是发布和运维用的源：
 
 | 文件 | 用途 |
 | --- | --- |
 | `Caddyfile` | 服务器上 `/etc/caddy/Caddyfile` 的源。裸域改成静态托管，`upload.` 子域暂回 `ok` |
 | `publish.sh` | 重打包客户工作区，传到服务器，按 `.sha256` 复核，写 `customer-kit/release.json` |
+| `ops-dates.json` | 到期表和提前提醒天数，巡检脚本读这份；说明见 `docs/服务器操作手册.md` 第十一节 |
 
 ## 一次性设置（要 sudo 密码，运营者跑）
 
