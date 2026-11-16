@@ -80,6 +80,8 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
     process.env.AFK_REPO_ROOT ||
     join(homedir(), '.afkfactory', 'repos')
   const repoDir = join(repoRoot, repo)
+  const sandcastleHome =
+    process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle')
 
   if (argv.includes('--dry-run')) {
     const local = await exists(repoDir)
@@ -99,12 +101,13 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
     out(
       `# 镜像：${process.env.AFK_SANDCASTLE_IMAGE || '取 .env 的 SANDCASTLE_IMAGE，没有就用 sandcastle:' + repo}`,
     )
+    out(
+      `# runner：${join(sandcastleHome, 'node_modules', '.bin', 'tsx')} ${join(sandcastleHome, `run-${ticket.number}.mts`)}（cwd ${repoDir}）`,
+    )
     out(`# openPr：gh pr create --base req/${order} --head ticket/${ticket.number}`)
     return { ok: true, dryRun: true, prompt }
   }
 
-  const sandcastleHome =
-    process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle')
   const timeoutMs =
     config.timeoutMs ?? (Number(process.env.AFK_IGNITE_TIMEOUT_MS) || 120000)
   const ignite = createIgnite({
