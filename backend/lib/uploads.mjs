@@ -3,6 +3,7 @@ import { readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HttpError } from './errors.mjs'
 import { readBody } from './http.mjs'
+import { logLine } from './log.mjs'
 import { parseMultipart } from './multipart.mjs'
 import { publicOrder, recordUpload } from './orders.mjs'
 import { ensureDir, readJson, writeJsonAtomic } from './store.mjs'
@@ -55,6 +56,90 @@ function rejection(result) {
     default:
       return { status: 500, message: '服务器处理这个压缩包时出错了。过一会儿再传一次，还不行就找客服。' }
   }
+}
+
+function knownRepos(account) {
+  const repos = account && account.repos
+  if (!repos || typeof repos !== 'object' || Array.isArray(repos)) return {}
+  const known = {}
+  for (const [key, value] of Object.entries(repos)) {
+    if (typeof value !== 'string') continue
+    const name = String(key || '').trim()
+    if (name && value.trim()) known[name] = value.trim()
+  }
+  return known
+}
+
+function repoNameFor(account, product) {
+  const shortName = String((account && account.short_name) || '').trim()
+  return shortName && product ? `${shortName}-${product}` : ''
+}
+
+function rejectSoftware({ account, now, reason, message, extra = {} }) {
+  logLine({
+    ts: now,
+    level: 'error',
+    msg: `上传未建单：${message}`,
+    customer_id: account.id,
+    ...extra,
+  })
+  return { status: 422, reason, message, missing: [message] }
+}
+
+function resolveProducts({ account, software, requirements, now }) {
+  const repos = knownRepos(account)
+  const known = Object.keys(repos)
+  const usedRepoNames = new Set(Object.values(repos).map((name) => name.toLowerCase()))
+  let products
+
+  if (software) {
+    products = requirements.map((requirement) => ({ requirement, product: software }))
+  } else {
+    products = requirements.map((requirement) => {
+      let match = ''
+      for (const key of known) {
+        if (requirement.includes(key) && key.length > match.length) match = key
+      }
+      return { requirement, product: match || requirement, fresh: !match }
+    })
+
+    if (products.length > 1 && products.some((item) => item.fresh)) {
+      const names = products.map((item) => item.requirement).join('、')
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'multiple_new_requirements',
+        message: `工作区里没有 软件.md，.scratch/ 下有多个需求目录（${names}），分不清这次上传属于哪个软件。先只保留一个需求目录再上传，其他目录请找客服。`,
+        extra: { requirements },
+      })
+    }
+  }
+
+  for (const item of products) {
+    if (Object.hasOwn(repos, item.product)) continue
+    const clash = known.find((key) => key.toLowerCase() === item.product.toLowerCase())
+    if (clash) {
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'duplicate_software',
+        message: `软件简称「${item.product}」和已有软件「${clash}」重名，大小写不区分。请联系客服确认软件简称。`,
+        extra: { product: item.product, existing: clash },
+      })
+    }
+    const expected = repoNameFor(account, item.product)
+    if (expected && usedRepoNames.has(expected.toLowerCase())) {
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'duplicate_software',
+        message: `软件简称「${item.product}」对应的仓名 ${expected} 已经属于另一个软件。请联系客服确认软件简称。`,
+        extra: { product: item.product, repo: expected },
+      })
+    }
+  }
+
+  return { products: products.map(({ requirement, product }) => ({ requirement, product })) }
 }
 
 export async function handleUpload({ req, config, session, limiters, ip }) {
@@ -119,13 +204,32 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
     throw new HttpError(failure.status, failure.message, { missing: failure.missing || [] })
   }
 
+  const names = result.requirements.filter(
+    (name) => name && !name.includes('/') && !name.includes('\\') && name !== '..',
+  )
+  const resolved = resolveProducts({
+    account: session.account,
+    software: result.software || '',
+    requirements: names,
+    now,
+  })
+  if (!resolved.products) {
+    await writeJsonAtomic(join(dir, 'meta.json'), {
+      ...meta,
+      status: 'failed',
+      reason: resolved.reason,
+      missing: resolved.missing,
+    })
+    throw new HttpError(resolved.status, resolved.message, { missing: resolved.missing })
+  }
+
   const requirements = []
   const orders = []
-  for (const name of result.requirements) {
-    if (!name || name.includes('/') || name.includes('\\') || name === '..') continue
+  for (const { requirement: name, product } of resolved.products) {
     const validation = await validateRequirement(join(dir, 'work', 'scratch', name), { finished })
     const { order } = await recordUpload(config, session.account, {
       requirement: name,
+      product,
       title: name,
       filename,
       size: file.data.length,

@@ -209,7 +209,7 @@ async function main() {
         display_name: displayName,
         email,
         status: 'active',
-        repo: null,
+        repos: {},
         wechat: options.wechat || '',
         note: options.note || '',
         password_hash: passwordHash,
@@ -231,7 +231,7 @@ async function main() {
     const rows = rowsOf(await readJson(file, []))
     for (const row of rows) {
       console.log(
-        [row.id, row.short_name, row.display_name, row.email, row.status, row.repo || ''].join('\t'),
+        [row.id, row.short_name, row.display_name, row.email, row.status, Object.values(row.repos || {}).join(',')].join('\t'),
       )
     }
     return

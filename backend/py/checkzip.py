@@ -12,6 +12,8 @@ import sys
 import zipfile
 
 IGNORED_TOP = {".DS_Store", "__MACOSX"}
+SOFTWARE_FILE = "软件.md"
+SOFTWARE_MAX_BYTES = 64 * 1024
 REQUIREMENT_FILES = {
     "map.md",
     "需求草稿.md",
@@ -78,6 +80,28 @@ def entry_name(info):
             except UnicodeDecodeError:
                 pass
     return name.replace("\\", "/")
+
+
+def read_software(archive, infos, names, root):
+    """读工作区根目录 `软件.md` 的第一行。没有、空、读不出名字都算没有。"""
+    target = f"{root}/{SOFTWARE_FILE}" if root else SOFTWARE_FILE
+    for info, name in zip(infos, names):
+        if name != target or info.is_dir():
+            continue
+        try:
+            with archive.open(info) as source:
+                raw = source.readline(SOFTWARE_MAX_BYTES)
+        except (OSError, RuntimeError, zipfile.BadZipFile):
+            return None
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return None
+        line = text.split("\n", 1)[0].strip()
+        if not line or "/" in line or "\\" in line or "\x00" in line:
+            return None
+        return line
+    return None
 
 
 def main():
@@ -165,6 +189,8 @@ def main():
         if not requirements:
             emit({"ok": False, "code": "no_requirements"})
 
+        software = read_software(archive, infos, names, root)
+
         scratch_out = os.path.join(out_dir, "scratch")
         os.makedirs(scratch_out, mode=0o700, exist_ok=True)
         written = 0
@@ -196,6 +222,7 @@ def main():
             {
                 "ok": True,
                 "root": root,
+                "software": software,
                 "requirements": sorted(requirements),
                 "counts": {"entries": len(infos), "uncompressed": total, "extracted": written},
             }
