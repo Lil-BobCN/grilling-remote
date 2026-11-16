@@ -72,9 +72,8 @@ function git(cwd, args, options) {
   return run('git', ['-C', cwd, ...args], options)
 }
 
-/** 推 GitHub 时用环境变量里的 token 认证，不写进 remote 地址。 */
-function pushAuthEnv(remoteUrl) {
-  const token = process.env.GITHUB_TOKEN
+/** 推 GitHub 时用 token 认证，不写进 remote 地址。 */
+function pushAuthEnv(remoteUrl, token = process.env.GITHUB_TOKEN) {
   if (!token || !/^https:\/\/(www\.)?github\.com\//i.test(remoteUrl)) return {}
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
   return {
@@ -166,6 +165,7 @@ export async function scaffoldCustomerRepo({
   workDir,
   remoteUrl,
   ownerType = 'user',
+  token = process.env.GITHUB_TOKEN,
 }) {
   for (const [name, value] of Object.entries({ owner, repoName, shortName, product, workDir, remoteUrl })) {
     if (!value || typeof value !== 'string') throw new ScaffoldError('params', new Error(`缺少 ${name}`))
@@ -227,7 +227,7 @@ export async function scaffoldCustomerRepo({
 
     step = 'push'
     await git(workDir, ['remote', 'add', 'origin', remoteUrl])
-    await git(workDir, ['push', '-u', 'origin', 'main'], { env: pushAuthEnv(remoteUrl) })
+    await git(workDir, ['push', '-u', 'origin', 'main'], { env: pushAuthEnv(remoteUrl, token) })
 
     step = 'labels'
     for (const label of LABELS) {

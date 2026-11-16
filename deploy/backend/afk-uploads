@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# 回传件 helper：给运营者 Mac 的拉取桥用。只做四件事，别的都不做。
+#
+#   afk-uploads list                      列出 upload-* 目录名
+#   afk-uploads cat <上传 id> <文件名>     只读 meta.json 或 package.zip
+#   afk-uploads rm <上传 id>               只删已导入（meta.status=imported）的上传目录
+#   afk-uploads cat-customers             读客户表，只输出 id、short_name、status、repos
+#
+# 装到 /usr/local/sbin/afk-uploads，属主 root。sudoers 只加一条：
+#   dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *
+# 上传目录和客户表的路径写死；干跑演练时可以用环境变量临时改。
+
+set -euo pipefail
+
+UPLOAD_DIR=${AFK_UPLOAD_DIR:-/data/uploads}
+CUSTOMERS_FILE=${AFK_CUSTOMERS_FILE:-/data/customers/customers.json}
+
+usage() {
+  echo "用法：afk-uploads list|cat <id> <file>|rm <id>|cat-customers" >&2
+  exit 2
+}
+
+is_upload_id() {
+  [[ ${1:-} =~ ^upload-[A-Za-z0-9._-]+$ ]]
+}
+
+case ${1:-} in
+  list)
+    [[ $# -eq 1 ]] || usage
+    [[ -d $UPLOAD_DIR ]] || exit 0
+    shopt -s nullglob
+    for path in "$UPLOAD_DIR"/upload-*; do
+      [[ -d $path ]] || continue
+      name=${path##*/}
+      if is_upload_id "$name"; then printf '%s\n' "$name"; fi
+    done
+    ;;
+  cat)
+    [[ $# -eq 3 ]] || usage
+    id=$2
+    file=$3
+    is_upload_id "$id" || { echo "上传 id 不对：$id" >&2; exit 2; }
+    case $file in
+      meta.json | package.zip) ;;
+      *)
+        echo "只读 meta.json 和 package.zip" >&2
+        exit 2
+        ;;
+    esac
+    [[ -f $UPLOAD_DIR/$id/$file ]] || { echo "没这个文件：$id/$file" >&2; exit 1; }
+    cat "$UPLOAD_DIR/$id/$file"
+    ;;
+  rm)
+    [[ $# -eq 2 ]] || usage
+    id=$2
+    is_upload_id "$id" || { echo "上传 id 不对：$id" >&2; exit 2; }
+    meta=$UPLOAD_DIR/$id/meta.json
+    [[ -f $meta ]] || { echo "没这个文件：$id/meta.json" >&2; exit 1; }
+    status=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status", ""))' "$meta" 2>/dev/null || true)
+    if [[ $status != imported ]]; then
+      echo "只删已导入的包，$id 的状态是 ${status:-读不出}" >&2
+      exit 1
+    fi
+    rm -rf -- "$UPLOAD_DIR/$id"
+    ;;
+  cat-customers)
+    [[ $# -eq 1 ]] || usage
+    [[ -f $CUSTOMERS_FILE ]] || { echo "没这个文件：$CUSTOMERS_FILE" >&2; exit 1; }
+    python3 - "$CUSTOMERS_FILE" <<'PY'
+import json
+import sys
+
+rows = json.load(open(sys.argv[1], encoding="utf-8"))
+if isinstance(rows, dict):
+    rows = rows.get("customers", [])
+keep = ("id", "short_name", "status", "repos")
+print(json.dumps({"customers": [{key: row.get(key) for key in keep} for row in rows]}, ensure_ascii=False, indent=2))
+PY
+    ;;
+  *)
+    usage
+    ;;
+esac
