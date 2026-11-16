@@ -293,3 +293,28 @@ test('--tries 只给一件或超过三件都拒绝', async (t) => {
   )
   assert.equal(four.code, 2)
 })
+
+test('mark-delivered 原子写订单 delivery 字段，其他字段不动', async (t) => {
+  const { orders, env } = await setupDelivery(t)
+  const result = await runHelper(['mark-delivered', 'o-0001', 'acme-shop.afkfactory.space'], env)
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /已记交付地址/)
+
+  const order = JSON.parse(await readFile(join(orders, 'o-0001.json'), 'utf8'))
+  assert.deepEqual(order.delivery, {
+    address: 'acme-shop.afkfactory.space',
+    url: 'https://acme-shop.afkfactory.space/',
+  })
+  assert.equal(order.customer_id, 'c-0001')
+  assert.equal(order.product, 'shop')
+  const info = await stat(join(orders, 'o-0001.json'))
+  assert.equal(info.mode & 0o777, 0o600)
+
+  const missing = await runHelper(['mark-delivered', 'o-9999', 'acme-shop.afkfactory.space'], env)
+  assert.equal(missing.code, 1)
+  assert.match(missing.stderr, /没这个订单/)
+
+  const badAddress = await runHelper(['mark-delivered', 'o-0001', '不是地址'], env)
+  assert.equal(badAddress.code, 2)
+  assert.match(badAddress.stderr, /交付地址不对/)
+})

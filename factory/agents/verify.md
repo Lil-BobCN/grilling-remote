@@ -42,3 +42,16 @@ ts	phase	decision	why	evidence	result
 - 预览故障只挡这张票，验证 agent 报故障后继续等，不要动别的票或成品地址。
 
 写入时机：进入 D3 之前。补写会让调度器晚一轮才看到。
+
+## 输出
+
+最后一行只写一行 JSON：
+
+```
+AFK_VERDICT {"ok":true,"evidence":[".audit/screenshots/before.png",".audit/screenshots/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}
+```
+
+- `ok` 是这次验证的结论。判不过写 `false`，原因写进 `problems`。
+- `evidence` 写相对仓库根目录的路径。调度器会检查文件在不在；截图或 trace 不存在就判 fail。
+- 跑了测试才写 `tests`，一条测试一项，`result` 写 `pass` 或 `fail`。
+- 不改代码，不提交，不推分支。发现问题只报给实现者。

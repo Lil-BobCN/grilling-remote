@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -18,6 +18,9 @@ const ARGS = {
   shortName: 'acme',
   product: 'shuiguo',
 }
+
+// 测试不跑真验证脚本：它要起服务、抢端口、找 Chrome。
+const FAKE_VERIFY = async () => ({ stdout: '关键路径通过（测试替身）' })
 
 const NINE_LABELS = [
   'needs-triage',
@@ -82,6 +85,7 @@ test('新仓生成全套文件、初始提交并推送到 main', async (t) => {
     gh,
     workDir,
     remoteUrl: bare,
+    verify: FAKE_VERIFY,
   })
 
   assert.equal(result.created, true)
@@ -129,7 +133,7 @@ test('新仓生成全套文件、初始提交并推送到 main', async (t) => {
 
 test('九个标签真实存在，给测试票打标签成功', async (t) => {
   const { gh, workDir, bare } = await setup(t)
-  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare })
+  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY })
 
   const labels = await gh.listLabels({ owner: 'acme', repo: 'acme-shuiguo' })
   const names = labels.map((row) => row.name)
@@ -168,14 +172,14 @@ test('九个标签真实存在，给测试票打标签成功', async (t) => {
 
 test('重复跑返回 created:false，不改远端也不覆盖本地文件', async (t) => {
   const { fake, gh, workDir, bare } = await setup(t)
-  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare })
+  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY })
 
   const agentsPath = join(workDir, 'AGENTS.md')
   await writeFile(agentsPath, '客户改过的规则\n')
   const headBefore = await git(bare, ['rev-parse', 'main'])
   const requestsBefore = fake.state.requests.length
 
-  const second = await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare })
+  const second = await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY })
 
   assert.equal(second.created, false)
   assert.equal(second.reason, 'exists')
@@ -211,7 +215,7 @@ test('建标签失败时删掉新建的仓和临时目录，并报出卡在哪�
   await execFileAsync('git', ['init', '--bare', '-b', 'main', bare])
 
   await assert.rejects(
-    scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare }),
+    scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY }),
     (error) => {
       assert.equal(error.name, 'ScaffoldError')
       assert.equal(error.step, 'labels')
@@ -247,7 +251,7 @@ test('建仓请求返回失败但 GitHub 已建出仓时，清理也要删掉它
   await execFileAsync('git', ['init', '--bare', '-b', 'main', bare])
 
   await assert.rejects(
-    scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare }),
+    scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY }),
     (error) => {
       assert.equal(error.name, 'ScaffoldError')
       assert.equal(error.step, 'create-repo')
@@ -262,7 +266,7 @@ test('建仓请求返回失败但 GitHub 已建出仓时，清理也要删掉它
 
 test('生成的模板应用能启动，check 能跑过，verify 技能指向截图', async (t) => {
   const { gh, workDir, bare } = await setup(t)
-  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare })
+  await scaffoldCustomerRepo({ ...ARGS, gh, workDir, remoteUrl: bare, verify: FAKE_VERIFY })
 
   const { stdout } = await execFileAsync('bash', ['scripts/check.sh'], {
     cwd: workDir,
@@ -293,4 +297,47 @@ test('生成的模板应用能启动，check 能跑过，verify 技能指向截�
   const skill = await readFile(join(workDir, '.claude/skills/verify/SKILL.md'), 'utf8')
   assert.match(skill, /scripts\/verify\.sh/)
   assert.match(skill, /\.audit\/screenshots/)
+})
+
+test('建仓时跑本地验证，第一张截图和记录进初始提交', async (t) => {
+  const { gh, workDir, bare, scratch } = await setup(t)
+  const calls = []
+  const result = await scaffoldCustomerRepo({
+    ...ARGS,
+    gh,
+    workDir,
+    remoteUrl: bare,
+    verify: async (dir) => {
+      calls.push(dir)
+      await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
+      await writeFile(join(dir, '.audit', 'screenshots', 'first-order.png'), 'png-bytes')
+      return { stdout: '关键路径通过：下单成功' }
+    },
+  })
+
+  assert.deepEqual(calls, [workDir])
+  assert.equal(result.verify.screenshot, '.audit/screenshots/first-order.png')
+
+  const record = await readFile(join(workDir, '.audit', 'verify.txt'), 'utf8')
+  assert.match(record, /关键路径通过/)
+
+  const clone = join(scratch, 'clone-verify')
+  await execFileAsync('git', ['clone', bare, clone])
+  const tracked = (await git(clone, ['ls-files'])).split('\n')
+  assert.ok(tracked.includes('.audit/screenshots/first-order.png'), '初始提交没有截图')
+  assert.ok(tracked.includes('.audit/verify.txt'), '初始提交没有验证记录')
+})
+
+test('没有 Chrome 时跳过截图，但记录验证结果', async (t) => {
+  const { gh, workDir, bare } = await setup(t)
+  const result = await scaffoldCustomerRepo({
+    ...ARGS,
+    gh,
+    workDir,
+    remoteUrl: bare,
+    verify: async () => ({ stdout: '没找到 Chrome，跳过截图。关键路径已验证。' }),
+  })
+  assert.equal(result.verify.screenshot, '')
+  const record = await readFile(join(workDir, '.audit', 'verify.txt'), 'utf8')
+  assert.match(record, /没有 Chrome，跳过截图/)
 })

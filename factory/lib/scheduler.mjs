@@ -6,10 +6,12 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { readTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { tryWithFileLock } from './lock.mjs'
+import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
 
@@ -127,6 +129,48 @@ function pathOf(parent) {
   return isSmall(parent) ? SMALL_PATH : NORMAL_PATH
 }
 
+/**
+ * 停法两条可检查判据：同一张票三圈没进展、同类问题跨票两次。
+ * 只看父工单的进度行和子票 trail，不猜内容。
+ *
+ * @returns {Array<{reason: string, detail: string}>} 命中的判据；空数组表示没停
+ */
+export function stallHits({ comments = [], trails = [] } = {}) {
+  const hits = []
+  const rounds = roundsWithoutProgress({ comments })
+  if (rounds.stalled) hits.push({ reason: '三圈没进展', detail: rounds.reason })
+
+  const repeated = repeatProblems({ trails })
+  if (repeated.repeat) {
+    hits.push({
+      reason: '同类两次',
+      detail: repeated.repeats
+        .map((item) => `${item.problem}（#${item.tickets.join('、#')}）`)
+        .join('；'),
+    })
+  }
+  return hits
+}
+
+/** 命中停法：打 needs-info、写卡住进度、推 `出事`，不点火。 */
+function stallActions({ parent, comments, state, hits, owner, repo }) {
+  const detail = hits.map((hit) => `${hit.reason}：${hit.detail}`).join('；')
+  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo })
+  for (const hit of hits) {
+    actions.push(
+      notifyAction({
+        parent,
+        owner,
+        repo,
+        event: '出事',
+        key: `#${parent.number}:出事:${hit.reason}`,
+        data: { reason: hit.reason, tried: hit.detail },
+      }),
+    )
+  }
+  return actions
+}
+
 function customerTier(state) {
   if (state === '已提交' || state === '排队中') return '安排中'
   if (state === '开发中' || state === '待验收') return '开发中'
@@ -204,6 +248,7 @@ export function routeParent({
   subIssues = [],
   spec = null,
   closedNumbers = [],
+  trails = [],
   now,
   maxActive = 5,
   activeCount = 0,
@@ -271,6 +316,10 @@ export function routeParent({
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }
+    if (state === '开发中') {
+      const hits = stallHits({ comments, trails })
+      if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
+    }
     return []
   }
 
@@ -288,6 +337,11 @@ export function routeParent({
         data: {},
       }),
     ]
+  }
+
+  if (state === '排队中' || state === '开发中') {
+    const hits = stallHits({ comments, trails })
+    if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
   }
 
   if (state === '排队中') {
@@ -336,6 +390,24 @@ function daysBetween(from, now) {
 }
 
 /**
+ * 新建父工单第一次出现时推一条「新单进队列」。
+ * 只看两条事实：状态是 `已提交`，且工单上还没有任何评论。
+ * key 固定用父工单号，通知模块记得发过，重启不重复。
+ */
+export function newTicketEvent({ parent, comments = [], owner, repo }) {
+  if (stateOf(parent) !== '已提交') return null
+  if (Array.isArray(comments) && comments.length > 0) return null
+  return notifyAction({
+    parent,
+    owner,
+    repo,
+    event: '新单进队列',
+    key: `#${parent.number}:新单进队列`,
+    data: {},
+  })
+}
+
+/**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
  * 每 24 小时换一个新 key，通知模块按 key 去重，同一事实同一天只送一次。
  */
@@ -363,7 +435,7 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
     const days = daysBetween(at, now)
     return { event: '补缺口提案', days_waited: days, key: `#${parent.number}:补缺口提案:${days}`, gate: latestGate }
   }
-  if (kind === '点头：补缺口' && !parent?.spec && !parent?.hasSpec && state === '排队中') {
+  if (kind === '点头：补缺口' && !parent?.spec && state === '排队中') {
     const days = daysBetween(at, now)
     if (days < 1) return null
     return { event: '该跑 to-spec', days_waited: days, key: `#${parent.number}:该跑 to-spec:${days}`, gate: latestGate }
@@ -564,6 +636,22 @@ export async function collectSnapshot({ gh, owner, repo }) {
   return { owner, repo, maps, decisions, parents: parentRows }
 }
 
+/**
+ * 读一个客户仓里所有子票的 trail，给「同类问题跨票两次」用。
+ * 仓库还没 clone 或没有 `.audit` 时返回空数组。
+ */
+export async function collectTrails({ repoDir, parents = [] } = {}) {
+  if (!repoDir) return []
+  const trails = []
+  for (const parent of parents) {
+    for (const ticket of parent.subIssues || []) {
+      const rows = await readTrail({ repoDir, ticket: ticket.number }).catch(() => [])
+      if (rows.length) trails.push({ ticket: ticket.number, rows })
+    }
+  }
+  return trails
+}
+
 // ---- 路由一个仓 ----
 
 function stillSandcastle(ticket) {
@@ -615,6 +703,7 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
     (parent.subIssues || []).some(stillSandcastle),
   )
   const decisions = []
+  const trails = snapshot?.trails || []
   for (const parent of snapshot?.parents || []) {
     const ownsSandcastle = (parent.subIssues || []).some(stillSandcastle)
     const actions = routeParent({
@@ -623,6 +712,7 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
       subIssues: parent.subIssues || [],
       spec: parent.spec || null,
       closedNumbers: parent.closedNumbers || [],
+      trails,
       now,
       maxActive,
       activeCount: active,
@@ -985,6 +1075,16 @@ export async function runOnce({
   }
 
   for (const { row, snapshot } of snapshots) {
+    if (config.repoRoot) {
+      try {
+        snapshot.trails = await collectTrails({
+          repoDir: join(config.repoRoot, row.repo),
+          parents: snapshot.parents,
+        })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, trails: true, message: error.message })
+      }
+    }
     const routed = routeRepo({
       snapshot,
       now: nowDate,
@@ -1057,17 +1157,53 @@ export async function runOnce({
     report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps })
 
     for (const parent of snapshot.parents) {
-      const needsAnswer = await resolveNeedsAnswer(config, {
+      const newTicket = newTicketEvent({
+        parent,
+        comments: parent.comments || [],
         owner: row.owner,
         repo: row.repo,
-        parent,
-        snapshot,
       })
+      if (newTicket) {
+        try {
+          const result = await sendEvent({ notifier, event: newTicket, config, now: nowDate })
+          report.notifications.push({
+            repo: row.repo,
+            parent: parent.number,
+            event: newTicket.event,
+            key: newTicket.key,
+            ...result,
+          })
+        } catch (error) {
+          report.errors.push({
+            repo: row.repo,
+            parent: parent.number,
+            event: newTicket.event,
+            message: error.message,
+          })
+        }
+      }
+
+      let answers = []
+      try {
+        answers = await resolveNeedsAnswer(config, {
+          owner: row.owner,
+          repo: row.repo,
+          parent,
+          snapshot,
+        })
+      } catch (error) {
+        report.errors.push({
+          repo: row.repo,
+          parent: parent.number,
+          needsAnswer: true,
+          message: error.message,
+        })
+      }
       const reminder = pendingReminder({
         parent,
         latestGate: latestGate(parent.comments || []),
         now: nowDate,
-        needsAnswer,
+        needsAnswer: answers,
       })
       if (!reminder) continue
       const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
@@ -1091,15 +1227,33 @@ export async function runOnce({
     }
   }
 
+  if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
+    try {
+      const result = await config.previewSweep({ now: nowDate })
+      report.previewSweep = { ok: true, ...result }
+    } catch (error) {
+      report.errors.push({ previewSweep: true, message: error.message })
+      report.previewSweep = { ok: false, error: error.message }
+    }
+    // 每天只试一次：helper 不在或失败，留到明天，不每 30 秒重试。
+    config.lastPreviewSweepDate = localDate(nowDate)
+  }
+
   if (dueDigest({ now: nowDate, lastSentDate: config.lastSentDate })) {
     const date = localDateOffset(nowDate, -1)
     let items = []
+    let queryFailed = false
     if (typeof config.listMergedYesterday === 'function') {
-      const rows = await config.listMergedYesterday({
-        now: nowDate,
-        repos: snapshots.map(({ row }) => row),
-      })
-      if (Array.isArray(rows)) items = rows
+      try {
+        const rows = await config.listMergedYesterday({
+          now: nowDate,
+          repos: snapshots.map(({ row }) => row),
+        })
+        if (Array.isArray(rows)) items = rows
+      } catch (error) {
+        queryFailed = true
+        report.errors.push({ digest: true, listMergedYesterday: true, message: error.message })
+      }
     }
     const event = digestEvent({ items, date })
     let result = { sent: false, count: items.length }
@@ -1111,8 +1265,8 @@ export async function runOnce({
         result = { sent: false, count: items.length, error: error.message }
       }
     }
-    config.lastSentDate = localDate(nowDate)
-    report.digest = { due: true, date, ...result }
+    config.lastSentDate = queryFailed ? config.lastSentDate : localDate(nowDate)
+    report.digest = { due: true, date, ...(queryFailed ? { queryFailed: true } : {}), ...result }
   }
 
   return report

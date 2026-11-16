@@ -15,6 +15,7 @@
 | `caddy/preview.caddy` | 预览路由模板，Basic Auth 和访问日志只加在预览上 |
 | `caddy/not-found.caddy` | 通配兜底，不认识的子域回 404 |
 | `backup.sh` | 遍历成品 `pg_dump`，留 7 个日备和 4 个周备，连续两次失败告警 |
+| `backup-sync.sh` | Mac 侧 rsync，把服务器备份和每个成品的 `data/` 拉到本机 |
 | `systemd/` | 每天 3 点备份的 service 和 timer |
 | `test/local-test.sh` | 成品、备份和 Caddy 的本机 Docker 集成测试 |
 | `test/preview-test.sh` | 预览起停、排队、Basic Auth、种子、sweep 和故障隔离的本机 Docker 集成测试 |
@@ -110,7 +111,7 @@ node factory/bin/deploy.mjs rollback --address <交付地址>
 node factory/bin/deploy.mjs zip --repo-dir <仓库目录> --ref <提交> --address <交付地址> --version <版本>
 ```
 
-`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后再打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
+`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后在父工单写一条 `进度 v1｜…｜细阶段：已部署｜…`，再调 `afk-uploads mark-delivered` 把地址写进订单；软件简称取 `--product` 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜。部署成功后打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
 
 ## 预览环境
 
@@ -157,6 +158,16 @@ node factory/bin/preview.mjs sweep --once
 - 第一次失败只记数，不告警。连续第二次失败打印 `告警：`，以退出码 2 结束。
 - systemd 把失败的 service 标成 failed，`systemctl --failed` 能看到。
 - 同步到 Mac 只定义接口：脚本打印待同步目录并写 `/data/products/backups/.sync-pending`，不发网络请求。Mac 上用 rsync 拉走，同步任务另行配置。
+
+### 拉到 Mac
+
+`backup-sync.sh` 在 Mac 上跑，只拉不删：
+
+```bash
+AFK_SERVER=dev@<服务器地址> bash deploy/products/backup-sync.sh
+```
+
+默认拉到 `~/afkfactory-backups`（`AFK_LOCAL_BACKUP_DIR` 可改），服务器备份目录默认 `/data/products/backups`（`AFK_SERVER_BACKUP_DIR` 可改）。脚本拉两部分：`backups/` 全部，和 `/data/products/*/data/`；不带 `--delete`，本机旧文件自己删。保留策略仍由服务器上的 `backup.sh` 管。要演练加 `--dry-run`。服务器上跑 rsync 默认用 `sudo rsync`（`AFK_RSYNC_PATH` 可改），账号要有对应的 sudo 权限。
 
 ## 安全边界
 

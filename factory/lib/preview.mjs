@@ -5,6 +5,7 @@
  * `afk-product` helper；这里只拼地址、调 helper、写 Mac 侧凭据文件、判断该不该销毁。
  * 外部命令全部由调用方注入，测试不碰服务器。
  */
+import { buildDockerImage } from './deploy.mjs'
 
 function slugPart(value) {
   const slug = String(value ?? '')
@@ -69,11 +70,42 @@ export function previewNeeded({ trail }) {
 }
 
 /**
+ * 默认的预览镜像构建：从 PR head 的临时 worktree 构建；没给 head 时用当前工作树。
+ * 返回镜像 tag，交给 `preview-start`。
+ */
+export function createDefaultBuildImage({ docker, platform = 'linux/amd64', run } = {}) {
+  return async function defaultBuildImage({
+    ticket,
+    pr,
+    worktree,
+    repoDir,
+    address,
+    ref,
+  } = {}) {
+    const dir = repoDir || worktree
+    if (!dir) throw new Error('没有仓库目录，构建不了预览镜像')
+    const row = pr && typeof pr === 'object' ? pr : { number: pr }
+    const number = prNumber(row) || String(ticket ?? 'x')
+    const image = `${String(address || 'preview').toLowerCase()}:pr${number}`
+    await buildDockerImage({
+      repoDir: dir,
+      ref: ref || row.headRefOid || row.headSha || '',
+      image,
+      platform,
+      docker,
+      run,
+    })
+    return image
+  }
+}
+
+/**
  * 这张票在 D3 起一套预览：从 PR head 构建镜像，调 helper 起服务器那套，
  * 再把凭据写到 Mac。失败只返回这张票的错误，不抛出去影响调度器里别的票。
  *
  * pr 可以是 PR 号，也可以是带 number 和 headCommitAt 的对象。
  * seed 可以是命令字符串，也可以是 ({ ticket, worktree }) => 命令 的函数。
+ * 不传 buildImage 时用 `createDefaultBuildImage`，从 PR head 或 worktree 构建。
  */
 export async function startPreview({
   ticket,
@@ -82,6 +114,8 @@ export async function startPreview({
   product,
   baseBranch,
   worktree,
+  repoDir,
+  ref = '',
   helper,
   buildImage,
   writeLocalEnv,
@@ -98,7 +132,8 @@ export async function startPreview({
 
   let image
   try {
-    const built = await buildImage({ ticket, pr, baseBranch, worktree, address })
+    const builder = typeof buildImage === 'function' ? buildImage : createDefaultBuildImage()
+    const built = await builder({ ticket, pr, baseBranch, worktree, repoDir, address, ref })
     image = typeof built === 'string' ? built : built?.image
     if (!image) throw new Error('buildImage 没返回镜像名')
   } catch (error) {

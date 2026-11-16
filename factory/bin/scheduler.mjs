@@ -23,6 +23,14 @@ import { createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 import {
+  createDecompose,
+  createFixTicket as createFixTicketJob,
+  createListMergedYesterday,
+  createNeedsAnswer,
+  createPreviewSweep,
+  runGh,
+} from '../lib/scheduler-jobs.mjs'
+import {
   collectRepos,
   collectSnapshot,
   hasLabel,
@@ -133,6 +141,7 @@ export async function run(
     runOnceImpl = runOnce,
     repoRoot: injectedRepoRoot,
     lockDir: injectedLockDir,
+    ghRun: injectedGhRun,
     config: configOverrides = {},
   } = {},
 ) {
@@ -173,7 +182,20 @@ export async function run(
     lockDir,
     maxActive,
     ...configOverrides,
+    needsAnswer: configOverrides.needsAnswer ?? createNeedsAnswer({ run: injectedGhRun || runGh }),
+    listMergedYesterday:
+      configOverrides.listMergedYesterday ?? createListMergedYesterday({ run: injectedGhRun || runGh }),
+    previewSweep: configOverrides.previewSweep ?? createPreviewSweep(),
   }
+
+  const decomposeFn =
+    decompose ||
+    createDecompose({
+      repoRoot,
+      command: process.env.AFK_AGENT_COMMAND || 'claude',
+    })
+  const createFixTicketFn =
+    createFixTicket || createFixTicketJob({ gh: client })
 
   const igniteFn =
     ignite ||
@@ -199,8 +221,8 @@ export async function run(
     customers,
     notifier: notify,
     ignite: igniteFn,
-    decompose,
-    createFixTicket,
+    decompose: decomposeFn,
+    createFixTicket: createFixTicketFn,
     clock,
     config,
   }

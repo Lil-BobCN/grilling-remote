@@ -20,13 +20,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
 import { readTrail, evidenceReady, mergeTicket } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
 import { parentCustomer, parentRequirement } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { startPreview, stopPreview } from '../lib/preview.mjs'
-import { parseParentAcceptance } from '../lib/tickets.mjs'
 import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
 
 const execFileAsync = promisify(execFile)
@@ -85,43 +85,6 @@ function tail(text, limit = 400) {
   return value.length > limit ? value.slice(-limit) : value
 }
 
-function acceptanceText(body) {
-  const items = parseParentAcceptance(body)
-  return items.length ? items.map((item) => `- ${item}`).join('\n') : '（票里没写验收条件）'
-}
-
-function verifierBrief({ ticket, issue, headSha }) {
-  return [
-    '你是验证 agent，没写过这份代码。',
-    '像真实顾客一样启动应用，走关键路径，改前改后各留截图或 trace，逐条过验收条件。',
-    '只报问题，不改代码。先读 .claude/skills/verify/SKILL.md 和 docs/agents/feature-map.md。',
-    '',
-    `票：#${ticket.number} ${ticket.title}`,
-    `head：${headSha}`,
-    '',
-    '验收条件：',
-    acceptanceText(issue.body),
-    '',
-    '最后一行写 `AFK_VERDICT: pass` 或 `AFK_VERDICT: fail 一句话原因`。',
-  ].join('\n')
-}
-
-async function reviewBrief({ ticket, issue, headSha, mode, instructions }) {
-  return [
-    instructions,
-    '',
-    `模式：${mode}`,
-    `票：#${ticket.number} ${ticket.title}`,
-    `head：${headSha}`,
-    '',
-    '验收条件：',
-    acceptanceText(issue.body),
-    '',
-    '只报问题，不改代码。意见按采纳、考虑、记下、驳回四类分开。',
-    '最后一行写 `AFK_VERDICT: pass` 或 `AFK_VERDICT: fail 一句话原因`。',
-  ].join('\n')
-}
-
 function mergerBrief({ files, instructions }) {
   return [
     instructions,
@@ -175,7 +138,6 @@ function defaultPreview({ customer, product, pr }) {
   return {
     async start({ ticket, ticketBranch, repoDir, headSha }) {
       const image = process.env.AFK_PREVIEW_IMAGE
-      if (!image) return { ok: false, error: '缺 AFK_PREVIEW_IMAGE，起不了预览' }
       const commitAt = await git(repoDir, ['log', '-1', '--format=%cI', headSha]).catch(() => '')
       return startPreview({
         ticket,
@@ -184,8 +146,10 @@ function defaultPreview({ customer, product, pr }) {
         product,
         baseBranch: ticketBranch,
         worktree: repoDir,
+        repoDir,
+        ref: headSha,
         helper: runHelper,
-        buildImage: async () => image,
+        ...(image ? { buildImage: async () => image } : {}),
         writeLocalEnv: async ({ address, user, password, serverEnv }) =>
           writeLocalPreviewEnv({ dir: localPreviewDir(), address, info: { user, password, env: serverEnv } }),
         seed: process.env.AFK_PREVIEW_SEED || '',
@@ -248,12 +212,8 @@ async function runMerge(options) {
   const runner = createAgentRunner({
     command: options['agent-command'] || process.env.AFK_AGENT_COMMAND || 'claude',
   })
-  const [reviewInstructions, mergerInstructions] = await Promise.all([
-    readFile(join(AGENTS_DIR, 'review.md'), 'utf8'),
-    readFile(join(AGENTS_DIR, 'merger.md'), 'utf8'),
-  ])
+  const mergerInstructions = await readFile(join(AGENTS_DIR, 'merger.md'), 'utf8')
 
-  const headSha = await git(repoDir, ['rev-parse', ticketBranch])
   const trail = await readTrail({ repoDir, ticket: ticketNumber })
 
   const result = await mergeTicket({
@@ -263,20 +223,27 @@ async function runMerge(options) {
     ticket,
     trail,
     verifier: async ({ headSha: mergedHead }) => {
-      const run = await runner.run({
-        name: `verify-${ticketNumber}-${mergedHead.slice(0, 8)}`,
-        cwd: repoDir,
-        brief: verifierBrief({ ticket, issue, headSha: mergedHead }),
+      const audit = await runVerifyAudit({
+        repoDir,
+        ticket: ticketNumber,
+        branch: mergedHead,
+        runner,
       })
-      return parseVerdict(run, { okWord: 'pass', label: '验证' })
+      return {
+        ok: audit.ok,
+        problems: audit.problems,
+        evidence: audit.evidence.join(','),
+      }
     },
     review: async ({ headSha: reviewHead, mode }) => {
-      const run = await runner.run({
-        name: `review-${ticketNumber}-${mode}`,
-        cwd: repoDir,
-        brief: await reviewBrief({ ticket, issue, headSha: reviewHead, mode, instructions: reviewInstructions }),
+      const audit = await runReviewAudit({
+        repoDir,
+        ticket: ticketNumber,
+        branch: reviewHead,
+        mode: mode || 'all',
+        runner,
       })
-      return parseVerdict(run, { okWord: 'pass', label: '评审' })
+      return { ok: audit.ok, problems: audit.problems, decision: audit.decision }
     },
     merger: async ({ files }) => {
       const run = await runner.run({
@@ -320,4 +287,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await main()
 }
 
-export { parseVerdict, verifierBrief, reviewBrief, mergerBrief }
+export { parseVerdict, mergerBrief }

@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
   buildCodeZip,
+  buildDockerImage,
   deliveryAddress,
   deployProduct,
   publishCodeZip,
@@ -87,7 +88,7 @@ async function dockerBuildImage({ repoDir, version, platform = 'linux/amd64', im
   const docker = process.env.AFK_DOCKER || 'docker'
   const dir = await mkdtemp(join(tmpdir(), 'afk-deploy-image-'))
   const tar = join(dir, `${tag.replace(/[^A-Za-z0-9._-]+/g, '_')}.tar`)
-  await run(docker, ['build', '--platform', platform, '-t', tag, repoDir])
+  await buildDockerImage({ repoDir, image: tag, platform, docker, run })
   await run(docker, ['save', '-o', tar, tag])
   return { tar, image: tag }
 }
@@ -123,6 +124,18 @@ async function sshSendDeliveryMail({ orderId, address, tries }) {
   const args = [...prefix, 'send-delivery-mail', orderId, address]
   if (Array.isArray(tries) && tries.length) args.push('--tries', tries.join('；'))
   return run(command, args)
+}
+
+async function sshMarkDelivered({ orderId, address }) {
+  const [command, ...prefix] = uploadsCommand()
+  return run(command, [...prefix, 'mark-delivered', orderId, address])
+}
+
+/** 默认实现的 mark-delivered：ssh 到服务器调 `afk-uploads mark-delivered`。 */
+export async function markDeliveredWithDefaults({ orderId, address } = {}) {
+  if (!orderId || !address) throw new Error('mark-delivered 缺订单号或地址')
+  await sshMarkDelivered({ orderId, address })
+  return { ok: true, orderId, address }
 }
 
 /** 默认实现的 deployProduct：Docker、SSH、HTTPS 和 notifier。 */
