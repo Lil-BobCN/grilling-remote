@@ -150,8 +150,37 @@ export async function appendTrail({
   return row
 }
 
-function normalizeTrail(trail) {
-  if (Array.isArray(trail)) {
+/**
+ * 合并成功后写一行 `phase=merge`，供 #466 的 collectRequirementState 判「子票已合」。
+ * 同一个 mergedSha 已经有记录就不重复追加。
+ *
+ * @returns {Promise<object|null>} 新写的行；已存在时返回 null
+ */
+export async function appendMergeRow({ repoDir, ticket, reqBranch, mergedSha, trail }) {
+  if (!mergedSha) throw new Error('写 merge 行缺 mergedSha')
+  const known = [
+    ...normalizeTrail(trail),
+    ...(await readTrail({ repoDir, ticket })),
+  ]
+  const exists = known.some(
+    (row) =>
+      row.phase === 'merge' &&
+      row.result === 'pass' &&
+      sameSha(row.evidence.trim(), mergedSha),
+  )
+  if (exists) return null
+  return appendTrail({
+    repoDir,
+    ticket,
+    phase: 'merge',
+    decision: 'merge',
+    why: reqBranch,
+    evidence: mergedSha,
+    result: 'pass',
+  })
+}
+
+function normalizeTrail(trail) {  if (Array.isArray(trail)) {
     return trail.map((row) => {
       const result = {}
       for (const column of TRAIL_COLUMNS) result[column] = String(row?.[column] ?? '')
@@ -802,6 +831,13 @@ export async function mergeTicket({
       }
     }
 
+    await appendMergeRow({
+      repoDir,
+      ticket: ticket.number,
+      reqBranch,
+      mergedSha,
+      trail: rows,
+    })
     await appendTrail({
       repoDir,
       ticket: ticket.number,
