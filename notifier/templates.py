@@ -94,11 +94,14 @@ def _ignite_timeout(data, link):
 
 
 def _daily_sample(data, link):
-    lines = "；".join(
-        f"{item['customer']} · {item['requirement']}（PR #{item['pr']}）"
-        for item in data["items"]
-    )
-    return f"昨天合了 {len(data['items'])} 单", lines
+    parts = []
+    for item in data["items"]:
+        reference = f"PR #{item['pr']}"
+        if item.get("url"):
+            reference = f"[{reference}]({item['url']})"
+        parts.append(
+            f"{item['customer']} · {item['requirement']}（{reference}）")
+    return f"昨天合了 {len(data['items'])} 单", "；".join(parts)
 
 
 EVENTS: dict[str, EventSpec] = {
@@ -147,6 +150,11 @@ def _validate_items(event, value):
         pr = item.get("pr")
         if isinstance(pr, bool) or not isinstance(pr, int):
             raise EventError(f"事件「{event}」的 data.items[{index}].pr 必须是整数")
+        url = item.get("url")
+        if url is not None and (
+                not isinstance(url, str) or not url.strip()):
+            raise EventError(
+                f"事件「{event}」的 data.items[{index}].url 必须是非空字符串")
 
 
 def _validate(event: str, spec: EventSpec, data: dict[str, Any], link: str | None):

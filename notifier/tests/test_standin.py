@@ -47,6 +47,22 @@ class TestStandin(unittest.TestCase):
         self.assertEqual(event["data"]["date"], "2026-11-15")
         self.assertEqual(event["data"]["items"][0]["pr"], 123)
 
+    def test_parses_auto_sources(self):
+        args = _parse_args([
+            "--repo", "Example/repo",
+            "--event", "每日抽样",
+            "--merged-on", "2026-11-15",
+        ])
+        self.assertEqual(args.merged_on, "2026-11-15")
+        args = _parse_args([
+            "--repo", "Example/repo",
+            "--audit-pr", "12",
+            "--audit-ticket", "355",
+        ])
+        self.assertEqual(args.audit_pr, 12)
+        self.assertEqual(args.audit_ticket, 355)
+        self.assertIsNone(args.event)
+
 
 if __name__ == "__main__":
     unittest.main()

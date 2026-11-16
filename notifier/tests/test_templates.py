@@ -119,6 +119,17 @@ class TestTemplates(unittest.TestCase):
             "B 店 · 预约送货（PR #123）；A 店 · 库存提醒（PR #124）",
         )
 
+    def test_daily_sample_item_links(self):
+        data, link = samples()["每日抽样"]
+        data["items"][0]["url"] = "https://example.test/pull/123"
+        title, body = render_event("每日抽样", data, link)
+        self.assertEqual(title, "昨天合了 2 单")
+        self.assertEqual(
+            body,
+            "B 店 · 预约送货（[PR #123](https://example.test/pull/123)）；"
+            "A 店 · 库存提醒（PR #124）",
+        )
+
     def test_days_waited_appended(self):
         data, link = samples()["补缺口提案"]
         data["days_waited"] = 2
