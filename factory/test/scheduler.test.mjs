@@ -469,6 +469,26 @@ async function createSpec(gh, { title = 'spec yuyue-quhuo' } = {}) {
   })
 }
 
+async function createMap(gh, parent) {
+  return gh.createIssue({
+    owner: OWNER,
+    repo: REPO,
+    title: '地图',
+    body: [
+      '## Destination',
+      '',
+      '预约取货。',
+      '',
+      '## Notes',
+      '',
+      `- 父工单：${parent.html_url}`,
+      '',
+      `<!-- factory:parent=${parent.html_url} -->`,
+    ].join('\n'),
+    labels: ['wayfinder:map'],
+  })
+}
+
 function customers(rows = [{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } }]) {
   return rows
 }
@@ -535,9 +555,10 @@ test('collectRepos 只服务 customers.json 里 active 且 repos 非空的行，
 
 test('collectSnapshot 分出地图、决定票、父工单和 spec，读评论、子票和阻塞边，只读不改', async (t) => {
   const { fake, gh } = await setupRepo(t)
-  const map = await gh.createIssue({ owner: OWNER, repo: REPO, title: '地图', body: '六段', labels: ['wayfinder:map'] })
   const decision = await gh.createIssue({ owner: OWNER, repo: REPO, title: '01 空档怎么放', body: '', labels: ['wayfinder:grilling'] })
   const parent = await createParent(gh, { state: '排队中' })
+  const map = await createMap(gh, parent)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: map.number, body: '重传：2026-11-17' })
   const spec = await createSpec(gh)
   await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：拆票' })
   const first = await createChild(gh, parent, { title: '子票一' })
@@ -550,6 +571,7 @@ test('collectSnapshot 分出地图、决定票、父工单和 spec，读评论�
   const snapshot = await collectSnapshot({ gh, owner: OWNER, repo: REPO })
 
   assert.deepEqual(snapshot.maps.map((row) => row.number), [map.number])
+  assert.equal(snapshot.maps[0].comments[0].body, '重传：2026-11-17')
   assert.deepEqual(snapshot.decisions.map((row) => row.number), [decision.number])
   assert.equal(snapshot.parents.length, 1)
   const row = snapshot.parents[0]
@@ -904,4 +926,62 @@ test('需要你答由注入的数据源提供，带问题和推荐，重启后�
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal([...notifier.delivered.values()].filter((row) => row.event === '需要你答').length, 1)
+})
+
+test('地图重传评论 → 推重传地图已更新；同一日期不重复推', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '排队中' })
+  const map = await createMap(gh, parent)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: map.number, body: '重传：2026-11-17\n\n待复查：01、02' })
+  const notifier = fakeNotifier()
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+
+  const events = [...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新')
+  assert.equal(events.length, 1)
+  assert.equal(events[0].data.customer, 'acme')
+  assert.equal(events[0].data.requirement, 'yuyue-quhuo')
+  assert.equal(events[0].link, `https://github.com/${OWNER}/${REPO}/issues/${map.number}`)
+  assert.equal(events[0].key, `#${map.number}:重传地图已更新:2026-11-17`)
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+  assert.equal(
+    [...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新').length,
+    1,
+  )
+
+  // 重启：调度器内存没了，通知模块的 key 去重还在。
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+  })
+  assert.equal(
+    [...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新').length,
+    1,
+  )
+})
+
+test('地图没有重传评论不发；有两条时用最新日期', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '排队中' })
+  const quiet = await createMap(gh, parent)
+  const notifier = fakeNotifier()
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+  assert.equal([...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新').length, 0)
+
+  const updated = await createMap(gh, parent)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: updated.number, body: '重传：2026-11-15' })
+  await gh.createComment({ owner: OWNER, repo: REPO, number: updated.number, body: '重传：2026-11-18\n\n又改了一轮' })
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+
+  const events = [...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新')
+  assert.equal(events.length, 1)
+  assert.equal(events[0].key, `#${updated.number}:重传地图已更新:2026-11-18`)
+  assert.equal(quiet.number < updated.number, true)
 })
