@@ -15,5 +15,9 @@
   },
   "log": {
     "level": "info"
+  },
+  "retry": {
+    "attempts": 3,
+    "interval_seconds": 30
   }
 }

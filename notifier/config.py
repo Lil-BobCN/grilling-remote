@@ -16,6 +16,8 @@ KEYCHAIN_SMTP_PASSWORD = "afkfactory-notifier.smtp-password"
 KEYCHAIN_WECOM_WEBHOOK = "afkfactory-notifier.wecom-webhook"
 
 LOG_LEVELS = ("info", "error")
+RETRY_DEFAULT_ATTEMPTS = 3
+RETRY_DEFAULT_INTERVAL_SECONDS = 30.0
 
 
 class ConfigError(Exception):
@@ -39,12 +41,19 @@ class PushConfig:
 
 
 @dataclass(frozen=True)
+class RetryConfig:
+    attempts: int
+    interval_seconds: float
+
+
+@dataclass(frozen=True)
 class Config:
     home: Path
     log_path: Path
     log_level: str
     email: EmailConfig
     push: PushConfig
+    retry: RetryConfig
 
 
 def notifier_home(home=None) -> Path:
@@ -108,6 +117,14 @@ def load_config(home=None) -> Config:
     log_level = log.get("level", "info")
     if log_level not in LOG_LEVELS:
         raise ConfigError(f"log.level 只能是 {' 或 '.join(LOG_LEVELS)}")
+    retry = _require_mapping(root.get("retry", {}), "retry")
+    attempts = retry.get("attempts", RETRY_DEFAULT_ATTEMPTS)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        raise ConfigError("retry.attempts 必须是大于 0 的整数")
+    interval = retry.get("interval_seconds", RETRY_DEFAULT_INTERVAL_SECONDS)
+    if (isinstance(interval, bool) or not isinstance(interval, (int, float))
+            or interval < 0):
+        raise ConfigError("retry.interval_seconds 必须是大于等于 0 的数")
 
     return Config(
         home=home_path,
@@ -124,6 +141,10 @@ def load_config(home=None) -> Config:
         push=PushConfig(
             enabled=_require_bool(push, "enabled", "channels.push"),
             timeout=_require_number(push, "timeout_seconds", "channels.push"),
+        ),
+        retry=RetryConfig(
+            attempts=attempts,
+            interval_seconds=float(interval),
         ),
     )
 
