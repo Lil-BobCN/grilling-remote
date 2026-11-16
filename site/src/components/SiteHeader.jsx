@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getSession, readSignedInHint } from '../api/account.js'
+import { getSession } from '../api/account.js'
 import { useI18n } from '../i18n/index.jsx'
 import LanguageToggle from './LanguageToggle.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -12,9 +12,9 @@ export default function SiteHeader({ current }) {
   const nav = copy.site.nav
   const headerRef = useRef(null)
 
-  // 本地标记说登录过，才花一次请求核对会话；401 时 request() 会把标记清掉。
+  // 每次打开页面核对一次会话：登录后收起「登录」，会话失效后再放回来。
+  // 本地标记只负责绘制前不闪，真正的状态以这次请求为准。
   useEffect(() => {
-    if (!readSignedInHint()) return
     getSession().catch(() => {})
   }, [])
 

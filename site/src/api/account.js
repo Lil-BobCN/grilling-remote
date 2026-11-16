@@ -29,14 +29,6 @@ export function setSignedInHint(value) {
   else document.documentElement.removeAttribute('data-signed-in')
 }
 
-export function readSignedInHint() {
-  try {
-    return window.localStorage.getItem(SIGNED_IN_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
 function messages() {
   return API_COPY[getLang()] || API_COPY.zh
 }
