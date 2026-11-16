@@ -129,3 +129,80 @@ assert.strictEqual((overturnHtml.match(/edge-a strong/g) || []).length, 1,
   "票到根的回边不画，只画票到普通决定的产出边");
 
 console.log("ok 五层树：层数、父节点、主/次要/跨层边、根部母线、前提块");
+
+/* 票推翻自己来源的旧决定：旧决定沿取代链解析回这张票自己的产出组，
+   不能把这张票当自己的父，否则层级会一轮一轮涨到上百层。 */
+const selfCycleBoard = {
+  map: { id: "3", title: "票推翻自己的来源", fragments: ["一。"] },
+  root: { id: "D-R", statement: "新根", fragments: [{ id: "D-R#1", index: 1, text: "一。" }] },
+  fragments: [{ id: "D-R#1", index: 1, text: "一。" }],
+  groups: [
+    { key: "decision:D-R", root: true, ticket: null, main: "D-R", decisions: ["D-R"] },
+    { key: "decision:D-NEW", root: false, ticket: "T1", main: "D-NEW", decisions: ["D-NEW"] },
+    { key: "decision:D-NEXT", root: false, ticket: "T2", main: "D-NEXT", decisions: ["D-NEXT"] },
+  ],
+  decisions: [
+    { id: "D-R", statement: "新根", status: "active", premises: [], root_of: "3" },
+    { id: "D-OLD", statement: "旧决定", status: "superseded", premises: [] },
+    { id: "D-NEW", statement: "新决定", status: "active", premises: [], supersedes: ["D-OLD"], source_ticket: "T1" },
+    { id: "D-NEXT", statement: "下游决定", status: "active", premises: [], source_ticket: "T2" },
+  ],
+  tickets: [
+    { id: "T1", title: "推翻自己来源的票", type: "task", state: "closed", work: "已完成",
+      derived_from: ["D-OLD", "D-R"], derived_from_inferred: [], covers: [], produces: ["D-NEW"], split_reason: "" },
+    { id: "T2", title: "下游票", type: "task", state: "open", work: "未领取",
+      derived_from: ["D-NEW"], derived_from_inferred: [], covers: [], produces: ["D-NEXT"], split_reason: "" },
+  ],
+  edges: [
+    { kind: "derived", from: "decision:D-OLD", to: "ticket:T1" },
+    { kind: "derived", from: "decision:D-R", to: "ticket:T1" },
+    { kind: "produced", from: "ticket:T1", to: "decision:D-NEW" },
+    { kind: "derived", from: "decision:D-NEW", to: "ticket:T2" },
+    { kind: "produced", from: "ticket:T2", to: "decision:D-NEXT" },
+  ],
+};
+const selfModel = window.BoardGraph.build(selfCycleBoard, {});
+assert.strictEqual(selfModel.nodes["ticket:T1"].level, 1, "自环来源被跳过，票 1 回到根下");
+assert.strictEqual(selfModel.nodes["decision:D-NEW"].level, 2, "票 1 的产出决定在 2 层");
+assert.strictEqual(selfModel.nodes["ticket:T2"].level, 3, "下游票仍在 3 层");
+assert.strictEqual(selfModel.nodes["ticket:T1"].parent, "decision:D-R", "票 1 的主父是根，不是自己的产出");
+assert.ok(selfModel.worldH < 1500, "自环不再把世界高度撑到上百层");
+
+/* 两张票互相依赖：层级会绕圈，但压成排名后世界高度仍有界。 */
+const mutualCycleBoard = {
+  map: { id: "4", title: "互依赖", fragments: ["一。"] },
+  root: { id: "D-R", statement: "新根", fragments: [{ id: "D-R#1", index: 1, text: "一。" }] },
+  fragments: [{ id: "D-R#1", index: 1, text: "一。" }],
+  groups: [
+    { key: "decision:D-R", root: true, ticket: null, main: "D-R", decisions: ["D-R"] },
+    { key: "decision:D-1", root: false, ticket: "T1", main: "D-1", decisions: ["D-1"] },
+    { key: "decision:D-2", root: false, ticket: "T2", main: "D-2", decisions: ["D-2"] },
+  ],
+  decisions: [
+    { id: "D-R", statement: "新根", status: "active", premises: [], root_of: "4" },
+    { id: "D-1", statement: "决定 1", status: "active", premises: [], source_ticket: "T1" },
+    { id: "D-2", statement: "决定 2", status: "active", premises: [], source_ticket: "T2" },
+  ],
+  tickets: [
+    { id: "T1", title: "票 1", type: "task", state: "open", work: "未领取",
+      derived_from: ["D-R", "D-2"], derived_from_inferred: [], covers: [], produces: ["D-1"], split_reason: "" },
+    { id: "T2", title: "票 2", type: "task", state: "open", work: "未领取",
+      derived_from: ["D-1"], derived_from_inferred: [], covers: [], produces: ["D-2"], split_reason: "" },
+  ],
+  edges: [
+    { kind: "derived", from: "decision:D-R", to: "ticket:T1" },
+    { kind: "derived", from: "decision:D-2", to: "ticket:T1" },
+    { kind: "produced", from: "ticket:T1", to: "decision:D-1" },
+    { kind: "derived", from: "decision:D-1", to: "ticket:T2" },
+    { kind: "produced", from: "ticket:T2", to: "decision:D-2" },
+  ],
+};
+const mutualModel = window.BoardGraph.build(mutualCycleBoard, {});
+assert.ok(mutualModel, "互依赖也能画出模型");
+const maxLevel = Math.max.apply(null, Object.keys(mutualModel.nodes).map(function (k) {
+  return mutualModel.nodes[k].level;
+}));
+assert.ok(maxLevel < 10, "层级压成排名，不会涨到上百层");
+assert.ok(mutualModel.worldH < 3000, "互依赖不再把世界高度撑爆");
+
+console.log("ok 环：自环来源跳过、互依赖层级压排名、世界高度有界");
