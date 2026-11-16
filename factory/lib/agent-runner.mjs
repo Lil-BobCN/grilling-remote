@@ -16,6 +16,9 @@ function safeName(name) {
     .replace(/^-+|-+$/g, '') || 'brief'
 }
 
+/** `--restricted` 会去掉跑命令的工具，必须用 `--tools` 点名它们。 */
+export const AGENT_TOOLS = 'Bash,Read,Write,Edit'
+
 /** 各角色的工具白名单；`--allowedTools` 用逗号分隔。 */
 export const DECOMPOSE_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
 export const VERIFY_TOOLS = 'Read,Write,Edit,Bash(bash:*),Bash(node:*),Bash(npm:*),Bash(curl:*)'
@@ -65,9 +68,24 @@ export function defaultExec(command, args, { cwd, env, onStart } = {}) {
  * @param {Function} [options.exec] 测试替身 `(command, args, {cwd, env}) => {code, stdout, stderr}`
  * @param {string} [options.briefDir] brief 文件放哪，默认新建临时目录
  * @param {string|string[]} [options.allowedTools] 默认工具白名单
+ * @param {string|string[]} [options.tools] `--tools` 的可用工具集合，默认 Bash,Read,Write,Edit
  */
-export function createAgentRunner({ command = 'claude', exec = defaultExec, briefDir, allowedTools = [] } = {}) {
-  async function run({ brief, cwd, env, name = 'brief', extraArgs = [], allowedTools: runTools } = {}) {
+export function createAgentRunner({
+  command = 'claude',
+  exec = defaultExec,
+  briefDir,
+  allowedTools = [],
+  tools = AGENT_TOOLS,
+} = {}) {
+  async function run({
+    brief,
+    cwd,
+    env,
+    name = 'brief',
+    extraArgs = [],
+    allowedTools: runTools,
+    tools: runToolSet,
+  } = {}) {
     const text = String(brief ?? '')
     if (!text.trim()) throw new Error('agent runner 缺 brief')
 
@@ -75,11 +93,13 @@ export function createAgentRunner({ command = 'claude', exec = defaultExec, brie
     const briefPath = join(dir, `${safeName(name)}.md`)
     await writeFile(briefPath, text, 'utf8')
 
-    const tools = toolList(runTools === undefined ? allowedTools : runTools)
+    const toolSet = toolList(runToolSet === undefined ? tools : runToolSet)
+    const allowed = toolList(runTools === undefined ? allowedTools : runTools)
     const args = [
       '-p',
       '--restricted',
-      ...(tools.length ? ['--allowedTools', tools.join(',')] : []),
+      ...(toolSet.length ? ['--tools', toolSet.join(',')] : []),
+      ...(allowed.length ? ['--allowedTools', allowed.join(',')] : []),
       ...extraArgs,
       text,
     ]

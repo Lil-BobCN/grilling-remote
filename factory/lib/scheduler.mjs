@@ -283,7 +283,13 @@ export function routeParent({
     return []
   }
 
-  if (isWaitingSignal(signal?.kind)) return []
+  // 开发中读到驳回、并且驳回后面已经写过进度行，说明修复票已建，接着点火；
+  // 其余等待信号（新的提案、没处理过的驳回、改口）仍然停。
+  const handledRejection =
+    state === '开发中' &&
+    signal?.kind === '驳回：' &&
+    progressAfter(comments, signal.index)
+  if (isWaitingSignal(signal?.kind) && !handledRejection) return []
 
   if (small) {
     if (state === '排队中') {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { VERIFY_TOOLS, createAgentRunner } from '../lib/agent-runner.mjs'
+import { AGENT_TOOLS, VERIFY_TOOLS, createAgentRunner } from '../lib/agent-runner.mjs'
 
 test('默认 command 是 claude，跑 -p --restricted，brief 同时留文件', async () => {
   const calls = []
@@ -22,6 +22,9 @@ test('默认 command 是 claude，跑 -p --restricted，brief 同时留文件', 
   assert.equal(calls[0].command, 'claude')
   assert.equal(calls[0].args[0], '-p')
   assert.equal(calls[0].args[1], '--restricted')
+  assert.equal(calls[0].args[2], '--tools')
+  assert.equal(calls[0].args[3], AGENT_TOOLS)
+  assert.equal(AGENT_TOOLS, 'Bash,Read,Write,Edit')
   assert.ok(calls[0].args.includes('按验收条件点一遍应用'))
   assert.equal(calls[0].options.cwd, '/tmp/example')
   assert.ok(result.briefPath.endsWith('.md'))
@@ -80,4 +83,19 @@ test('单次 run 的 allowedTools 覆盖默认值', async () => {
   await runner.run({ brief: '评审', allowedTools: 'Read,Write' })
   const index = calls[0].indexOf('--allowedTools')
   assert.equal(calls[0][index + 1], 'Read,Write')
+})
+
+test('tools 和 allowedTools 分开传，--tools 点名跑命令的工具', async () => {
+  const calls = []
+  const runner = createAgentRunner({
+    exec: async (command, args) => {
+      calls.push(args)
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+  await runner.run({ brief: '拆票', tools: 'Bash,Read', allowedTools: 'Read' })
+  const toolsIndex = calls[0].indexOf('--tools')
+  assert.equal(calls[0][toolsIndex + 1], 'Bash,Read')
+  const allowedIndex = calls[0].indexOf('--allowedTools')
+  assert.equal(calls[0][allowedIndex + 1], 'Read')
 })
