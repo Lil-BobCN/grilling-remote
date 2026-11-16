@@ -89,22 +89,19 @@ export function createDirRemote(root, { customersFile } = {}) {
   return remote
 }
 
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`
-}
-
 /**
- * 默认远端：ssh 到服务器，用 `sudo -n` 读 `/data/uploads` 和 `/data/customers/customers.json`。
+ * 默认远端：ssh 到服务器，用 `sudo -n afk-uploads` 读写回传件和客户表。
  * `server` 形如 `dev@1.2.3.4`；`key` 可选，对应 `ssh -i`。
- * 服务器上的 `dev` 在 sudo 组，上传目录 700 afkapp。
+ * helper 由 deploy/backend/install.sh 装到 /usr/local/sbin，sudoers 给 dev 免密；
+ * 它只管 list、cat、rm 和 cat-customers，不开放任意路径。
  */
 export function createSshRemote({
   server,
-  uploadDir = '/data/uploads',
-  customersPath = '/data/customers/customers.json',
   key = '',
+  helper = '/usr/local/sbin/afk-uploads',
 }) {
   if (!server) throw new Error('缺少服务器地址（AFK_SERVER，例如 dev@1.2.3.4）')
+  if (!/^\/[A-Za-z0-9._/-]+$/.test(helper)) throw new Error(`helper 路径不对：${helper}`)
 
   function run(command, { binary = false } = {}) {
     const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15']
@@ -129,7 +126,7 @@ export function createSshRemote({
 
   return {
     async list() {
-      const output = await run(`sudo -n ls -1 ${shellQuote(uploadDir)}`)
+      const output = await run(`sudo -n ${helper} list`)
       return String(output)
         .split(/\r?\n/)
         .map((line) => line.trim())
@@ -138,14 +135,14 @@ export function createSshRemote({
     },
     read(id, name) {
       if (!UPLOAD_ID.test(id) || !ALLOWED_FILES.has(name)) throw new Error(`不读这个文件：${id}/${name}`)
-      return run(`sudo -n cat ${shellQuote(join(uploadDir, id, name))}`, { binary: true })
+      return run(`sudo -n ${helper} cat ${id} ${name}`, { binary: true })
     },
     async remove(id) {
       if (!UPLOAD_ID.test(id)) throw new Error(`不删这个目录：${id}`)
-      await run(`sudo -n rm -rf ${shellQuote(join(uploadDir, id))}`)
+      await run(`sudo -n ${helper} rm ${id}`)
     },
     async syncCustomers(destination) {
-      const bytes = await run(`sudo -n cat ${shellQuote(customersPath)}`, { binary: true })
+      const bytes = await run(`sudo -n ${helper} cat-customers`, { binary: true })
       await writeCustomers(destination, bytes)
       return destination
     },
@@ -211,10 +208,12 @@ export async function pullInbox({
     } catch {
       continue
     }
+    const status = meta?.status
     const allowed =
-      meta?.status === 'ready' ||
-      meta?.status === 'imported' ||
-      (meta?.status === 'failed' && meta.operator_alert)
+      status === 'ready' ||
+      status === 'imported' ||
+      status === 'validation_failed' ||
+      (status === 'failed' && meta.operator_alert)
     if (!allowed) continue
 
     const dir = join(inboxDir, id)
@@ -223,7 +222,7 @@ export async function pullInbox({
     const previous = (await readJsonOrNull(archivePath)) || {}
 
     const zipPath = join(dir, 'package.zip')
-    const copyPackage = meta.status === 'ready' || meta.status === 'imported'
+    const copyPackage = status === 'ready' || status === 'imported' || status === 'validation_failed'
     let complete = copyPackage ? await fileComplete(zipPath, meta) : false
     if (copyPackage && !complete) {
       const bytes = await remote.read(id, 'package.zip')

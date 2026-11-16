@@ -357,12 +357,13 @@ export async function cleanupExpired(config, now = Date.now()) {
     return 0
   }
 
+  const removable = new Set(['failed', 'validation_failed'])
   let removed = 0
   for (const name of names) {
     if (!name.startsWith('upload-')) continue
     const dir = join(config.uploadDir, name)
     const meta = await readJson(join(dir, 'meta.json'), null)
-    if (!meta || meta.status !== 'failed') continue
+    if (!meta || !removable.has(meta.status)) continue
     const at = Date.parse(meta.at || '')
     if (!Number.isFinite(at) || now - at < config.retentionMs) continue
     await rm(dir, { recursive: true, force: true }).catch(() => {})

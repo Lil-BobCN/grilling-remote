@@ -171,6 +171,7 @@ test('新软件校验通过后建仓、拷快照、建父工单并回写订单�
     '顾客想在我的微信小程序里看今天有什么水果，下单，选到店取还是送货。我在后台改价格和库存。',
   )
   assert.deepEqual(issues[0].labels.map((label) => label.name), ['状态:已提交'])
+  assert.match(issues[0].body, /<!-- factory:order=o-0001 -->/)
 
   const clone = join(root, 'clone')
   await execFileAsync('git', ['clone', bare, clone])
@@ -190,6 +191,47 @@ test('新软件校验通过后建仓、拷快照、建父工单并回写订单�
     `origin/req/${order.id}`,
   ])
   assert.match(tree.stdout, /docs\/requirements\/xianguopu\/问答记录\.md/)
+})
+
+test('建单成功但订单没回写时，重跑复用带标记的父工单并更新五段', async (t) => {
+  const { config, customer, gh, bare } = await setup(t)
+  const order = await makeOrder(config, customer, { requirement: 'xianguopu', product: 'xianguopu' })
+  const { dir } = await makeUpload(config, {
+    id: 'upload-reuse',
+    orders: [order],
+    requirements: [{ name: 'xianguopu', copySample: true }],
+  })
+
+  await importOnce({ config, gh, remoteUrlFor: () => bare })
+  const issues = await gh.listIssues({ owner: 'acme', repo: 'acme-xianguopu', state: 'all' })
+  assert.equal(issues.length, 1)
+  const issueNumber = issues[0].number
+
+  const orderPath = join(config.dataDir, 'orders', `${order.id}.json`)
+  const savedOrder = JSON.parse(await readFile(orderPath, 'utf8'))
+  await writeJsonAtomic(orderPath, { ...savedOrder, issue: null })
+  await gh.updateIssue({
+    owner: 'acme',
+    repo: 'acme-xianguopu',
+    number: issueNumber,
+    title: '旧标题',
+    body: '旧正文\n\n<!-- factory:order=o-0001 -->\n',
+  })
+  const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  await writeJsonAtomic(join(dir, 'meta.json'), { ...meta, status: 'ready' })
+
+  const second = await importOnce({ config, gh, remoteUrlFor: () => bare })
+  assert.equal(second.uploads[0].status, 'imported')
+
+  const after = await gh.listIssues({ owner: 'acme', repo: 'acme-xianguopu', state: 'all' })
+  assert.equal(after.length, 1)
+  assert.notEqual(after[0].title, '旧标题')
+  assert.match(after[0].body, /## 客户原话/)
+  assert.match(after[0].body, /<!-- factory:order=o-0001 -->/)
+  assert.deepEqual(after[0].labels.map((label) => label.name), ['状态:已提交'])
+
+  const fixed = JSON.parse(await readFile(orderPath, 'utf8'))
+  assert.equal(fixed.issue, after[0].html_url)
 })
 
 test('同一上传重跑不重复建单，订单已有工单就跳过', async (t) => {
@@ -374,7 +416,7 @@ test('校验未通过只发一次邮件，不建仓不建单；重跑不重发',
     remoteUrlFor: () => bare,
     mailSender: async (mail) => sent.push(mail),
   })
-  assert.equal(first.uploads[0].status, 'ready')
+  assert.equal(first.uploads[0].status, 'validation_failed')
   assert.equal(sent.length, 1)
   assert.match(sent[0].body, /缺验收场景/)
   assert.match(sent[0].body, /还有票没做完/)
@@ -382,7 +424,7 @@ test('校验未通过只发一次邮件，不建仓不建单；重跑不重发',
   assert.equal(fake.state.repos.size, 0)
 
   const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
-  assert.equal(meta.status, 'ready')
+  assert.equal(meta.status, 'validation_failed')
   assert.equal(meta.mail.sha256, meta.sha256)
 
   await importOnce({ config, gh, remoteUrlFor: () => bare, mailSender: async (mail) => sent.push(mail) })

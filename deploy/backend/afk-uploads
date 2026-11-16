@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# 回传件 helper：给运营者 Mac 的拉取桥用。只做四件事，别的都不做。
+#
+#   afk-uploads list                      列出 upload-* 目录名
+#   afk-uploads cat <上传 id> <文件名>     只读 meta.json 或 package.zip
+#   afk-uploads rm <上传 id>               删一个上传目录
+#   afk-uploads cat-customers             读 /data/customers/customers.json
+#
+# 装到 /usr/local/sbin/afk-uploads，属主 root。sudoers 只加一条：
+#   dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *
+# 上传目录和客户表的路径写死；干跑演练时可以用环境变量临时改。
+
+set -euo pipefail
+
+UPLOAD_DIR=${AFK_UPLOAD_DIR:-/data/uploads}
+CUSTOMERS_FILE=${AFK_CUSTOMERS_FILE:-/data/customers/customers.json}
+
+usage() {
+  echo "用法：afk-uploads list|cat <id> <file>|rm <id>|cat-customers" >&2
+  exit 2
+}
+
+is_upload_id() {
+  [[ ${1:-} =~ ^upload-[A-Za-z0-9._-]+$ ]]
+}
+
+case ${1:-} in
+  list)
+    [[ $# -eq 1 ]] || usage
+    [[ -d $UPLOAD_DIR ]] || exit 0
+    shopt -s nullglob
+    for path in "$UPLOAD_DIR"/upload-*; do
+      [[ -d $path ]] || continue
+      name=${path##*/}
+      if is_upload_id "$name"; then printf '%s\n' "$name"; fi
+    done
+    ;;
+  cat)
+    [[ $# -eq 3 ]] || usage
+    id=$2
+    file=$3
+    is_upload_id "$id" || { echo "上传 id 不对：$id" >&2; exit 2; }
+    case $file in
+      meta.json | package.zip) ;;
+      *)
+        echo "只读 meta.json 和 package.zip" >&2
+        exit 2
+        ;;
+    esac
+    [[ -f $UPLOAD_DIR/$id/$file ]] || { echo "没这个文件：$id/$file" >&2; exit 1; }
+    cat "$UPLOAD_DIR/$id/$file"
+    ;;
+  rm)
+    [[ $# -eq 2 ]] || usage
+    id=$2
+    is_upload_id "$id" || { echo "上传 id 不对：$id" >&2; exit 2; }
+    rm -rf -- "$UPLOAD_DIR/$id"
+    ;;
+  cat-customers)
+    [[ $# -eq 1 ]] || usage
+    [[ -f $CUSTOMERS_FILE ]] || { echo "没这个文件：$CUSTOMERS_FILE" >&2; exit 1; }
+    cat "$CUSTOMERS_FILE"
+    ;;
+  *)
+    usage
+    ;;
+esac

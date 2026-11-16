@@ -99,6 +99,10 @@ export function createGithubApi({
       return request('GET', repoPath(owner, repo, `/issues/${number}`))
     },
 
+    updateIssue({ owner, repo, number, ...fields }) {
+      return request('PATCH', repoPath(owner, repo, `/issues/${number}`), fields)
+    },
+
     createComment({ owner, repo, number, body }) {
       return request('POST', repoPath(owner, repo, `/issues/${number}/comments`), { body })
     },

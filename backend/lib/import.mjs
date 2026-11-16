@@ -223,13 +223,23 @@ export async function importOrder({
     labels.push(SMALL_LABEL.name)
   }
 
-  const issue = await gh.createIssue({
-    owner,
-    repo: repoName,
-    title: rendered.title,
-    body: rendered.body,
-    labels,
-  })
+  const body = bodyWithMarker(rendered.body, order.id)
+  const existing = await findParentIssue(gh, { owner, repo: repoName, orderId: order.id })
+  const issue = existing
+    ? await gh.updateIssue({
+        owner,
+        repo: repoName,
+        number: existing.number,
+        title: rendered.title,
+        body,
+      })
+    : await gh.createIssue({
+        owner,
+        repo: repoName,
+        title: rendered.title,
+        body,
+        labels,
+      })
 
   await updateOrder(config, order.id, {
     issue: issue.html_url,
@@ -265,6 +275,25 @@ function repoFromIssue(issueUrl) {
   } catch {
     return ''
   }
+}
+
+function orderMarker(orderId) {
+  return `<!-- factory:order=${orderId} -->`
+}
+
+function bodyWithMarker(body, orderId) {
+  return `${String(body).trimEnd()}\n\n${orderMarker(orderId)}\n`
+}
+
+/**
+ * 父工单幂等：建单前先找带同一不可见标记的 open issue。
+ * 建单成功但回写订单失败时，重跑会复用这张单并更新五段，不建第二张。
+ */
+async function findParentIssue(gh, { owner, repo, orderId }) {
+  const issues = await gh.listIssues({ owner, repo, state: 'open' })
+  if (!Array.isArray(issues)) return null
+  const marker = orderMarker(orderId)
+  return issues.find((issue) => typeof issue?.body === 'string' && issue.body.includes(marker)) || null
 }
 
 /**
@@ -307,7 +336,12 @@ async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, di
 
   const pending = uploadOrders.filter((order) => order.validation?.passed !== false && !order.issue)
   const passedOrders = uploadOrders.filter((order) => order.validation?.passed !== false)
-  if (passedOrders.length === 0) return meta
+  if (passedOrders.length === 0) {
+    // 全部内容校验未通过：只存快照，按 7 天保留期清掉，不按导入成功处理。
+    const next = { ...meta, status: 'validation_failed' }
+    await writeJsonAtomic(join(dir, 'meta.json'), next)
+    return next
+  }
 
   for (const order of pending) {
     const scratchDir = join(dir, 'work', 'scratch', order.requirement)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 一次性安装：建服务用户、数据目录、环境文件、systemd 单元，换 Caddy 配置。
-# 用 root 跑。安装完还不能启动服务，先要有第一版发布。
+# 一次性安装：建服务用户、数据目录、环境文件、systemd 单元，装回传件拉取 helper
+# 和 sudoers 规则，换 Caddy 配置。用 root 跑。安装完还不能启动服务，先要有第一版发布。
 #
 #   sudo bash deploy/backend/install.sh
 #
@@ -18,9 +18,12 @@ CADDYFILE=${CADDYFILE:-$HERE/../Caddyfile}
 SERVICE_FILE=$HERE/afkapp.service
 IMPORT_SERVICE_FILE=$HERE/afk-import.service
 IMPORT_TIMER_FILE=$HERE/afk-import.timer
+UPLOAD_HELPER=$HERE/afk-uploads
 ENV_EXAMPLE=$HERE/app.env.example
+SUDO_USER_NAME=${AFK_SUDO_USER:-dev}
+UPLOAD_SUDO_FILE=/etc/sudoers.d/afk-uploads
 
-for file in "$CADDYFILE" "$SERVICE_FILE" "$IMPORT_SERVICE_FILE" "$IMPORT_TIMER_FILE" "$ENV_EXAMPLE"; do
+for file in "$CADDYFILE" "$SERVICE_FILE" "$IMPORT_SERVICE_FILE" "$IMPORT_TIMER_FILE" "$UPLOAD_HELPER" "$ENV_EXAMPLE"; do
   [[ -f $file ]] || { echo "缺文件：$file" >&2; exit 1; }
 done
 
@@ -68,6 +71,23 @@ for script in deploy.sh rollback.sh check.sh; do
 done
 echo "脚本放到了 /data/app/bin/"
 
+echo "== 回传件拉取 helper"
+install -m 755 -o root -g root "$UPLOAD_HELPER" /usr/local/sbin/afk-uploads
+echo "装好 /usr/local/sbin/afk-uploads（list、cat、rm、cat-customers）"
+
+if [[ -f $UPLOAD_SUDO_FILE ]]; then
+  echo "$UPLOAD_SUDO_FILE 已存在，不覆盖"
+else
+  printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *\n' "$SUDO_USER_NAME" >"$UPLOAD_SUDO_FILE"
+  chmod 440 "$UPLOAD_SUDO_FILE"
+  if ! visudo -cf "$UPLOAD_SUDO_FILE"; then
+    rm -f "$UPLOAD_SUDO_FILE"
+    echo "sudoers 校验不过，已删掉新文件" >&2
+    exit 1
+  fi
+  echo "只加了这一条：$SUDO_USER_NAME 能免密跑 /usr/local/sbin/afk-uploads"
+fi
+
 echo "== Caddy"
 backup=/etc/caddy/Caddyfile.bak.$(date -u +%Y%m%dT%H%M%SZ)
 cp -a /etc/caddy/Caddyfile "$backup"
@@ -87,4 +107,5 @@ cat <<'EOF'
 1. 填 /etc/afkapp/app.env 里的密钥：GITHUB_TOKEN、GITHUB_ADMIN_TOKEN、GITHUB_OWNER、SESSION_SECRET 和客户邮件 SMTP，权限保持 600 root:root。
 2. 把第一版发布包传上去，用 deploy/backend/deploy.sh 发布。
 3. 发布成功后跑 deploy/backend/check.sh 复核，再 systemctl start afk-import.timer。
+4. Mac 上跑拉取桥时用 dev 账号，afk-uploads 已免密；客户表也走它同步。
 EOF

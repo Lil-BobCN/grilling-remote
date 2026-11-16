@@ -8,7 +8,7 @@
  *
  * 可选环境变量：
  *   AFK_SSH_KEY       ssh -i 的私钥路径
- *   AFK_UPLOAD_DIR    服务器上的上传目录，默认 /data/uploads
+ *   AFK_UPLOADS_HELPER 服务器上的 helper 路径，默认 /usr/local/sbin/afk-uploads
  *   AFK_INBOX         本地存档目录，默认当前目录下的 inbox
  *   AFK_CUSTOMERS_FILE 本机 customers.json 路径，默认 inbox 的上一层
  *   NOTIFIER_COMMAND  有 operator_alert 时调的通知命令，默认 `python3 -m notifier send`
@@ -17,7 +17,8 @@
  * 每轮还会把服务器 `/data/customers/customers.json` 同步到本机，给调度器读。
  * 拉取失败保留上一份并记 warning。
  *
- * 服务器上的 `dev` 用户在 sudo 组，读 `/data/uploads` 用 `sudo -n`。
+ * 服务器上跑 `sudo -n afk-uploads ...`；helper 和 sudoers 由
+ * deploy/backend/install.sh 装好，不开放任意路径。
  * 脚本只在本地副本完整并且 `meta.status === 'imported'` 时删远端目录。
  */
 import { randomUUID } from 'node:crypto'
@@ -97,8 +98,8 @@ async function main() {
   )
   const remote = createSshRemote({
     server,
-    uploadDir: process.env.AFK_UPLOAD_DIR || '/data/uploads',
     key: process.env.AFK_SSH_KEY || '',
+    helper: process.env.AFK_UPLOADS_HELPER || '/usr/local/sbin/afk-uploads',
   })
 
   const result = await pullInbox({ remote, inboxDir, customersPath, notify: notifyOperator })

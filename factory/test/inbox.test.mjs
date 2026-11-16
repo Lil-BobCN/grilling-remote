@@ -185,6 +185,19 @@ test('failed 上传带 operator_alert 时只转发提醒，不拷包也不删远
   await stat(join(remoteRoot, 'upload-rejected', 'package.zip'))
 })
 
+test('validation_failed 的上传照常存档，不删远端', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-invalid', { status: 'validation_failed' })
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  const local = join(inboxDir, 'upload-invalid')
+  assert.deepEqual(await readFile(join(local, 'package.zip')), zipBytes('upload-invalid'))
+  const archive = JSON.parse(await readFile(join(local, 'archived.json'), 'utf8'))
+  assert.equal(archive.status, 'validation_failed')
+  await stat(join(remoteRoot, 'upload-invalid', 'package.zip'))
+})
+
 test('每轮把 customers.json 同步到本机数据目录', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
   const customersFile = join(remoteRoot, 'customers.json')
