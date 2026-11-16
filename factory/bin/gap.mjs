@@ -4,11 +4,13 @@
  *
  *   node factory/bin/gap.mjs apply-map --scratch <目录> --owner <owner> --repo <仓> \
  *     --requirement <需求名> --parent <父工单链接> [--mode replace]
- *   node factory/bin/gap.mjs propose --scratch <目录> --owner <owner> --repo <仓> --number <地图编号>
+ *   node factory/bin/gap.mjs propose --scratch <目录> --owner <owner> --repo <仓> --number <地图编号> \
+ *     [--recommendations <推荐答案.json>]
  *   node factory/bin/gap.mjs point --owner <owner> --repo <仓> --number <父工单编号> \
  *     --answers '<JSON>'
  *
  * `--answers` 接受数组，或 `{ "answers": [...], "impacts": [...] }`。
+ * `--recommendations` 用题目或出处作键，给业务题补推荐答案。
  * 默认用 `GITHUB_TOKEN` 建客户端；测试传 `{ gh }` 注入假 GitHub。
  */
 import { readFile } from 'node:fs/promises'
@@ -91,11 +93,15 @@ export async function run(argv, { gh, log = console } = {}) {
     const scratchDir = required(options, 'scratch')
     const map = parseMap(await readFile(join(scratchDir, 'map.md'), 'utf8'))
     const tickets = await readDecisionTickets(join(scratchDir, 'issues'))
+    const recommendations = options.recommendations
+      ? JSON.parse(await readFile(options.recommendations, 'utf8'))
+      : {}
     const proposal = await draftProposal({
       scratchDir,
       map,
       tickets,
       mapUrl: mapIssue.html_url,
+      recommendations,
     })
     const posted = await postProposal({
       gh: client,

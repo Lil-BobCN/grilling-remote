@@ -125,7 +125,13 @@ function renderQuestions(questions, start = 1) {
 }
 
 /** 生成 `提案：补缺口` 的正文和结构化题目。 */
-export async function draftProposal({ scratchDir, map, tickets = [], mapUrl = '' }) {
+export async function draftProposal({
+  scratchDir,
+  map,
+  tickets = [],
+  mapUrl = '',
+  recommendations = {},
+}) {
   let pendingText = ''
   try {
     pendingText = await readFile(join(scratchDir, 'pending.md'), 'utf8')
@@ -133,8 +139,16 @@ export async function draftProposal({ scratchDir, map, tickets = [], mapUrl = ''
     if (error.code !== 'ENOENT') throw error
   }
 
-  const technical = pendingQuestions(pendingText)
-  const business = businessQuestions(map, tickets)
+  const recommend = (question) =>
+    recommendations[question.question] || recommendations[question.source] || question.recommended || ''
+  const technical = pendingQuestions(pendingText).map((question) => ({
+    ...question,
+    recommended: recommend(question),
+  }))
+  const business = businessQuestions(map, tickets).map((question) => ({
+    ...question,
+    recommended: recommend(question),
+  }))
   const questions = [...technical, ...business]
 
   const parts = ['提案：补缺口']

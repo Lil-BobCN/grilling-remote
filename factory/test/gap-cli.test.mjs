@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { run } from '../bin/gap.mjs'
@@ -64,6 +67,11 @@ test('CLI apply-map 建图，propose 发到父工单，point 过关后写点头'
   )
   assert.equal(applied.mapIssue.title, 'xianguopu 地图')
 
+  const scratch = await mkdtemp(join(tmpdir(), 'gap-cli-rec-'))
+  t.after(() => rm(scratch, { recursive: true, force: true }))
+  const recommendationsFile = join(scratch, 'recommendations.json')
+  await writeFile(recommendationsFile, JSON.stringify({ '做成小程序还是网页，放哪家云？': '自建服务器' }))
+
   const proposed = await run(
     [
       'propose',
@@ -75,6 +83,8 @@ test('CLI apply-map 建图，propose 发到父工单，point 过关后写点头'
       'acme-shuiguo',
       '--number',
       String(applied.mapIssue.number),
+      '--recommendations',
+      recommendationsFile,
     ],
     { gh, log: sink },
   )
@@ -83,6 +93,7 @@ test('CLI apply-map 建图，propose 发到父工单，point 过关后写点头'
   const proposal = comments.find((row) => row.body.startsWith('提案：补缺口'))
   assert.ok(proposal)
   assert.match(proposal.body, /小程序用哪家云/)
+  assert.match(proposal.body, /推荐：自建服务器/)
 
   const children = await gh.listSubIssues({ owner: 'acme', repo: 'acme-shuiguo', number: applied.mapIssue.number })
   for (const child of children) {

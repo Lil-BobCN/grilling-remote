@@ -86,8 +86,9 @@ function parseTicket(text, file) {
   const source = normalizeText(text)
   const titleMatch = /^#\s+(.+?)\s*$/m.exec(source)
   const fileNumber = /^(\d+)[-_ ]/.exec(file)?.[1] || null
-  let title = titleMatch ? titleMatch[1].trim() : file.replace(/\.md$/, '')
-  if (!ticketNumber(title) && fileNumber) title = `${fileNumber} ${title}`
+  const fromFile = file.replace(/\.md$/, '').replace(/^(\d+)[-_ ]\s*/, '$1 ')
+  let title = titleMatch ? titleMatch[1].trim() : fromFile
+  if (titleMatch && !ticketNumber(title) && fileNumber) title = `${fileNumber} ${title}`
   const number = ticketNumber(title)
   if (!number) throw new MapFormatError(`票「${file}」缺编号标题`)
   if (fileNumber && normalizeNumber(fileNumber) !== normalizeNumber(number)) {

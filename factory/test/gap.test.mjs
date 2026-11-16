@@ -195,6 +195,15 @@ test('draftProposal：列出 pending 的题和推荐，也列地图上「你答�
   for (const check of ['技术栈', '部署到哪', '第三方服务与账号', '数据怎么存', '每月花多少', '合规', '接缝', '词汇表', '查重']) {
     assert.ok(proposal.body.includes(check), check)
   }
+
+  const withRecommendations = await draftProposal({
+    scratchDir: scratch,
+    map,
+    tickets,
+    mapUrl: 'https://example.test/issues/2',
+    recommendations: { '送货范围怎么定，超区怎么办': '只送镇上，超区自取' },
+  })
+  assert.match(withRecommendations.body, /推荐：只送镇上，超区自取/)
 })
 
 test('renderPoint 两段格式，正文影响为空写「无」', () => {
@@ -213,6 +222,7 @@ test('renderPoint 两段格式，正文影响为空写「无」', () => {
 
 test('postPoint 未就绪时拒绝并只留一条提醒，补完后才写点头', async (t) => {
   const { gh, parent, mapIssue } = await githubSetup(t)
+  const parentBefore = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })).body
   let mapBody = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })).body
   mapBody = mapBody.replace(
     '## Not yet specified\n\n## Out of scope',
@@ -246,6 +256,8 @@ test('postPoint 未就绪时拒绝并只留一条提醒，补完后才写点头'
   assert.ok(point)
   assert.match(point.body, /## 最终答案/)
   assert.match(point.body, /## 正文影响/)
+  const parentAfter = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })).body
+  assert.equal(parentAfter, parentBefore)
 })
 
 test('postProposal 用 ensureCommentOnce，重跑不重复发', async (t) => {
