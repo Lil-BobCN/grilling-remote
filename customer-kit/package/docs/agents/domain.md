@@ -6,10 +6,11 @@
 
 - 根目录存在 `GLOSSARY.md` 时，先读它。
 - 根目录存在 `GLOSSARY-MAP.md` 时，先通过它找到与当前工作相关的那份 `GLOSSARY.md`。
+- 当前需求目录的 `.scratch/{需求名}/决策记录.md` 存在时，先读它。
 
 这些文件不存在时直接继续，不提示缺失，也不提前建议创建。等术语真正明确后，再由 `domain-modeling` 按需创建。
 
-本工作区不写 ADR。难回退的决定写进票的 `## 结论` 和地图 Decisions so far。
+本工作区不建 `docs/adr/`。难回退、不写会让人意外、有真实取舍的决定写进 `.scratch/{需求名}/决策记录.md`，一节一条，格式见 `AGENTS.md` 的「进度文件」。地图 `Decisions so far` 仍只抄一行结论。
 
 ## 文件布局
 

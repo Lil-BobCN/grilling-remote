@@ -20,7 +20,7 @@
 
 术语第一次出现时给中文解释，例如 `run（一次执行）`。
 
-写词条、写 ADR、做 domain modeling 时，先读根目录 `GLOSSARY.md` 开头的「写词条的规矩」。那里有词条格式、坏例子和改法。
+写词条、写决策记录、做 domain modeling 时，先读根目录 `GLOSSARY.md` 开头的「写词条的规矩」。那里有词条格式、坏例子和改法。
 
 写任何文档都避开这几类 AI 常见毛病：
 
@@ -69,7 +69,7 @@
 
 ### 领域文档
 
-采用单一上下文：根目录 `GLOSSARY.md` 记领域词汇，重大决定写进 `docs/adr/`。详见 `docs/agents/domain.md`。
+采用单一上下文：根目录 `GLOSSARY.md` 记领域词汇，重大决定写进 `docs/adr/决策记录.md`。详见 `docs/agents/domain.md`。
 
 ### 工作流程
 
