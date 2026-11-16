@@ -78,6 +78,68 @@ export async function startServer(config) {
   }
 }
 
+/**
+ * 假 GitHub：只实现读工单和读评论两个接口。
+ * calls 记每个请求的路径，用来验证缓存有没有省掉请求。
+ */
+export async function startFakeGithub({ issue, comments = [] } = {}) {
+  const state = {
+    issue: issue || { state: 'open', closed_at: null },
+    comments,
+    fail: false,
+    calls: [],
+  }
+
+  const server = createServer((req, res) => {
+    state.calls.push(req.url)
+    if (state.fail) {
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end('{"message":"boom"}')
+      return
+    }
+
+    const url = new URL(req.url, 'http://127.0.0.1')
+    if (/^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/.test(url.pathname)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(state.comments))
+      return
+    }
+    if (/^\/repos\/[^/]+\/[^/]+\/issues\/\d+$/.test(url.pathname)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(state.issue))
+      return
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.end('{"message":"not found"}')
+  })
+
+  await new Promise((done) => server.listen(0, '127.0.0.1', done))
+  const { port } = server.address()
+
+  return {
+    base: `http://127.0.0.1:${port}`,
+    state,
+    close: () => new Promise((done) => server.close(done)),
+  }
+}
+
+export async function seedAdmin(config, extras = {}) {
+  const row = {
+    id: 'a-0001',
+    email: 'admin@example.com',
+    display_name: '运营者',
+    password_hash: await hashPassword(PASSWORD),
+    status: 'active',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    disabled_at: null,
+    disabled_reason: null,
+    ...extras,
+  }
+  await writeJsonAtomic(join(config.dataDir, 'admins.json'), [row])
+  return row
+}
+
 export async function login(base, email = EMAIL, password = PASSWORD) {
   const response = await fetch(`${base}/app/api/login`, {
     method: 'POST',

@@ -66,7 +66,7 @@ function OrderRow({ order, view }) {
       <span className="order-row-side">
         <span className="order-row-badges">
           <span className="account-state" data-tone={stateTone(view)}>
-            {view.invalid ? o.checkFailed : view.tierName}
+            {view.invalid ? o.notBuilt : view.tierName}
           </span>
           {view.round > 1 ? (
             <span className="account-round">{o.round(view.round)}</span>

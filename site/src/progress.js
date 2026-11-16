@@ -103,6 +103,7 @@ function parseLine(entry) {
 
   return {
     at: entry?.at || '',
+    path: fields['路径'] || '',
     tier: fields['客户档'] || '',
     sub: subMatch ? subMatch[1] : '',
     progress: subMatch && subMatch[2] ? subMatch[2] : '',
@@ -233,6 +234,10 @@ export function buildOrderView(order, lang = 'zh') {
       : null,
     currentSubstepKey,
     currentProgress,
+    stuck: Boolean(last && last.stuck),
+    stuckNote: last?.note || '',
+    lastSub: last?.sub || '',
+    lastProgress: last?.progress || '',
     feedback: order?.feedback || '',
     missing: Array.isArray(order?.missing) ? order.missing : [],
     trial: Array.isArray(order?.trial) ? order.trial : [],
@@ -421,4 +426,71 @@ export function historyRounds(view) {
     }
     return { round, events }
   })
+}
+
+/**
+ * 管理视图的三条消息规则。返回该发的一条，或 null。
+ * 锚点没变就只提醒一次；同一个锚点标过已发就不再提醒。
+ */
+export function messagesDue(order, view, now = Date.now()) {
+  if (!view || !view.hasTransitions) return null
+  if (view.tierLabel === '已完成') return null
+
+  const sent = Array.isArray(order?.messages) ? order.messages : []
+  const isSent = (type, anchor) =>
+    sent.some((record) => record?.type === type && record?.anchor === anchor)
+
+  if (view.invalid) {
+    const anchor = order?.lastUploadAt || view.lastAt
+    if (!anchor) return null
+    return isSent('校验未通过', anchor) ? null : { type: '校验未通过', anchor }
+  }
+
+  if (view.tierLabel === '待客户验收') {
+    const anchor = String(view.round)
+    return isSent('待客户验收', anchor) ? null : { type: '待客户验收', anchor }
+  }
+
+  if (['已收到', '安排中', '开发中'].includes(view.tierLabel)) {
+    const uploaded = order?.uploadedAt
+    if (!uploaded) return null
+    if (now - timeValue(uploaded) < 24 * 3600 * 1000) return null
+    return isSent('满 24 小时', uploaded)
+      ? null
+      : { type: '满 24 小时', anchor: uploaded }
+  }
+
+  return null
+}
+
+/** 当前档停留了几天。已完成不显示。 */
+export function stayDays(view, now = Date.now()) {
+  if (!view || view.tierLabel === '已完成') return null
+  const keys = view.invalid ? ['已收到', '校验未通过'] : [view.tierLabel]
+  let rows = view.transitions.filter(
+    (transition) => keys.includes(transition.tier) && transition.round === view.round,
+  )
+  if (!rows.length) {
+    rows = view.transitions.filter((transition) => keys.includes(transition.tier))
+  }
+  if (!rows.length) return null
+  const days = Math.floor((now - timeValue(rows[0].at)) / 86400000)
+  return Number.isFinite(days) ? Math.max(0, days) : null
+}
+
+/** 管理视图的「内部细阶段」。 */
+export function internalStage(view) {
+  if (!view) return ''
+  if (view.invalid || view.tierLabel === '已收到') return '未建单'
+  if (view.tierLabel === '安排中') return '排队中'
+  if (view.tierLabel === '开发中') return '开发中'
+  if (view.tierLabel === '待客户验收') return '待验收'
+  if (view.tierLabel === '已完成') return '关闭'
+  return ''
+}
+
+/** 管理视图的细阶段小字：最后一条转档的细阶段和进度。 */
+export function latestSubline(view) {
+  if (!view?.lastSub) return ''
+  return view.lastProgress ? `${view.lastSub} ${view.lastProgress}` : view.lastSub
 }

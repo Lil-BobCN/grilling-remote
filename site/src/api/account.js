@@ -11,6 +11,23 @@ import { zh } from '../content/zh.js'
 import { getLang } from '../i18n/index.jsx'
 
 const API_COPY = { zh: zh.account.api, en: en.account.api }
+const SIGNED_IN_KEY = 'afk-signed-in'
+
+/**
+ * 顶栏在绘制前读这个标记，登录后收起「登录」入口。
+ * 标记不是安全凭证，只影响导航显示；服务端仍然每次查会话。
+ */
+export function setSignedInHint(value) {
+  if (typeof document === 'undefined') return
+  try {
+    if (value) window.localStorage.setItem(SIGNED_IN_KEY, '1')
+    else window.localStorage.removeItem(SIGNED_IN_KEY)
+  } catch {
+    // 存不了就只改当前页面的标记
+  }
+  if (value) document.documentElement.setAttribute('data-signed-in', '1')
+  else document.documentElement.removeAttribute('data-signed-in')
+}
 
 function messages() {
   return API_COPY[getLang()] || API_COPY.zh
@@ -44,7 +61,10 @@ async function request(path, options = {}) {
     body,
   })
 
-  if (response.status === 401) throw new UnauthorizedError()
+  if (response.status === 401) {
+    setSignedInHint(false)
+    throw new UnauthorizedError()
+  }
 
   if (!response.ok) {
     const copy = messages()
@@ -62,19 +82,25 @@ async function request(path, options = {}) {
   return response.json()
 }
 
-export function getSession() {
-  return request('/app/api/session')
+export async function getSession() {
+  const payload = await request('/app/api/session')
+  setSignedInHint(true)
+  return payload
 }
 
-export function login(email, password) {
-  return request('/app/api/login', {
+export async function login(email, password) {
+  const payload = await request('/app/api/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
+  setSignedInHint(true)
+  return payload
 }
 
-export function logout() {
-  return request('/app/api/logout', { method: 'POST' })
+export async function logout() {
+  const result = await request('/app/api/logout', { method: 'POST' })
+  setSignedInHint(false)
+  return result
 }
 
 export function listOrders() {
@@ -85,12 +111,25 @@ export function getOrder(id) {
   return request(`/app/api/orders/${encodeURIComponent(id)}`)
 }
 
+export function listAdminOrders() {
+  return request('/app/api/admin/orders')
+}
+
+export function markMessageSent(id, { type, anchor }) {
+  return request(`/app/api/admin/orders/${encodeURIComponent(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ type, anchor }),
+  })
+}
+
 export function readSession(payload) {
   const user = payload?.user ?? payload ?? {}
   return {
     displayName: user.display_name ?? user.displayName ?? user.email ?? '',
     shortName: user.short_name ?? user.shortName ?? '',
     email: user.email ?? '',
+    role: user.role ?? '',
+    isAdmin: user.role === 'admin',
   }
 }
 
@@ -109,11 +148,17 @@ export function normalizeOrder(raw) {
     number: raw?.no ?? raw?.number ?? '',
     title: raw?.title ?? raw?.name ?? '未命名需求',
     product: raw?.product ?? raw?.workspace ?? '',
+    requirement: raw?.requirement ?? '',
+    customer: raw?.customer ?? null,
+    issueUrl: raw?.issue_url ?? '',
     delivery: raw?.delivery ?? raw?.delivery_address ?? '',
     deliveryUrl: raw?.delivery_url ?? raw?.deliveryUrl ?? '',
+    uploadedAt: raw?.uploaded_at ?? '',
+    lastUploadAt: raw?.last_upload_at ?? '',
     missing: Array.isArray(raw?.missing) ? raw.missing.filter(Boolean) : [],
     trial: Array.isArray(raw?.trial) ? raw.trial.filter(Boolean) : [],
     feedback: raw?.feedback ?? raw?.rejection?.feedback ?? '',
+    messages: Array.isArray(raw?.messages) ? raw.messages : [],
     transitions: Array.isArray(rows)
       ? rows.map(normalizeTransition).filter((entry) => entry.line)
       : [],

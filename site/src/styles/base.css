@@ -135,6 +135,12 @@ a {
   justify-content: flex-end;
 }
 
+/* 登录后收起「登录」入口。<head> 脚本按本地登录标记在绘制前加 data-signed-in，
+   避免先画出「登录」再消失。 */
+html[data-signed-in="1"] .site-header .nav-login {
+  display: none;
+}
+
 .brand {
   display: inline-grid;
   place-items: center;

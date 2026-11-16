@@ -1,12 +1,23 @@
 import { authenticate, clearSession, issueSession, publicUser, readSession } from './auth.mjs'
 import { HttpError } from './errors.mjs'
+import { readIssueProgress } from './github.mjs'
 import { assertSameOrigin, clientIp, readBody, sendJson } from './http.mjs'
 import { logLine } from './log.mjs'
-import { publicOrder, readOrders, retryPendingSync } from './orders.mjs'
+import { markMessageSent, MESSAGE_TYPES, publicOrder, readOrders, retryPendingSync } from './orders.mjs'
+import { mergeTransitions } from './progress.mjs'
 import { RateLimiter } from './rate-limit.mjs'
 import { handleUpload, cleanupExpired } from './uploads.mjs'
 
 const JSON_LIMIT = 16 * 1024
+
+async function withProgress(config, order) {
+  const issue = await readIssueProgress(config, order)
+  return { order: { ...order, transitions: mergeTransitions(order, issue) }, issue }
+}
+
+function orderedWithProgress(config, orders) {
+  return Promise.all(orders.map((order) => withProgress(config, order)))
+}
 
 export function createHandler(config) {
   const limiters = {
@@ -103,7 +114,8 @@ async function route({ req, res, config, limiters, path }) {
     const session = await requireSession(req, config)
     const orders = await readOrders(config)
     const mine = orders.filter((order) => order.customer_id === session.account.id)
-    sendJson(res, 200, { orders: mine.map(publicOrder) })
+    const enriched = await orderedWithProgress(config, mine)
+    sendJson(res, 200, { orders: enriched.map(({ order }) => publicOrder(order)) })
     return
   }
 
@@ -114,7 +126,8 @@ async function route({ req, res, config, limiters, path }) {
     const order = orders.find((item) => item.id === id)
     if (!order) throw new HttpError(404, '订单不存在')
     if (order.customer_id !== session.account.id) throw new HttpError(403, '不能看别人的订单')
-    sendJson(res, 200, { order: publicOrder(order) })
+    const enriched = await withProgress(config, order)
+    sendJson(res, 200, { order: publicOrder(enriched.order) })
     return
   }
 
@@ -122,12 +135,33 @@ async function route({ req, res, config, limiters, path }) {
     const session = await requireSession(req, config)
     if (session.role !== 'admin') throw new HttpError(403, '只有管理员能看')
     const orders = await readOrders(config)
+    const enriched = await orderedWithProgress(config, orders)
     sendJson(res, 200, {
-      orders: orders.map((order) => ({
+      orders: enriched.map(({ order, issue }) => ({
         ...publicOrder(order),
         customer: order.customer_snapshot || null,
-        issue_url: order.issue_url || '',
+        issue_url: issue.issueUrl || '',
+        messages: Array.isArray(order.messages) ? order.messages : [],
       })),
+    })
+    return
+  }
+
+  const messagePath = /^\/app\/api\/admin\/orders\/([^/]+)\/messages$/.exec(path)
+  if (method === 'POST' && messagePath) {
+    assertSameOrigin(req, config)
+    const session = await requireSession(req, config)
+    if (session.role !== 'admin') throw new HttpError(403, '只有管理员能标记')
+    const id = decodeURIComponent(messagePath[1])
+    const payload = await readJsonBody(req)
+    const type = typeof payload.type === 'string' ? payload.type.trim() : ''
+    const anchor = typeof payload.anchor === 'string' ? payload.anchor.trim() : ''
+    if (!MESSAGE_TYPES.includes(type)) throw new HttpError(400, '消息类型不对')
+    if (!anchor || anchor.length > 200) throw new HttpError(400, '消息锚点不对')
+    const result = await markMessageSent(config, id, { type, anchor })
+    if (!result) throw new HttpError(404, '订单不存在')
+    sendJson(res, 200, {
+      messages: Array.isArray(result.order.messages) ? result.order.messages : [],
     })
     return
   }

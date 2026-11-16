@@ -144,7 +144,7 @@ function Stepper({ view, selected, onSelect, tabsRef }) {
                 ) : null}
                 {index === 0 && view.invalid ? (
                   <span className="order-step-branch">
-                    {copy.account.orders.checkFailed}
+                    {copy.account.orders.notBuiltShort}
                   </span>
                 ) : null}
               </span>
@@ -460,7 +460,7 @@ function OrderDetail({ order, session, onLogout }) {
         <div className="order-detail-status">
           <span className="order-detail-badges">
             <span className="account-state" data-tone={stateTone(view)}>
-              {view.invalid ? copy.account.orders.checkFailed : view.tierName}
+              {view.invalid ? copy.account.orders.notBuilt : view.tierName}
             </span>
             {view.round > 1 ? (
               <span className="account-round">

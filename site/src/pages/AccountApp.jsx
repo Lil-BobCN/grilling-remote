@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import SiteLayout from '../components/SiteLayout.jsx'
 import { Rich, useI18n, usePageMeta } from '../i18n/index.jsx'
+import AdminPage from './AdminPage.jsx'
 import LoginPage from './LoginPage.jsx'
 import OrderDetailPage from './OrderDetailPage.jsx'
 import OrdersPage from './OrdersPage.jsx'
@@ -18,6 +19,10 @@ function readRoute(path) {
   if (path === '/app') return { name: 'login', current: 'login' }
   if (path === '/app/orders') {
     return { name: 'orders', current: 'orders', needsAuth: true }
+  }
+
+  if (path === '/app/admin') {
+    return { name: 'admin', current: null, needsAuth: true }
   }
 
   // 上传页自己处理登录态，不走账号区重定向。
@@ -42,6 +47,7 @@ function readRoute(path) {
 const TITLES = {
   login: 'login',
   orders: 'orders',
+  admin: 'admin',
   detail: 'detail',
   upload: 'upload',
   missing: 'missing',
@@ -164,6 +170,8 @@ export default function AccountApp() {
     )
   } else if (route.name === 'orders') {
     content = <OrdersPage session={session} onLogout={handleLogout} />
+  } else if (route.name === 'admin') {
+    content = <AdminPage session={session} onLogout={handleLogout} />
   } else {
     content = (
       <OrderDetailPage
