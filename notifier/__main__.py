@@ -30,7 +30,7 @@ EXIT_OK = 0
 EXIT_CHANNEL_FAILED = 1
 EXIT_BAD_INPUT = 2
 
-CHANNEL_ORDER = ("email", "push")
+CHANNEL_ORDER = ("push", "email")
 RETRY_CHANNELS = frozenset({"push"})
 ALERT_CHANNEL = "email"
 ALERT_TITLE = "通知通道可能断了"

@@ -107,13 +107,15 @@ def _daily_sample(data, link):
 EVENTS: dict[str, EventSpec] = {
     "新单进队列": EventSpec((PUSH,), ("customer", "requirement"), True, _new_order),
     "补缺口提案": EventSpec(
-        (PUSH,), ("customer", "requirement", "question_count"), True, _gap_proposal),
+        (PUSH, EMAIL), ("customer", "requirement", "question_count"),
+        True, _gap_proposal),
     "该跑 to-spec": EventSpec(
-        (PUSH,), ("customer", "requirement"), True, _run_to_spec),
+        (PUSH, EMAIL), ("customer", "requirement"), True, _run_to_spec),
     "拆票提案": EventSpec(
-        (PUSH,), ("customer", "requirement", "ticket_count"), True, _split_proposal),
+        (PUSH, EMAIL), ("customer", "requirement", "ticket_count"),
+        True, _split_proposal),
     "需要你答": EventSpec(
-        (PUSH,), ("customer", "requirement", "question", "recommended"),
+        (PUSH, EMAIL), ("customer", "requirement", "question", "recommended"),
         True, _need_answer),
     "出事": EventSpec(
         (PUSH, EMAIL), ("customer", "requirement", "reason", "tried"),

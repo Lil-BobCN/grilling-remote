@@ -82,6 +82,40 @@ class TestTemplates(unittest.TestCase):
         self.assertEqual(EVENTS["出事"].channels, (PUSH, EMAIL))
         self.assertEqual(EVENTS["点火超时"].channels, (EMAIL,))
         self.assertEqual(EVENTS["每日抽样"].channels, (PUSH,))
+        for event in ("补缺口提案", "该跑 to-spec", "拆票提案", "需要你答"):
+            with self.subTest(event=event):
+                self.assertEqual(EVENTS[event].channels, (PUSH, EMAIL))
+        for event in ("新单进队列", "自己合并", "部署完成", "needs-info"):
+            with self.subTest(event=event):
+                self.assertEqual(EVENTS[event].channels, (PUSH,))
+
+    def test_waiting_events_render_exact(self):
+        cases = [
+            (
+                "补缺口提案",
+                "B 店 · 预约送货 · 等你补缺口（3 题）",
+                "闸门题和推荐答案列好了。打开 Orca 答一轮。"
+                "https://example.test/1",
+            ),
+            (
+                "该跑 to-spec",
+                "B 店 · 预约送货 · 该跑 to-spec 了",
+                "补缺口已点头，状态改成排队中。手动跑 to-spec，写完再拆票。"
+                "https://example.test/1",
+            ),
+            (
+                "拆票提案",
+                "B 店 · 预约送货 · 等你点头拆票（5 张）",
+                "接缝、票单、每票验收条件已备好。打开 Orca 扫一眼。"
+                "https://example.test/1",
+            ),
+        ]
+        for event, expected_title, expected_body in cases:
+            with self.subTest(event=event):
+                data, link = samples()[event]
+                title, body = render_event(event, data, link)
+                self.assertEqual(title, expected_title)
+                self.assertEqual(body, expected_body)
 
     def test_all_events_render(self):
         for event, (data, link) in samples().items():

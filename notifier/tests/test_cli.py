@@ -120,10 +120,49 @@ class TestRouting(Base):
         }
         code, out, _ = self.run_cli(event=event)
         self.assertEqual(code, 0)
-        self.assertEqual([name for name, *_ in self.sent], ["email", "push"])
+        self.assertEqual([name for name, *_ in self.sent], ["push", "email"])
         result = json.loads(out)
         self.assertEqual(
-            [entry["channel"] for entry in result["results"]], ["email", "push"])
+            [entry["channel"] for entry in result["results"]], ["push", "email"])
+
+    def test_waiting_events_send_push_before_email(self):
+        events = {
+            "补缺口提案": {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "question_count": 3,
+            },
+            "该跑 to-spec": {
+                "customer": "B 店",
+                "requirement": "预约送货",
+            },
+            "拆票提案": {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "ticket_count": 5,
+            },
+            "需要你答": {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "question": "闸门第三题选哪个方案",
+                "recommended": "方案 A",
+            },
+        }
+        for name, data in events.items():
+            with self.subTest(event=name):
+                self.sent.clear()
+                event = base_event()
+                event["key"] = f"k-{name}"
+                event["event"] = name
+                event["data"] = data
+                code, out, _ = self.run_cli(event=event)
+                self.assertEqual(code, 0)
+                self.assertEqual(
+                    [sent for sent, *_ in self.sent], ["push", "email"])
+                result = json.loads(out)
+                self.assertEqual(
+                    [entry["channel"] for entry in result["results"]],
+                    ["push", "email"])
 
     def test_channel_override(self):
         code, _, _ = self.run_cli("--channel", "email")
