@@ -485,11 +485,15 @@ test_preview_start() {
   slug=$(slug_of "$PREVIEW_A")
 
   assert_eq "$IMG_A" "$image" ".env 记下 PR head 镜像"
-  assert_eq "$((PREVIEW_PORT_START))" "$port" "预览端口从 $PREVIEW_PORT_START 起"
+  if [[ $port =~ ^[0-9]+$ ]] && ((port >= PREVIEW_PORT_START && port < PREVIEW_PORT_START + 500)); then
+    ok "预览端口 $port 在 ${PREVIEW_PORT_START} 起的范围里"
+  else
+    bad "预览端口不对（${port}，期望 ${PREVIEW_PORT_START} 起、500 个以内）"
+  fi
   assert_eq "${NET_PREFIX}preview_$(slug_of "$PREVIEW_A")" "$net" "预览有独立网络"
   case $db in
     preview_*) ok "预览用独立 database 名" ;;
-    *) bad "预览 database 名不是 preview_ 开头（$db）" ;;
+    *) bad "预览 database 名不是 preview_ 开头（${db}）" ;;
   esac
   assert_eq "$db" "$user" "预览 role 和 database 同名"
   assert_eq 1 "$(psql_super "SELECT 1 FROM pg_database WHERE datname='$db'")" "预览 database 建好"

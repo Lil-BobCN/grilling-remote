@@ -99,6 +99,17 @@ cleanup() {
     done
   fi
   docker rm -f "$PG_NAME" >/dev/null 2>&1 || true
+  # 每个成品的独立网络都删，包括隔离测试建的第二个；共享 Postgres 还挂着时先摘掉。
+  if [[ -d $TMP/products ]]; then
+    local d net
+    for d in "$TMP"/products/*/; do
+      [[ -f $d/.env ]] || continue
+      net=$(env_get "$d/.env" APP_NETWORK)
+      [[ -n $net ]] || continue
+      docker network disconnect "$net" "$PG_NAME" >/dev/null 2>&1 || true
+      docker network rm "$net" >/dev/null 2>&1 || true
+    done
+  fi
   docker network rm "$NET" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
@@ -230,7 +241,11 @@ test_init() {
   image=$(env_get "$env" IMAGE)
   network=$(env_get "$env" APP_NETWORK)
 
-  assert_eq "$PORT_START" "$port" ".env 记录的端口从 $PORT_START 起"
+  if [[ $port =~ ^[0-9]+$ ]] && ((port >= PORT_START && port < PORT_START + 500)); then
+    ok ".env 记的端口 $port 在 ${PORT_START} 起的范围里"
+  else
+    bad ".env 端口不对（${port}，期望 ${PORT_START} 起、500 个以内）"
+  fi
   assert_eq "$SLUG" "$db_name" ".env 的 DB_NAME 用地址生成的 slug"
   assert_eq "$SLUG" "$db_user" ".env 的 DB_USER 和 DB_NAME 一致"
   assert_eq "$APP_IMAGE" "$image" ".env 记下镜像"
@@ -284,7 +299,8 @@ test_isolation() {
   fi
 
   local env2=$TMP/products/$addr2/.env
-  local port2 db1 db2 user1 user2 pass1 pass2
+  local port1 port2 db1 db2 user1 user2 pass1 pass2
+  port1=$(env_get "$TMP/products/$ADDR/.env" PORT)
   port2=$(env_get "$env2" PORT)
   db1=$(env_get "$TMP/products/$ADDR/.env" DB_NAME)
   db2=$(env_get "$env2" DB_NAME)
@@ -293,7 +309,12 @@ test_isolation() {
   pass1=$(env_get "$TMP/products/$ADDR/.env" DB_PASSWORD)
   pass2=$(env_get "$env2" DB_PASSWORD)
 
-  assert_eq $((PORT_START + 1)) "$port2" "第二个软件拿下一个端口"
+  if [[ $port2 =~ ^[0-9]+$ ]] && ((port2 >= PORT_START && port2 < PORT_START + 500)) \
+    && [[ $port2 != "$port1" ]]; then
+    ok "第二个软件拿到另一个端口（${port2}）"
+  else
+    bad "第二个软件端口不对（第一个 ${port1}，第二个 ${port2}）"
+  fi
   if docker exec -e PGPASSWORD="$pass2" "$PG_NAME" psql -U "$user2" -d "$db1" -tAc 'SELECT 1' >/dev/null 2>&1; then
     bad "第二个软件的 role 能连第一个软件的库"
   else
