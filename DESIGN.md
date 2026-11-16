@@ -171,6 +171,8 @@ components:
 
 # Design System: afkfactory 官网
 
+> 状态：现行
+
 ## Overview
 
 **Creative North Star: "纸面操作台"**

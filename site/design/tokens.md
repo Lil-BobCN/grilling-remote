@@ -1,5 +1,7 @@
 # 设计变量清单
 
+> 状态：现行
+
 这份清单对应 `site/src/styles/tokens.css`。色值、字体、字号、间距、线宽都从这里取，页面里不写零散数值。新增变量时，先改 `tokens.css`，再补这张表。
 
 来源：方向契约 `.impeccable/surfaces/site-index-html.md`，选定草图 `site/design/refined-v1-anthropic-top.html`。

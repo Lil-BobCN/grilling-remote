@@ -1,5 +1,7 @@
 # 分类标签
 
+> 状态：现行
+
 Matt Pocock Skills 用五种固定处理状态。本仓库直接用同名标签，不做映射。
 
 缺标签时先创建：`gh label create <名称>`。

@@ -1,5 +1,7 @@
 # Product
 
+> 状态：现行
+
 <!-- impeccable:product-schema 1 -->
 
 ## Platform
