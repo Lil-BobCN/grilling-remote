@@ -7,7 +7,7 @@ function readInt(value, fallback) {
 
 export function loadConfig(env = process.env) {
   const dev = env.AFK_DEV === '1' || env.NODE_ENV === 'development'
-  const origins = (env.ALLOWED_ORIGINS || 'https://afkfactory.dev')
+  const origins = (env.ALLOWED_ORIGINS || 'https://afkfactory.space,https://afkfactory.dev')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
