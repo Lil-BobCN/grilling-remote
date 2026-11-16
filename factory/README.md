@@ -15,6 +15,8 @@
 | `lib/notify.mjs` | 调 `notifier/` 命令行发通知 | #463 |
 | `lib/lock.mjs` | 每仓一把文件锁 | #463 |
 | `lib/ignition.mjs` | 挑 frontier、贴标签、跑一次 Sandcastle | #464 |
+| `lib/sandcastle-runner.mjs` | 默认 runner：装依赖、起容器、收回提交 | #464 |
+| `bin/ignite.mjs` | 手工点火一张票，`--dry-run` 打印 prompt 和命令 | #464 |
 | `lib/evidence.mjs` | 验证、评审、四样证据、合需求分支 | #465 |
 | `lib/finish.mjs` | 收尾评审、`/pr` 四栏、合主干 | #466 |
 | `lib/inbox.mjs` | 从服务器拉回传件到 `inbox/` | #459 |
@@ -22,6 +24,21 @@
 | `lib/preview.mjs` | 按 PR 起停预览 | #469 |
 
 `lib/scaffold.mjs` 写在 `backend/`，因为建仓和建单在服务器上跑，发布包只装 `backend/`。Mac 侧需要同一份模板时，从 `backend/scaffold/` 读，不复制。
+
+## 点火 runner
+
+默认 runner 的依赖装在 `~/.afkfactory/sandcastle`（`AFK_SANDCASTLE_HOME` 可改），不进客户仓。第一次跑一张票时执行 `npm install @ai-hero/sandcastle@0.12.0 tsx`，之后复用。
+
+镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。本机没有这个镜像时，用 `npx @ai-hero/sandcastle docker build-image --image-name <镜像名>` 建一次。
+
+容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。`GH_TOKEN` 也在这个文件里，只给当前客户仓的 issue、PR 和内容权限。
+
+手工点火一张票：
+
+```bash
+node factory/bin/ignite.mjs --owner <owner> --repo <repo> --parent <父工单号> --ticket <子票号>
+node factory/bin/ignite.mjs ... --dry-run
+```
 
 ## 约定
 
