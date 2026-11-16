@@ -1,0 +1,17 @@
+# 成品路由模板。afk-product product-init 把 __ADDRESS__ 和 __UPSTREAM__ 换掉，
+# 写到 /etc/caddy/products/<交付地址>.caddy（644 root），再 reload caddy。
+#
+# 通配子域：Cloudflare 有一条 *.afkfactory.space 通配 A 记录，所有子域都解析到源站。
+# 这里每个成品一个站点块。没有站点块的 Host，Caddy 默认回 404，不用另写兜底规则。
+__ADDRESS__ {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		# 和平台站点一样，只接受 Cloudflare 回源时出示的客户端证书。
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /etc/caddy/certs/aop-ca.pem
+		}
+	}
+
+	# app 容器只把端口绑在 127.0.0.1，Caddy 是唯一入口。
+	reverse_proxy __UPSTREAM__
+}
