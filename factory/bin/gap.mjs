@@ -136,6 +136,9 @@ const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(pro
 if (invokedDirectly) {
   run(process.argv.slice(2)).catch((error) => {
     console.error(error.message)
+    if (Array.isArray(error.blockers)) {
+      for (const blocker of error.blockers) console.error(`- ${blocker.text}`)
+    }
     process.exit(1)
   })
 }

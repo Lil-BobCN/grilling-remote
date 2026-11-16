@@ -311,10 +311,12 @@ test('replace 换地图正文、按编号换票、作废旧票、保留运营者
   const mapFile = join(scratch, 'map.md')
   await writeFile(
     mapFile,
-    (await readFile(mapFile, 'utf8')).replace(
-      '顾客在微信小程序里看到今天有什么水果',
-      '顾客在微信小程序里看到今天有什么水果和价格',
-    ),
+    (await readFile(mapFile, 'utf8'))
+      .replace(
+        '顾客在微信小程序里看到今天有什么水果',
+        '顾客在微信小程序里看到今天有什么水果和价格',
+      )
+      .replace('## 接下来\n\n## Decisions so far', '## 接下来\n\n- 06 送货范围怎么定\n\n## Decisions so far'),
   )
   await rm(join(scratch, 'issues', '05-小程序用哪家云.md'))
   const commentFile = join(scratch, 'issues', '01-顾客怎么看到今天有什么.md')
@@ -327,7 +329,7 @@ test('replace 换地图正文、按编号换票、作废旧票、保留运营者
   )
   await writeFile(
     join(scratch, 'issues', '06-送货范围怎么定.md'),
-    '# 06 送货范围怎么定\n\nType: grilling\nStatus: resolved\n\n## Question\n\n送货送到哪？\n\n## 评论\n\n客户原话：「超出镇上就不送了。」\n\n## 结论\n\n只送镇上。\n',
+    '# 06 送货范围怎么定\n\nType: grilling\nStatus: claimed\n\n## Question\n\n送货送到哪？\n\n## 评论\n\n客户原话：「超出镇上就不送了。」\n\n## 结论\n\n（做完才写）\n',
   )
 
   const result = await ensureMapIssues({ ...args, mode: 'replace' })
@@ -357,6 +359,11 @@ test('replace 换地图正文、按编号换票、作废旧票、保留运营者
   const obsolete = issuesOf(fake).find((row) => row.title.startsWith('05 '))
   assert.equal(obsolete.state, 'closed')
   assert.ok(obsolete.comments.some((row) => row.body === '作废：重传'))
+
+  const ticket06 = children.find((row) => row.title.startsWith('06 '))
+  const comments06 = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: ticket06.number })
+  assert.equal(comments06.length, 1)
+  assert.ok(!comments06.some((row) => row.body.includes('做完才写')))
 
   const operator = issuesOf(fake).find((row) => row.title === '送货要不要设起送价')
   assert.equal(operator.state, 'open')

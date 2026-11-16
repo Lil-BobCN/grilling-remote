@@ -130,11 +130,12 @@ function parseTicket(text, file) {
     .map((part) => part.trim())
     .filter(Boolean)
 
-  const conclusion = (sections['结论'] || '')
+  const conclusionText = (sections['结论'] || '')
     .split('\n')
     .filter((line) => !/^\s*-?\s*产出文件：/.test(line))
     .join('\n')
     .trim()
+  const conclusion = /^[（(]?\s*做完才写\s*[）)]?$/.test(conclusionText) ? '' : conclusionText
 
   return {
     number,
@@ -364,7 +365,7 @@ export async function ensureMapIssues({
     for (const comment of ticket.comments) {
       await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: comment })
     }
-    if (mode === 'replace' && ticket.conclusion) {
+    if (mode === 'replace' && ticket.status === 'resolved' && ticket.conclusion) {
       await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: ticket.conclusion })
     }
     await ensureSubIssue(gh, { owner, repo, parent: mapIssue.number, childId: issue.id })
