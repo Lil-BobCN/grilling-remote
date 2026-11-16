@@ -18,11 +18,13 @@ function safeName(name) {
 
 /** `--restricted` 会去掉跑命令的工具，必须用 `--tools` 点名它们。 */
 export const AGENT_TOOLS = 'Bash,Read,Write,Edit'
+/** 验证和评审只读：不给 Write/Edit，和作业说明里的「不改代码」一致。 */
+export const READ_ONLY_TOOLS = 'Bash,Read'
 
 /** 各角色的工具白名单；`--allowedTools` 用逗号分隔。 */
 export const DECOMPOSE_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
-export const VERIFY_TOOLS = 'Read,Write,Edit,Bash(bash:*),Bash(node:*),Bash(npm:*),Bash(curl:*)'
-export const REVIEW_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
+export const VERIFY_TOOLS = 'Read,Bash(bash:*),Bash(node:*),Bash(npm:*),Bash(curl:*)'
+export const REVIEW_TOOLS = 'Read,Bash(gh:*)'
 export const MERGER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
 export const FIXER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
 

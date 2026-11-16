@@ -15,7 +15,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendTrail } from './evidence.mjs'
-import { REVIEW_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
+import { REVIEW_TOOLS, READ_ONLY_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
 import { git } from './git.mjs'
 
 export const AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
@@ -171,6 +171,7 @@ export async function runVerifyAudit({
   const run = await runner.run({
     name: `verify-${ticket}-${headSha.slice(0, 8)}`,
     cwd: repoDir,
+    tools: READ_ONLY_TOOLS,
     allowedTools: VERIFY_TOOLS,
     brief: verifyBrief({ ticket, branch, headSha, before, instructions: text, extraBrief }),
   })
@@ -274,6 +275,7 @@ export async function runReviewAudit({
   const run = await runner.run({
     name: `review-${ticket}-${mode}`,
     cwd: repoDir,
+    tools: READ_ONLY_TOOLS,
     allowedTools: REVIEW_TOOLS,
     brief: reviewBrief({ ticket, branch, headSha, mode, instructions: text, extraBrief }),
   })
