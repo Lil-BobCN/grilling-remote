@@ -13,14 +13,15 @@
  * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
  * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`；在父工单写一条
  * `进度 v1｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
- * 把地址写进订单的 `delivery` 字段。`--no-deploy` 关掉部署和 zip。
+ * 把地址写进订单的 `delivery` 和 `delivery_url`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createAgentRunner } from '../lib/agent-runner.mjs'
-import { notifyDeployFailure } from '../lib/deploy.mjs'
+import { createAgentRunner, FIXER_TOOLS } from '../lib/agent-runner.mjs'
+import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
+import { notifyDeployFailure, productFromRepo } from '../lib/deploy.mjs'
 import {
   collectRequirementState,
   finishRequirement,
@@ -34,7 +35,8 @@ import { createNotifier } from '../lib/notify.mjs'
 import { parseProgress, progressLine } from '../lib/progress.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
 import { deployWithDefaults, markDeliveredWithDefaults, publishZipWithDefaults } from './deploy.mjs'
-import { parseVerdict } from './evidence.mjs'
+
+export { productFromRepo }
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
@@ -83,10 +85,9 @@ function parentBlock(parentIssue) {
   )
 }
 
-function reviewBrief({ instructions, parentIssue, reqBranch, small }) {
+/** 收尾评审和验证共用的上下文；agent 的输出契约由 audit-agents 统一。 */
+function requirementContext({ parentIssue, reqBranch, small = false }) {
   const lines = [
-    instructions,
-    '',
     `需求分支：${reqBranch}`,
     '',
     parentBlock(parentIssue),
@@ -113,21 +114,6 @@ function fixerBrief({ instructions, reqBranch, findings }) {
   ].join('\n')
 }
 
-function verifyBrief({ instructions, parentIssue, reqBranch }) {
-  return [
-    instructions,
-    '',
-    `需求分支：${reqBranch}`,
-    '',
-    parentBlock(parentIssue),
-    '',
-    '验收条件：',
-    acceptanceText(parentIssue),
-    '',
-    '最后一行写 `AFK_VERDICT: pass` 或 `AFK_VERDICT: fail 一句话原因`。',
-  ].join('\n')
-}
-
 function safeName(value) {
   return String(value || 'branch').replace(/[^a-zA-Z0-9._-]+/g, '-')
 }
@@ -137,21 +123,8 @@ function labelNames(issue) {
 }
 
 /**
- * 软件简称决定交付地址，只从显式参数或仓名 `<客户简称>-<软件简称>` 的后缀取。
- * 拼不出就报错，不拿需求名顶替。
+ * 父工单评论里最新一条进度行的轮次；没有进度行按第 1 轮。
  */
-export function productFromRepo({ repo, customer, explicit } = {}) {
-  const given = String(explicit ?? '').trim()
-  if (given) return given
-  const name = String(repo ?? '').split('/').filter(Boolean).pop() || ''
-  const prefix = customer ? `${customer}-` : ''
-  if (prefix && name.startsWith(prefix) && name.length > prefix.length) {
-    return name.slice(prefix.length)
-  }
-  return ''
-}
-
-/** 父工单评论里最新一条进度行的轮次；没有进度行按第 1 轮。 */
 export function latestRound(comments = []) {
   let round = 1
   for (const comment of comments) {
@@ -244,36 +217,46 @@ export async function runFinish(options, deps = {}) {
   const runner =
     deps.runner ||
     createAgentRunner({ command: options['agent-command'] || process.env.AFK_AGENT_COMMAND || 'claude' })
-  const [reviewInstructions, verifyInstructions] = await Promise.all([
-    readFile(join(AGENTS_DIR, 'finish-review.md'), 'utf8'),
-    readFile(join(AGENTS_DIR, 'verify.md'), 'utf8'),
-  ])
+  const reviewInstructions = await readFile(join(AGENTS_DIR, 'finish-review.md'), 'utf8')
 
   const review = async ({ repoDir: dir, branch, parent, small }) => {
-    const run = await runner.run({
-      name: `finish-review-${safeName(branch)}`,
-      cwd: dir,
-      brief: reviewBrief({ instructions: reviewInstructions, parentIssue: parent, reqBranch: branch, small }),
+    const audit = await runReviewAudit({
+      repoDir: dir,
+      ticket: parent.number,
+      branch,
+      mode: 'all',
+      runner,
+      instructions: reviewInstructions,
+      extraBrief: requirementContext({ parentIssue: parent, reqBranch: branch, small }),
+      record: false,
     })
-    return parseVerdict(run, { okWord: 'pass', label: '收尾评审' })
+    return { ok: audit.ok, problems: audit.problems, decision: audit.decision }
   }
 
   const fixer = async ({ repoDir: dir, branch, findings }) => {
     const run = await runner.run({
       name: `finish-fix-${safeName(branch)}`,
       cwd: dir,
+      allowedTools: FIXER_TOOLS,
       brief: fixerBrief({ instructions: reviewInstructions, reqBranch: branch, findings }),
     })
     return run.ok ? { ok: true } : { ok: false, problems: [tail(run.stderr || run.stdout)] }
   }
 
   const verify = async ({ repoDir: dir, branch, parent }) => {
-    const run = await runner.run({
-      name: `finish-verify-${safeName(branch)}`,
-      cwd: dir,
-      brief: verifyBrief({ instructions: verifyInstructions, parentIssue: parent, reqBranch: branch }),
+    const audit = await runVerifyAudit({
+      repoDir: dir,
+      ticket: parent.number,
+      branch,
+      runner,
+      extraBrief: requirementContext({ parentIssue: parent, reqBranch: branch }),
+      record: false,
     })
-    return parseVerdict(run, { okWord: 'pass', label: '收尾验证' })
+    return {
+      ok: audit.ok,
+      problems: audit.problems,
+      evidence: audit.evidence.join(','),
+    }
   }
 
   const openPr = async ({ owner, repo, base, head, title, body }) => {

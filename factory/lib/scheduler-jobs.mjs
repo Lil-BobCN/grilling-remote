@@ -5,18 +5,16 @@
  * 判断只看可检查的事实：父工单评论里的关口词、trail 的六列、PR 的
  * `mergedAt`。读不到就返回空，不猜。
  */
-import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
-import { createAgentRunner } from './agent-runner.mjs'
+import { createAgentRunner, DECOMPOSE_TOOLS } from './agent-runner.mjs'
 import { parseTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
+import { runGh, runHelper } from './helper.mjs'
 import { ensureLabel, ensureSubIssue } from './issues.mjs'
 import { parseParentAcceptance } from './tickets.mjs'
 
-const execFileAsync = promisify(execFile)
 const DEFAULT_AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
 const QUEUED_LABEL = '状态:排队中'
 const DECOMPOSE_GATES = ['提案：拆票', '点头：拆票']
@@ -37,38 +35,6 @@ async function dirExists(path) {
   } catch {
     return false
   }
-}
-
-/** 跑一次 `gh`，返回 stdout。测试注入假实现。 */
-export async function runGh(args, { timeoutMs = 60000 } = {}) {
-  const result = await execFileAsync('gh', args, {
-    timeout: timeoutMs,
-    maxBuffer: 8 * 1024 * 1024,
-  }).catch((error) => {
-    throw new Error(`gh ${args.join(' ')} 失败：${String(error.stderr || error.message || '').trim()}`)
-  })
-  return String(result.stdout || '')
-}
-
-function helperCommand() {
-  if (process.env.AFK_HELPER?.trim()) return process.env.AFK_HELPER.trim().split(/\s+/)
-  if (process.env.AFK_SSH_TARGET?.trim()) {
-    return ['ssh', process.env.AFK_SSH_TARGET.trim(), 'sudo', '/usr/local/sbin/afk-product']
-  }
-  return ['afk-product']
-}
-
-/** 跑一次 `afk-product` helper。测试注入 `run`。 */
-export async function runHelper(args, { run } = {}) {
-  if (typeof run === 'function') return run(args)
-  const [command, ...prefix] = helperCommand()
-  const result = await execFileAsync(command, [...prefix, ...args], {
-    timeout: 70 * 60 * 1000,
-    maxBuffer: 8 * 1024 * 1024,
-  }).catch((error) => {
-    throw new Error(String(error.stderr || error.message || '').trim())
-  })
-  return String(result.stdout || '')
 }
 
 /** 每天跑一次 `preview-sweep`，按 24 小时无提交且无访问、或满 7 天销毁预览。 */
@@ -308,6 +274,7 @@ export function createDecompose({
     const run = await agentRunner.run({
       name: `decompose-${parent?.number || 'parent'}`,
       cwd,
+      allowedTools: DECOMPOSE_TOOLS,
       brief: decomposeBrief({ instructions, parent, spec }),
     })
     return { ok: Boolean(run?.ok), code: run?.code, skipped: null }

@@ -15,6 +15,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendTrail } from './evidence.mjs'
+import { REVIEW_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
 import { git } from './git.mjs'
 
 export const AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
@@ -125,7 +126,7 @@ function testResultText(row) {
   return testPassed(row) ? 'pass' : 'fail'
 }
 
-function verifyBrief({ ticket, branch, headSha, before, instructions }) {
+function verifyBrief({ ticket, branch, headSha, before, instructions, extraBrief = '' }) {
   return [
     String(instructions || '').trim(),
     '',
@@ -135,6 +136,7 @@ function verifyBrief({ ticket, branch, headSha, before, instructions }) {
     `分支：${branch}`,
     `head：${headSha}`,
     before ? `改前提交：${before}` : '改前提交：没给',
+    ...(extraBrief ? ['', String(extraBrief).trim()] : []),
     '',
     '要求：',
     '- 不改代码，不提交，不推分支。',
@@ -158,6 +160,8 @@ export async function runVerifyAudit({
   runner,
   instructions,
   agentsDir = AGENTS_DIR,
+  extraBrief = '',
+  record = true,
   now,
 } = {}) {
   if (!repoDir || !ticket || !branch) throw new Error('验证需要 repoDir、ticket 和 branch')
@@ -167,7 +171,8 @@ export async function runVerifyAudit({
   const run = await runner.run({
     name: `verify-${ticket}-${headSha.slice(0, 8)}`,
     cwd: repoDir,
-    brief: verifyBrief({ ticket, branch, headSha, before, instructions: text }),
+    allowedTools: VERIFY_TOOLS,
+    brief: verifyBrief({ ticket, branch, headSha, before, instructions: text, extraBrief }),
   })
 
   const verdict = run?.ok
@@ -181,22 +186,25 @@ export async function runVerifyAudit({
   const ok = verdict.ok && problems.length === 0
 
   const evidence = stringList(verdict.evidence)
-  const rows = [
-    await appendTrail({
-      repoDir,
-      ticket,
-      ts: now,
-      phase: 'verify',
-      decision: headSha,
-      why: before ? `改前 ${before}` : '按验收条件验证',
-      evidence: evidence.join(','),
-      result: ok ? 'pass' : 'fail',
-    }),
-  ]
+  const rows = []
+  if (record) {
+    rows.push(
+      await appendTrail({
+        repoDir,
+        ticket,
+        ts: now,
+        phase: 'verify',
+        decision: headSha,
+        why: before ? `改前 ${before}` : '按验收条件验证',
+        evidence: evidence.join(','),
+        result: ok ? 'pass' : 'fail',
+      }),
+    )
+  }
 
   for (const test of verdict.tests || []) {
     const command = testCommand(test)
-    if (!command) continue
+    if (!command || !record) continue
     rows.push(
       await appendTrail({
         repoDir,
@@ -214,7 +222,7 @@ export async function runVerifyAudit({
   return { ok, headSha, problems, evidence, rows }
 }
 
-function reviewBrief({ ticket, branch, headSha, mode, instructions }) {
+function reviewBrief({ ticket, branch, headSha, mode, instructions, extraBrief = '' }) {
   return [
     String(instructions || '').trim(),
     '',
@@ -224,6 +232,7 @@ function reviewBrief({ ticket, branch, headSha, mode, instructions }) {
     `分支：${branch}`,
     `head：${headSha}`,
     `模式：${mode}`,
+    ...(extraBrief ? ['', String(extraBrief).trim()] : []),
     '',
     '要求：',
     '- 不改代码，不提交，不推分支。',
@@ -251,6 +260,8 @@ export async function runReviewAudit({
   runner,
   instructions,
   agentsDir = AGENTS_DIR,
+  extraBrief = '',
+  record = true,
   now,
 } = {}) {
   if (!repoDir || !ticket || !branch) throw new Error('评审需要 repoDir、ticket 和 branch')
@@ -263,7 +274,8 @@ export async function runReviewAudit({
   const run = await runner.run({
     name: `review-${ticket}-${mode}`,
     cwd: repoDir,
-    brief: reviewBrief({ ticket, branch, headSha, mode, instructions: text }),
+    allowedTools: REVIEW_TOOLS,
+    brief: reviewBrief({ ticket, branch, headSha, mode, instructions: text, extraBrief }),
   })
 
   const verdict = run?.ok
@@ -276,7 +288,7 @@ export async function runReviewAudit({
   const summary = link || (ok ? 'AFK_VERDICT pass' : tail(problems.join('；') || '评审没过'))
 
   const rows = []
-  for (const decision of decisions) {
+  for (const decision of record ? decisions : []) {
     rows.push(
       await appendTrail({
         repoDir,

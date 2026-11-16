@@ -305,6 +305,37 @@ test('排队中：进度有推进就继续点火', () => {
   assert.ok(types(actions).includes('ignite'))
 })
 
+test('开发中：有 open 子票、没有 Sandcastle → 点火第一张 frontier', () => {
+  const actions = route({
+    stateLabel: '状态:开发中',
+    comments: [],
+    subIssues: [sub({ number: 51 }), sub({ number: 52 })],
+  })
+  assert.deepEqual(types(actions), ['ignite'])
+  assert.equal(actions[0].ticketNumber, 51)
+})
+
+test('开发中：已有 Sandcastle 票不点第二张', () => {
+  const actions = route({
+    stateLabel: '状态:开发中',
+    comments: [],
+    subIssues: [
+      sub({ number: 51, labels: labels('Sandcastle') }),
+      sub({ number: 52 }),
+    ],
+  })
+  assert.deepEqual(actions, [])
+})
+
+test('开发中：没有 open 子票就不点', () => {
+  const actions = route({
+    stateLabel: '状态:开发中',
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+  })
+  assert.deepEqual(actions, [])
+})
+
 test('没有状态标签 → needs-info', () => {
   const actions = routeParent({
     parent: parent({ labels: [] }),
@@ -729,6 +760,27 @@ test('其余单：只点 frontier，贴 Sandcastle；子票进待验收后摘掉
   await gh.addLabels({ owner: OWNER, repo: REPO, number: second.number, labels: ['Sandcastle'] })
   await runOnce({ gh, customers: customers(), notifier, ignite: ignite.ignite, clock: () => NOW, config })
   assert.ok(!labelsOf(fake, OWNER, REPO, second.number).includes('Sandcastle'), '关闭后摘掉队列标签')
+})
+
+test('开发中：驳回建的修复票有 open 子票就点火', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const fix = await createChild(gh, parent, { title: '按驳回修好' })
+  const ignite = fakeIgnite()
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ignite: ignite.ignite,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.equal(ignite.calls.length, 1)
+  assert.equal(ignite.calls[0].ticket.number, fix.number)
+  assert.ok(labelsOf(fake, OWNER, REPO, fix.number).includes('Sandcastle'))
 })
 
 test('同一仓已有 Sandcastle 票，不点第二张', async (t) => {
