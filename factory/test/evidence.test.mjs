@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { git } from '../lib/git.mjs'
 import {
+  appendMergeRow,
   appendTrail,
   evidenceReady,
   readTrail,
@@ -352,6 +353,13 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     assert.equal(last.phase, 'verify')
     assert.equal(last.result, 'pass')
     assert.ok(last.evidence.includes(result.mergedSha))
+
+    const mergeRow = mergedTrail.find((row) => row.phase === 'merge')
+    assert.ok(mergeRow, JSON.stringify(mergedTrail))
+    assert.equal(mergeRow.decision, 'merge')
+    assert.equal(mergeRow.why, 'req/order-1')
+    assert.equal(mergeRow.evidence, result.mergedSha)
+    assert.equal(mergeRow.result, 'pass')
   } finally {
     await teardownFixture(fixture)
   }
@@ -604,5 +612,36 @@ test('证据不齐时 mergeTicket 不合、不跑复验、不关票', async () =
     assert.equal(issue.state, 'open')
   } finally {
     await teardownFixture(fixture)
+  }
+})
+
+test('appendMergeRow 写 phase=merge，同一个 mergedSha 不重复追加', async () => {
+  const dir = await makeRepo()
+  const mergedSha = 'abcdef1234567890abcdef1234567890abcdef12'
+  try {
+    const first = await appendMergeRow({
+      repoDir: dir,
+      ticket: 51,
+      reqBranch: 'req/order-1',
+      mergedSha,
+    })
+    assert.equal(first.phase, 'merge')
+    assert.equal(first.decision, 'merge')
+    assert.equal(first.why, 'req/order-1')
+    assert.equal(first.evidence, mergedSha)
+    assert.equal(first.result, 'pass')
+
+    const again = await appendMergeRow({
+      repoDir: dir,
+      ticket: 51,
+      reqBranch: 'req/order-1',
+      mergedSha,
+    })
+    assert.equal(again, null)
+
+    const rows = await readTrail({ repoDir: dir, ticket: 51 })
+    assert.equal(rows.filter((row) => row.phase === 'merge').length, 1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
   }
 })
