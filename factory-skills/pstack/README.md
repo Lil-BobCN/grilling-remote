@@ -44,7 +44,7 @@
 
 每个子 agent 一个 worktree（工作树）、一个容器。容器会死，所以决策记录要随时推送。
 
-容器要的凭证、客户仓的技能目录、主机 agent 的权限，见 `docs/执行侧供给.md`。
+容器要的凭证、客户仓的技能目录、主机 agent 的权限，见 `docs/工厂流程.md` 的「执行侧：角色、权限和工具」一节。
 
 trail store 固定在票分支的 `.audit/<票号>.tsv`，随分支推送。需要运营者拍板的记录写成 `phase=gate` 的行：问的行 `result=open`，答的行 `result=answered`，运营者说先搁置写 `parked`。共享的 gate 行由实现者写，验证者只把问题报给实现者。
 
