@@ -282,6 +282,39 @@ export async function recordUpload(config, account, upload) {
   return { order, sync }
 }
 
+export async function readOrder(config, orderId) {
+  return readJson(join(ordersDir(config), `${orderId}.json`), null)
+}
+
+/**
+ * 导入步骤回写订单：工单链接、软件简称、需求分支。
+ * 和 `recordUpload` 一样先加锁再原子替换；不存在时返回 null。
+ */
+export async function updateOrder(config, orderId, patch) {
+  const lockPath = join(config.dataDir, '.orders.lock')
+  const now = new Date().toISOString()
+
+  const order = await withFileLock(lockPath, async () => {
+    const orders = await readOrders(config)
+    const existing = orders.find((item) => item.id === orderId)
+    if (!existing) return null
+
+    const next = { ...existing, ...patch, id: existing.id, updated_at: now }
+    await writeJsonAtomic(join(ordersDir(config), `${next.id}.json`), next)
+    return next
+  })
+
+  if (!order) return null
+
+  const sync = await gitSync(config.dataDir, `订单：${order.id} ${order.requirement} 导入回传`, {
+    enabled: config.gitSync,
+    timeoutMs: config.gitTimeoutMs,
+    exclude: [PENDING_PATHSPEC],
+  })
+  if (sync.error) await noteSyncFailure(config, order, sync.error)
+  return { order, sync }
+}
+
 /**
  * 管理视图的「标记已发」。同一类型、同一锚点只记一条。
  * 返回更新后的订单；订单不存在时返回 null。

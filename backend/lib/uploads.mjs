@@ -5,7 +5,8 @@ import { HttpError } from './errors.mjs'
 import { readBody } from './http.mjs'
 import { logLine } from './log.mjs'
 import { parseMultipart } from './multipart.mjs'
-import { publicOrder, recordUpload } from './orders.mjs'
+import { publicOrder, readOrders, recordUpload } from './orders.mjs'
+import { createSpecLock } from './spec-lock.mjs'
 import { ensureDir, readJson, writeJsonAtomic } from './store.mjs'
 import { validateRequirement } from './validate-package.mjs'
 import { inspectZip } from './zip.mjs'
@@ -102,14 +103,19 @@ function resolveProducts({ account, software, requirements, now }) {
       }
       return { requirement, product: match || requirement, fresh: !match }
     })
+  }
 
-    if (products.length > 1 && products.some((item) => item.fresh)) {
+  // 新软件第一次上传只能有一个需求目录：有 软件.md 也一样，仓还没建出来。
+  if (products.length > 1) {
+    const fresh = products.filter((item) => !Object.hasOwn(repos, item.product))
+    if (fresh.length) {
       const names = products.map((item) => item.requirement).join('、')
+      const labels = [...new Set(fresh.map((item) => item.product))].join('、')
       return rejectSoftware({
         account,
         now,
         reason: 'multiple_new_requirements',
-        message: `工作区里没有 软件.md，.scratch/ 下有多个需求目录（${names}），分不清这次上传属于哪个软件。先只保留一个需求目录再上传，其他目录请找客服。`,
+        message: `这次上传要算作新软件「${labels}」的第一次上传，但 .scratch/ 下有多个需求目录（${names}）。新软件第一次上传只能有一个需求目录，先只留一个再上传，其他目录请找客服。`,
         extra: { requirements },
       })
     }
@@ -140,6 +146,72 @@ function resolveProducts({ account, software, requirements, now }) {
   }
 
   return { products: products.map(({ requirement, product }) => ({ requirement, product })) }
+}
+
+/**
+ * to-spec 窗口的两条规则：当前单没交付时不收新的需求目录；已锁单的目录不能重传。
+ * 返回 null 表示放行，否则返回拒绝结果。
+ */
+async function checkUploadWindow({ config, account, products, now }) {
+  const repos = knownRepos(account)
+  const orders = (await readOrders(config)).filter((order) => order.customer_id === account.id)
+  const productNames = [...new Set(products.map((item) => item.product))]
+
+  for (const product of productNames) {
+    const productOrders = orders.filter((order) => (order.product || '') === product)
+    if (!productOrders.some((order) => !order.closed_at)) continue
+    const existing = new Set(productOrders.map((order) => order.requirement))
+    const fresh = products
+      .filter((item) => item.product === product && !existing.has(item.requirement))
+      .map((item) => item.requirement)
+    if (fresh.length) {
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'new_requirement_while_open',
+        message: `软件「${product}」还有没交付的单，这次上传里又出现了新的需求目录（${fresh.join('、')}）。当前单在 to-spec 前可以把改好的内容整包重传，但不能加新的需求目录；等这单交付后再传。`,
+        extra: { product, requirements: fresh },
+      })
+    }
+  }
+
+  const specLock = config.specLock || createSpecLock(config)
+  for (const item of products) {
+    const existing = orders.find(
+      (order) => (order.product || '') === item.product && order.requirement === item.requirement,
+    )
+    if (!existing || existing.closed_at) continue
+    const repoName = repos[item.product] || repoNameFor(account, item.product)
+    let locked = false
+    try {
+      locked = await specLock({
+        owner: config.githubOwner || '',
+        repo: repoName,
+        requirement: item.requirement,
+      })
+    } catch (error) {
+      logLine({
+        ts: now,
+        level: 'warning',
+        msg: '锁单检查出错，按未锁放行',
+        customer_id: account.id,
+        requirement: item.requirement,
+        error: String(error && error.message ? error.message : error),
+      })
+      locked = false
+    }
+    if (locked) {
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'requirement_locked',
+        message: `需求目录「${item.requirement}」已经锁单（spec 已发布），这一版不能再改。请新建需求目录再上传。`,
+        extra: { product: item.product, requirement: item.requirement },
+      })
+    }
+  }
+
+  return null
 }
 
 export async function handleUpload({ req, config, session, limiters, ip }) {
@@ -219,8 +291,33 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
       status: 'failed',
       reason: resolved.reason,
       missing: resolved.missing,
+      ...(resolved.reason === 'multiple_new_requirements'
+        ? {
+            operator_alert: {
+              reason: resolved.reason,
+              message: resolved.message,
+              at: now,
+            },
+          }
+        : {}),
     })
     throw new HttpError(resolved.status, resolved.message, { missing: resolved.missing })
+  }
+
+  const blocked = await checkUploadWindow({
+    config,
+    account: session.account,
+    products: resolved.products,
+    now,
+  })
+  if (blocked) {
+    await writeJsonAtomic(join(dir, 'meta.json'), {
+      ...meta,
+      status: 'failed',
+      reason: blocked.reason,
+      missing: blocked.missing,
+    })
+    throw new HttpError(blocked.status, blocked.message, { missing: blocked.missing })
   }
 
   const requirements = []

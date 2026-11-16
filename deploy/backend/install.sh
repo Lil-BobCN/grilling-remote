@@ -16,9 +16,11 @@ fi
 HERE=$(cd -- "$(dirname -- "$0")" && pwd)
 CADDYFILE=${CADDYFILE:-$HERE/../Caddyfile}
 SERVICE_FILE=$HERE/afkapp.service
+IMPORT_SERVICE_FILE=$HERE/afk-import.service
+IMPORT_TIMER_FILE=$HERE/afk-import.timer
 ENV_EXAMPLE=$HERE/app.env.example
 
-for file in "$CADDYFILE" "$SERVICE_FILE" "$ENV_EXAMPLE"; do
+for file in "$CADDYFILE" "$SERVICE_FILE" "$IMPORT_SERVICE_FILE" "$IMPORT_TIMER_FILE" "$ENV_EXAMPLE"; do
   [[ -f $file ]] || { echo "缺文件：$file" >&2; exit 1; }
 done
 
@@ -51,8 +53,12 @@ fi
 
 echo "== systemd 单元"
 install -m 644 -o root -g root "$SERVICE_FILE" /etc/systemd/system/afkapp.service
+install -m 644 -o root -g root "$IMPORT_SERVICE_FILE" /etc/systemd/system/afk-import.service
+install -m 644 -o root -g root "$IMPORT_TIMER_FILE" /etc/systemd/system/afk-import.timer
 systemctl daemon-reload
-echo "装好 afkapp.service，还没 enable，等第一版发布"
+systemctl enable afk-import.timer
+echo "装好 afkapp.service 和 afk-import.timer；afkapp 还没 enable，等第一版发布"
+echo "第一版发布后启动导入定时器：systemctl start afk-import.timer"
 
 echo "== 运维脚本"
 # 这里只在装机时跑。以后改这三个脚本，按 docs/后端服务.md 的「发布」一节换 /data/app/bin/ 里的旧版。

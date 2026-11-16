@@ -1,0 +1,11 @@
+[Unit]
+Description=每 30 秒跑一次回传导入
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Unit=afk-import.service
+
+[Install]
+WantedBy=timers.target

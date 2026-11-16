@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { hashPassword } from '../lib/auth.mjs'
@@ -137,7 +137,7 @@ test('同一客户两个软件可以有相同需求目录名，建两条单', as
 
 test('同一软件的不同需求目录建新单', async () => {
   const { config } = await makeConfig()
-  await seedCustomer(config)
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
   const server = await startServer(config)
   try {
     const { cookie } = await login(server.base)
@@ -145,6 +145,10 @@ test('同一软件的不同需求目录建新单', async () => {
     const second = await makeWorkspace({ software: 'shuiguo\n', name: 'kucun' })
 
     await upload(server.base, cookie, await readZip(first.zipPath))
+    const order = await orderFile(config, 'o-0001')
+    order.closed_at = new Date().toISOString()
+    await writeJsonAtomic(join(config.dataDir, 'orders', 'o-0001.json'), order)
+
     const secondResponse = await upload(server.base, cookie, await readZip(second.zipPath))
     assert.equal(secondResponse.status, 200)
     const secondBody = await secondResponse.json()
@@ -166,9 +170,18 @@ test('新软件第一次上传多个需求目录返回 422，不建单', async (
     const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
     assert.equal(response.status, 422)
     const body = await response.json()
-    assert.match(body.message, /软件\.md/)
+    assert.match(body.message, /第一次上传/)
     assert.match(body.message, /alpha、beta/)
     await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+
+    const uploads = (await readdir(config.uploadDir)).filter((name) => name.startsWith('upload-'))
+    const metas = await Promise.all(
+      uploads.map(async (name) =>
+        JSON.parse(await readFile(join(config.uploadDir, name, 'meta.json'), 'utf8')),
+      ),
+    )
+    const failed = metas.find((meta) => meta.status === 'failed')
+    assert.equal(failed.operator_alert.reason, 'multiple_new_requirements')
   } finally {
     await server.close()
   }
@@ -203,6 +216,118 @@ test('软件简称和已有软件只差大小写时返回 422', async () => {
     const body = await response.json()
     assert.match(body.message, /shuiguo/)
     await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+  } finally {
+    await server.close()
+  }
+})
+
+test('新软件第一次上传多个需求目录，即使有 软件.md 也返回 422', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ names: ['alpha', 'beta'], software: 'shuiguo\n' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /第一次上传/)
+    assert.match(body.message, /alpha、beta/)
+    assert.match(body.message, /新软件「shuiguo」/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+  } finally {
+    await server.close()
+  }
+})
+
+test('当前单未交付时上传里出现新需求目录，整次 422，不建第二单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const first = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const created = await upload(server.base, cookie, await readZip(first.zipPath))
+    assert.equal(created.status, 200)
+
+    const second = await makeWorkspace({ software: 'shuiguo\n', names: ['demo', 'extra'] })
+    const response = await upload(server.base, cookie, await readZip(second.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /extra/)
+    assert.match(body.message, /不能加新的需求目录/)
+
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0002.json')))
+    const stored = await orderFile(config, 'o-0001')
+    assert.equal(stored.uploads.length, 1)
+  } finally {
+    await server.close()
+  }
+})
+
+test('当前单已关闭后，没有订单的新需求目录建新单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const first = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    await upload(server.base, cookie, await readZip(first.zipPath))
+
+    const order = await orderFile(config, 'o-0001')
+    order.closed_at = new Date().toISOString()
+    await writeJsonAtomic(join(config.dataDir, 'orders', 'o-0001.json'), order)
+
+    const second = await makeWorkspace({ software: 'shuiguo\n', name: 'kucun' })
+    const response = await upload(server.base, cookie, await readZip(second.zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.orders[0].id, 'o-0002')
+  } finally {
+    await server.close()
+  }
+})
+
+test('同一需求目录已锁单，重传 422 并提示新建需求目录', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const bytes = await readZip(workspace.zipPath)
+    assert.equal((await upload(server.base, cookie, bytes)).status, 200)
+
+    config.specLock = async ({ requirement }) => requirement === 'demo'
+    const response = await upload(server.base, cookie, bytes)
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /新建需求目录/)
+
+    const stored = await orderFile(config, 'o-0001')
+    assert.equal(stored.uploads.length, 1)
+  } finally {
+    await server.close()
+  }
+})
+
+test('锁单检查读不到时放行，重传按新一轮记', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const bytes = await readZip(workspace.zipPath)
+    assert.equal((await upload(server.base, cookie, bytes)).status, 200)
+
+    config.specLock = async () => {
+      throw new Error('GitHub 读不到')
+    }
+    const response = await upload(server.base, cookie, bytes)
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.match(body.orders[0].transitions[2].line, /轮次：2/)
   } finally {
     await server.close()
   }
