@@ -37,5 +37,9 @@ export function loadConfig(env = process.env) {
     gitSync: env.AFK_GIT_SYNC !== '0',
     gitTimeoutMs: readInt(env.AFK_GIT_TIMEOUT_MS, 15000),
     syncRetryMs: readInt(env.AFK_SYNC_RETRY_MS, 60 * 1000),
+    githubToken: env.GITHUB_TOKEN || '',
+    githubApi: env.GITHUB_API || 'https://api.github.com',
+    githubTimeoutMs: readInt(env.GITHUB_TIMEOUT_MS, 5000),
+    progressCacheMs: readInt(env.PROGRESS_CACHE_MS, 60 * 1000),
   }
 }

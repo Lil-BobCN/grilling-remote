@@ -85,12 +85,25 @@ export function getOrder(id) {
   return request(`/app/api/orders/${encodeURIComponent(id)}`)
 }
 
+export function listAdminOrders() {
+  return request('/app/api/admin/orders')
+}
+
+export function markMessageSent(id, { type, anchor }) {
+  return request(`/app/api/admin/orders/${encodeURIComponent(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ type, anchor }),
+  })
+}
+
 export function readSession(payload) {
   const user = payload?.user ?? payload ?? {}
   return {
     displayName: user.display_name ?? user.displayName ?? user.email ?? '',
     shortName: user.short_name ?? user.shortName ?? '',
     email: user.email ?? '',
+    role: user.role ?? '',
+    isAdmin: user.role === 'admin',
   }
 }
 
@@ -109,11 +122,17 @@ export function normalizeOrder(raw) {
     number: raw?.no ?? raw?.number ?? '',
     title: raw?.title ?? raw?.name ?? '未命名需求',
     product: raw?.product ?? raw?.workspace ?? '',
+    requirement: raw?.requirement ?? '',
+    customer: raw?.customer ?? null,
+    issueUrl: raw?.issue_url ?? '',
     delivery: raw?.delivery ?? raw?.delivery_address ?? '',
     deliveryUrl: raw?.delivery_url ?? raw?.deliveryUrl ?? '',
+    uploadedAt: raw?.uploaded_at ?? '',
+    lastUploadAt: raw?.last_upload_at ?? '',
     missing: Array.isArray(raw?.missing) ? raw.missing.filter(Boolean) : [],
     trial: Array.isArray(raw?.trial) ? raw.trial.filter(Boolean) : [],
     feedback: raw?.feedback ?? raw?.rejection?.feedback ?? '',
+    messages: Array.isArray(raw?.messages) ? raw.messages : [],
     transitions: Array.isArray(rows)
       ? rows.map(normalizeTransition).filter((entry) => entry.line)
       : [],

@@ -5,6 +5,7 @@ import { gitSync, readJson, withFileLock, writeJsonAtomic } from './store.mjs'
 
 export const SYNC_ALERT_MS = 10 * 60 * 1000
 export const PENDING_PATHSPEC = 'orders/*.sync-pending'
+export const MESSAGE_TYPES = ['校验未通过', '待客户验收', '满 24 小时']
 const PENDING_SUFFIX = '.sync-pending'
 
 export function ordersDir(config) {
@@ -175,6 +176,7 @@ export function publicOrder(order) {
     product: order.product,
     requirement: order.requirement,
     uploaded_at: order.uploaded_at,
+    last_upload_at: order.uploads?.at(-1)?.at || null,
     delivery: order.delivery,
     delivery_url: order.delivery_url,
     missing: order.missing,
@@ -220,6 +222,7 @@ export async function recordUpload(config, account, upload) {
       trial: [],
       feedback: '',
       missing: [],
+      messages: [],
       closed_at: null,
       uploaded_at: null,
     }
@@ -271,6 +274,44 @@ export async function recordUpload(config, account, upload) {
   })
 
   const sync = await gitSync(config.dataDir, `订单：${order.id} ${order.requirement} 上传`, {
+    enabled: config.gitSync,
+    timeoutMs: config.gitTimeoutMs,
+    exclude: [PENDING_PATHSPEC],
+  })
+  if (sync.error) await noteSyncFailure(config, order, sync.error)
+  return { order, sync }
+}
+
+/**
+ * 管理视图的「标记已发」。同一类型、同一锚点只记一条。
+ * 返回更新后的订单；订单不存在时返回 null。
+ */
+export async function markMessageSent(config, orderId, { type, anchor }) {
+  const lockPath = join(config.dataDir, '.orders.lock')
+  const now = new Date().toISOString()
+
+  const order = await withFileLock(lockPath, async () => {
+    const orders = await readOrders(config)
+    const existing = orders.find((item) => item.id === orderId)
+    if (!existing) return null
+
+    const messages = Array.isArray(existing.messages) ? existing.messages : []
+    if (messages.some((item) => item.type === type && item.anchor === anchor)) {
+      return existing
+    }
+
+    const next = {
+      ...existing,
+      messages: [...messages, { type, anchor, at: now }],
+      updated_at: now,
+    }
+    await writeJsonAtomic(join(ordersDir(config), `${next.id}.json`), next)
+    return next
+  })
+
+  if (!order) return null
+
+  const sync = await gitSync(config.dataDir, `订单：${order.id} ${order.requirement} 标记消息已发`, {
     enabled: config.gitSync,
     timeoutMs: config.gitTimeoutMs,
     exclude: [PENDING_PATHSPEC],
