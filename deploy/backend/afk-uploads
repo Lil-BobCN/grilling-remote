@@ -14,6 +14,7 @@
 #   dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *
 # 上传目录、订单目录、客户表和 app.env 的路径写死；干跑演练时可以用环境变量临时改。
 # 发信脚本默认 /data/app/current/bin/customer-mail.py，SMTP 配置从 app.env 读。
+# mark-delivered 以 afkapp 身份调 /data/app/current/bin/mark-delivered.mjs。
 
 set -euo pipefail
 
@@ -22,6 +23,8 @@ CUSTOMERS_FILE=${AFK_CUSTOMERS_FILE:-/data/customers/customers.json}
 ORDERS_DIR=${AFK_ORDERS_DIR:-/data/customers/orders}
 APP_ENV=${AFK_APP_ENV:-/etc/afkapp/app.env}
 CUSTOMER_MAIL=${AFK_CUSTOMER_MAIL:-/data/app/current/bin/customer-mail.py}
+MARK_DELIVERED=${AFK_MARK_DELIVERED:-/data/app/current/bin/mark-delivered.mjs}
+MARK_USER=${AFK_MARK_USER-afkapp}
 
 usage() {
   echo "用法：afk-uploads list|cat <id> <file>|rm <id>|cat-customers|send-delivery-mail <订单号> <地址> [--tries \"①…；②…\"]|mark-delivered <订单号> <地址>" >&2
@@ -202,32 +205,12 @@ PY
       || { echo "交付地址不对：$address" >&2; exit 2; }
     order_file=$ORDERS_DIR/$order_id.json
     [[ -f $order_file ]] || { echo "没这个订单：$order_id" >&2; exit 1; }
-    python3 - "$order_file" "$address" <<'PY'
-import json
-import os
-import sys
-import tempfile
-
-order_path, address = sys.argv[1], sys.argv[2]
-with open(order_path, encoding="utf-8") as handle:
-    order = json.load(handle)
-order["delivery"] = {"address": address, "url": f"https://{address}/"}
-directory = os.path.dirname(order_path) or "."
-fd, temp_path = tempfile.mkstemp(dir=directory, prefix=".delivery-", suffix=".json")
-try:
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(order, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.chmod(temp_path, 0o600)
-    os.replace(temp_path, order_path)
-except BaseException:
-    if os.path.exists(temp_path):
-        os.unlink(temp_path)
-    raise
-PY
-    echo "已记交付地址（订单 ${order_id}，地址 ${address}）"
+    [[ -f $MARK_DELIVERED ]] || { echo "找不到写入脚本：$MARK_DELIVERED" >&2; exit 1; }
+    if [[ -n $MARK_USER ]]; then
+      sudo -u "$MARK_USER" node "$MARK_DELIVERED" "$order_id" "$address"
+    else
+      node "$MARK_DELIVERED" "$order_id" "$address"
+    fi
     ;;
   cat-customers)
     [[ $# -eq 1 ]] || usage

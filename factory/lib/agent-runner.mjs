@@ -16,6 +16,18 @@ function safeName(name) {
     .replace(/^-+|-+$/g, '') || 'brief'
 }
 
+/** 各角色的工具白名单；`--allowedTools` 用逗号分隔。 */
+export const DECOMPOSE_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
+export const VERIFY_TOOLS = 'Read,Write,Edit,Bash(bash:*),Bash(node:*),Bash(npm:*),Bash(curl:*)'
+export const REVIEW_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
+export const MERGER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
+export const FIXER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
+
+function toolList(value) {
+  const rows = Array.isArray(value) ? value : String(value || '').split(',')
+  return rows.map((item) => String(item).trim()).filter(Boolean)
+}
+
 export function defaultExec(command, args, { cwd, env, onStart } = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -52,9 +64,10 @@ export function defaultExec(command, args, { cwd, env, onStart } = {}) {
  * @param {string} [options.command] 默认 `claude`
  * @param {Function} [options.exec] 测试替身 `(command, args, {cwd, env}) => {code, stdout, stderr}`
  * @param {string} [options.briefDir] brief 文件放哪，默认新建临时目录
+ * @param {string|string[]} [options.allowedTools] 默认工具白名单
  */
-export function createAgentRunner({ command = 'claude', exec = defaultExec, briefDir } = {}) {
-  async function run({ brief, cwd, env, name = 'brief', extraArgs = [] } = {}) {
+export function createAgentRunner({ command = 'claude', exec = defaultExec, briefDir, allowedTools = [] } = {}) {
+  async function run({ brief, cwd, env, name = 'brief', extraArgs = [], allowedTools: runTools } = {}) {
     const text = String(brief ?? '')
     if (!text.trim()) throw new Error('agent runner 缺 brief')
 
@@ -62,7 +75,14 @@ export function createAgentRunner({ command = 'claude', exec = defaultExec, brie
     const briefPath = join(dir, `${safeName(name)}.md`)
     await writeFile(briefPath, text, 'utf8')
 
-    const args = ['-p', '--restricted', ...extraArgs, text]
+    const tools = toolList(runTools === undefined ? allowedTools : runTools)
+    const args = [
+      '-p',
+      '--restricted',
+      ...(tools.length ? ['--allowedTools', tools.join(',')] : []),
+      ...extraArgs,
+      text,
+    ]
     const result = await exec(command, args, { cwd, env })
     const code = Number.isInteger(result?.code) ? result.code : 1
     return {

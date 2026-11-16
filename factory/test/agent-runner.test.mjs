@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { VERIFY_TOOLS, createAgentRunner } from '../lib/agent-runner.mjs'
 
 test('默认 command 是 claude，跑 -p --restricted，brief 同时留文件', async () => {
   const calls = []
@@ -50,4 +50,34 @@ test('空 brief 直接报错，不跑命令', async () => {
   })
   await assert.rejects(() => runner.run({ brief: '   ' }))
   assert.equal(called, false)
+})
+
+test('allowedTools 透传成 --allowedTools，逗号分隔', async () => {
+  const calls = []
+  const runner = createAgentRunner({
+    allowedTools: VERIFY_TOOLS,
+    exec: async (command, args) => {
+      calls.push(args)
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+  await runner.run({ brief: '验证这张票' })
+  const index = calls[0].indexOf('--allowedTools')
+  assert.ok(index > 1)
+  assert.equal(calls[0][index + 1], VERIFY_TOOLS)
+  assert.match(calls[0][index + 1], /Bash\(npm:\*\)/)
+})
+
+test('单次 run 的 allowedTools 覆盖默认值', async () => {
+  const calls = []
+  const runner = createAgentRunner({
+    allowedTools: 'Read',
+    exec: async (command, args) => {
+      calls.push(args)
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+  await runner.run({ brief: '评审', allowedTools: 'Read,Write' })
+  const index = calls[0].indexOf('--allowedTools')
+  assert.equal(calls[0][index + 1], 'Read,Write')
 })

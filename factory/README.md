@@ -20,6 +20,8 @@
 | `bin/ignite.mjs` | 手工点火一张票，`--dry-run` 打印 prompt 和命令 | #464 |
 | `lib/evidence.mjs` | 验证、评审、四样证据、合需求分支 | #465 |
 | `lib/audit-agents.mjs` | 验证和评审 agent 的 `AFK_VERDICT` 解析、写 `.audit` trail | #457 |
+| `lib/helper.mjs` | `gh` 和 `afk-product` 的公共命令入口 | #457 |
+| `bin/audit-cli.mjs` | verify/review 两个 CLI 共用的参数解析和输出 | #457 |
 | `bin/verify.mjs` | 跑一次验证 agent，写 `phase=verify` 和 `phase=test` 行 | #457 |
 | `bin/review.mjs` | 跑一次评审 agent，写 `phase=review` 行 | #457 |
 | `lib/stall.mjs` | 停法判据：三圈没进展、同类问题跨票两次 | #457 |

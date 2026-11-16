@@ -14,14 +14,12 @@
  * 输出一行 JSON，方便脚本读。
  */
 
-import { execFile } from 'node:child_process'
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
+import { runHelper } from '../lib/helper.mjs'
 import { parsePreviewInfo } from '../lib/preview.mjs'
 
-const execFileAsync = promisify(execFile)
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const USAGE = `用法：
   node factory/bin/preview.mjs start --address <地址> --image <镜像:tag> [--seed <命令>] [--commit-at <ISO 时间>]
@@ -30,28 +28,6 @@ const USAGE = `用法：
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
-}
-
-function helperCommand() {
-  if (process.env.AFK_HELPER?.trim()) {
-    return process.env.AFK_HELPER.trim().split(/\s+/)
-  }
-  if (process.env.AFK_SSH_TARGET?.trim()) {
-    return ['ssh', process.env.AFK_SSH_TARGET.trim(), 'sudo', '/usr/local/sbin/afk-product']
-  }
-  return ['afk-product']
-}
-
-async function runHelper(args) {
-  const [command, ...prefix] = helperCommand()
-  const result = await execFileAsync(command, [...prefix, ...args], {
-    maxBuffer: 8 * 1024 * 1024,
-    // preview-start 排队默认最多等 3600 秒，这里留出启动和传镜像的时间。
-    timeout: 70 * 60 * 1000,
-  }).catch((error) => {
-    throw new Error(String(error.stderr || error.message || '').trim())
-  })
-  return String(result.stdout ?? '')
 }
 
 function parseOptions(argv) {

@@ -344,6 +344,17 @@ export function routeParent({
     if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
   }
 
+  if (state === '开发中') {
+    // 驳回建的修复票、以及子票跑完后接上的下一张，都在开发中点火。
+    const open = subIssues.filter(isOpen)
+    if (open.length === 0) return []
+    if (open.some(isSandcastle)) return []
+    const ticket = selectTicket({ subIssues, closedNumbers })
+    if (!ticket) return []
+    if (repoBusy || activeCount >= maxActive) return []
+    return [{ type: 'ignite', ticket, ticketNumber: ticket.number }]
+  }
+
   if (state === '排队中') {
     if (spec && subIssues.length === 0) return [{ type: 'runDecompose' }]
     if (signal?.kind === '点头：拆票') {

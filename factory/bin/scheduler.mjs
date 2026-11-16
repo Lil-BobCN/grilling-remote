@@ -19,6 +19,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createGithub } from '../lib/github.mjs'
+import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
@@ -28,7 +29,6 @@ import {
   createListMergedYesterday,
   createNeedsAnswer,
   createPreviewSweep,
-  runGh,
 } from '../lib/scheduler-jobs.mjs'
 import {
   collectRepos,

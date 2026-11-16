@@ -65,6 +65,21 @@ export function deliveryAddress({ customer, product } = {}) {
   return address
 }
 
+/**
+ * 软件简称决定交付地址，只从显式参数或仓名 `<客户简称>-<软件简称>` 的后缀取。
+ * 拼不出返回空串，调用方报错，不拿需求名顶替。
+ */
+export function productFromRepo({ repo, customer, explicit } = {}) {
+  const given = String(explicit ?? '').trim()
+  if (given) return given
+  const name = String(repo ?? '').split('/').filter(Boolean).pop() || ''
+  const prefix = customer ? `${customer}-` : ''
+  if (prefix && name.startsWith(prefix) && name.length > prefix.length) {
+    return name.slice(prefix.length)
+  }
+  return ''
+}
+
 function normalizeTries(tries) {
   const list = Array.isArray(tries) ? tries : []
   const cleaned = list.map((item) => String(item ?? '').trim()).filter(Boolean)
