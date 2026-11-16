@@ -27,7 +27,7 @@
 bash deploy/products/test/local-test.sh
 ```
 
-脚本在仓库下建 `.tmp-products-test/`，起一个临时 Postgres、一个最小 app 容器和一个临时 Caddy 容器，跑完删掉。会拉 `postgres:16`、`nginxinc/nginx-unprivileged:1.27-alpine`、`caddy:2.6.2` 三个镜像。
+脚本在仓库下建 `.tmp-products-test-<进程号>/`，起一个临时 Postgres、一个最小 app 容器和一个临时 Caddy 容器，跑完删掉。会拉 `postgres:16`、`nginxinc/nginx-unprivileged:1.27-alpine`、`caddy:2.6.2` 三个镜像。
 
 断言的内容：
 
