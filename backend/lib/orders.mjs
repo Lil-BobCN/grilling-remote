@@ -79,7 +79,10 @@ export async function recordUpload(config, account, upload) {
   const order = await withFileLock(lockPath, async () => {
     const orders = await readOrders(config)
     const existing = orders.find(
-      (item) => item.customer_id === account.id && item.requirement === upload.requirement,
+      (item) =>
+        item.customer_id === account.id &&
+        (item.product || '') === (upload.product || '') &&
+        item.requirement === upload.requirement,
     )
 
     const last = existing?.transitions?.[existing.transitions.length - 1]

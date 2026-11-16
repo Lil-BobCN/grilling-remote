@@ -98,42 +98,57 @@ export async function upload(base, cookie, bytes, { filename = 'workspace.zip', 
   return fetch(`${base}/app/api/uploads`, { method: 'POST', headers, body: form })
 }
 
-export async function makeWorkspace({ small = true, complete = true, name = 'demo', nested = false, zipTool = 'python' } = {}) {
+export async function makeWorkspace({
+  small = true,
+  complete = true,
+  name = 'demo',
+  names = null,
+  nested = false,
+  software = null,
+  zipTool = 'python',
+} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'afkapp-ws-'))
   const workspace = join(root, '工作区')
-  const requirement = join(workspace, '.scratch', name)
-  await mkdir(requirement, { recursive: true })
+  const requirementNames = names && names.length > 0 ? names : [name]
+  await mkdir(workspace, { recursive: true })
   await writeFile(join(workspace, 'AGENTS.md'), '# 客户工作区\n', 'utf8')
+  if (software !== null) await writeFile(join(workspace, '软件.md'), software, 'utf8')
 
-  if (small) {
-    await writeFile(
-      join(requirement, '需求草稿.md'),
-      `# ${name} 需求草稿\n\nStatus: ${complete ? '已问完' : '进行中'}\n\n## 1. 客户原话\n\n想要一个预约取货的小程序。\n`,
-      'utf8',
-    )
-  } else {
-    const issues = join(requirement, 'issues')
-    await mkdir(issues, { recursive: true })
-    await writeFile(
-      join(requirement, 'map.md'),
-      `# ${name} 地图\n\n## Destination\n\n预约取货。\n\n## 接下来\n\n${
-        complete ? '' : '- [ ] 还没定的事\n'
-      }\n## Decisions so far\n\n- [01](issues/01.md)：到店取\n\n## Not yet specified\n\n## Out of scope\n\n无\n`,
-      'utf8',
-    )
-    await writeFile(
-      join(issues, '01.md'),
-      `# 01\n\nType: grilling\nStatus: ${complete ? 'resolved' : 'claimed'}\n\n## Question\n\n到店取还是送货？\n\n## 结论\n\n到店取。\n`,
-      'utf8',
-    )
-  }
+  let requirement = ''
+  for (const requirementName of requirementNames) {
+    requirement = join(workspace, '.scratch', requirementName)
+    await mkdir(requirement, { recursive: true })
 
-  if (complete) {
-    await writeFile(
-      join(requirement, '验收场景.md'),
-      '# 验收场景\n\n客户确认：2026-11-15\n\n- 能打开预约页\n',
-      'utf8',
-    )
+    if (small) {
+      await writeFile(
+        join(requirement, '需求草稿.md'),
+        `# ${requirementName} 需求草稿\n\nStatus: ${complete ? '已问完' : '进行中'}\n\n## 1. 客户原话\n\n想要一个预约取货的小程序。\n`,
+        'utf8',
+      )
+    } else {
+      const issues = join(requirement, 'issues')
+      await mkdir(issues, { recursive: true })
+      await writeFile(
+        join(requirement, 'map.md'),
+        `# ${requirementName} 地图\n\n## Destination\n\n预约取货。\n\n## 接下来\n\n${
+          complete ? '' : '- [ ] 还没定的事\n'
+        }\n## Decisions so far\n\n- [01](issues/01.md)：到店取\n\n## Not yet specified\n\n## Out of scope\n\n无\n`,
+        'utf8',
+      )
+      await writeFile(
+        join(issues, '01.md'),
+        `# 01\n\nType: grilling\nStatus: ${complete ? 'resolved' : 'claimed'}\n\n## Question\n\n到店取还是送货？\n\n## 结论\n\n到店取。\n`,
+        'utf8',
+      )
+    }
+
+    if (complete) {
+      await writeFile(
+        join(requirement, '验收场景.md'),
+        '# 验收场景\n\n客户确认：2026-11-15\n\n- 能打开预约页\n',
+        'utf8',
+      )
+    }
   }
 
   const zipPath = join(root, 'workspace.zip')

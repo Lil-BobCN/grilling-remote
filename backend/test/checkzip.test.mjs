@@ -16,7 +16,33 @@ test('正常包认出 .scratch 和需求目录', async () => {
   const result = await inspectZip(config, workspace.zipPath, await outDir())
   assert.equal(result.ok, true)
   assert.equal(result.root, '')
+  assert.equal(result.software, null)
   assert.deepEqual(result.requirements, ['demo'])
+})
+
+test('软件.md 只读第一行', async () => {
+  const { config } = await makeConfig()
+  const workspace = await makeWorkspace({ software: 'shuiguo\n第二行不读\n' })
+  const result = await inspectZip(config, workspace.zipPath, await outDir())
+  assert.equal(result.ok, true)
+  assert.equal(result.software, 'shuiguo')
+})
+
+test('空的 软件.md 按没有处理', async () => {
+  const { config } = await makeConfig()
+  const workspace = await makeWorkspace({ software: '' })
+  const result = await inspectZip(config, workspace.zipPath, await outDir())
+  assert.equal(result.ok, true)
+  assert.equal(result.software, null)
+})
+
+test('工作区在子目录时从子目录读 软件.md', async () => {
+  const { config } = await makeConfig()
+  const workspace = await makeWorkspace({ nested: true, software: 'shuiguo\n' })
+  const result = await inspectZip(config, workspace.zipPath, await outDir())
+  assert.equal(result.ok, true)
+  assert.equal(result.root, '工作区')
+  assert.equal(result.software, 'shuiguo')
 })
 
 test('macOS 命令行 zip 打的中文包，文件名能认出来', async () => {

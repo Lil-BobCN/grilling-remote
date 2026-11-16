@@ -42,6 +42,7 @@ test('小需求完整包上传成功，写订单；重传沿用同一张单', as
     const stored = await orderFile(config, 'o-0001')
     assert.equal(stored.customer_id, 'c-0001')
     assert.equal(stored.requirement, 'demo')
+    assert.equal(stored.product, 'demo')
     assert.equal(stored.uploads.length, 1)
 
     const second = await upload(server.base, cookie, await readZip(workspace.zipPath))
@@ -54,6 +55,154 @@ test('小需求完整包上传成功，写订单；重传沿用同一张单', as
 
     const again = await orderFile(config, 'o-0001')
     assert.equal(again.uploads.length, 2)
+  } finally {
+    await server.close()
+  }
+})
+
+test('带 软件.md 时订单 product 记软件简称', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: 'shuiguo\n第二行不读\n' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.orders[0].product, 'shuiguo')
+    assert.equal(body.orders[0].requirement, 'demo')
+    const stored = await orderFile(config, 'o-0001')
+    assert.equal(stored.product, 'shuiguo')
+  } finally {
+    await server.close()
+  }
+})
+
+test('空的 软件.md 按没有处理，product 用需求目录名', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: '' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.orders[0].product, 'demo')
+  } finally {
+    await server.close()
+  }
+})
+
+test('没有 软件.md 时按 repos 已知键回退', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ name: 'shuiguo-app' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.orders[0].product, 'shuiguo')
+    assert.equal(body.orders[0].requirement, 'shuiguo-app')
+  } finally {
+    await server.close()
+  }
+})
+
+test('同一客户两个软件可以有相同需求目录名，建两条单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const first = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const second = await makeWorkspace({ software: 'kucun\n', name: 'demo' })
+
+    const firstResponse = await upload(server.base, cookie, await readZip(first.zipPath))
+    assert.equal(firstResponse.status, 200)
+    const secondResponse = await upload(server.base, cookie, await readZip(second.zipPath))
+    assert.equal(secondResponse.status, 200)
+
+    const secondBody = await secondResponse.json()
+    assert.equal(secondBody.orders[0].id, 'o-0002')
+    assert.equal((await orderFile(config, 'o-0001')).product, 'shuiguo')
+    assert.equal((await orderFile(config, 'o-0002')).product, 'kucun')
+  } finally {
+    await server.close()
+  }
+})
+
+test('同一软件的不同需求目录建新单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const first = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const second = await makeWorkspace({ software: 'shuiguo\n', name: 'kucun' })
+
+    await upload(server.base, cookie, await readZip(first.zipPath))
+    const secondResponse = await upload(server.base, cookie, await readZip(second.zipPath))
+    assert.equal(secondResponse.status, 200)
+    const secondBody = await secondResponse.json()
+    assert.equal(secondBody.orders[0].id, 'o-0002')
+    assert.equal(secondBody.orders[0].product, 'shuiguo')
+    assert.equal(secondBody.orders[0].requirement, 'kucun')
+  } finally {
+    await server.close()
+  }
+})
+
+test('新软件第一次上传多个需求目录返回 422，不建单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ names: ['alpha', 'beta'] })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /软件\.md/)
+    assert.match(body.message, /alpha、beta/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+  } finally {
+    await server.close()
+  }
+})
+
+test('软件简称对应的仓名已属于另一个软件时返回 422', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { other: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: 'shuiguo\n' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /acme-shuiguo/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+  } finally {
+    await server.close()
+  }
+})
+
+test('软件简称和已有软件只差大小写时返回 422', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config, { repos: { shuiguo: 'acme-shuiguo' } })
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const workspace = await makeWorkspace({ software: 'Shuiguo\n' })
+    const response = await upload(server.base, cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /shuiguo/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
   } finally {
     await server.close()
   }
