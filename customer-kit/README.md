@@ -79,13 +79,14 @@ AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
 - `.scratch/` 建好。
 - 模型目录里有 7 个技能；官网包的 `wait-what` 允许模型自动调用，本机自用副本不动。
 
-细节和没测到的项见 `测试记录.md`。Windows 没机器，未验证。`workspace-write` 沙箱没测到，测试时这台机器的沙箱后端坏了，用了 `danger-full-access`。Linux 不支持。
+细节和没测到的项见 `测试记录.md`。Windows 打包和上传 2026-11-16 已实测，见 `测试记录.md` 的 I-0050 一节。`workspace-write` 沙箱没测到，测试时这台机器的沙箱后端坏了，用了 `danger-full-access`。Linux 不支持。
 
 ## 还没定的
 
-- 客户机实测：Windows、`workspace-write` 沙箱、客户机 dsh 有没有 `subagent` 和 `subagent_fork`，都没测。归 `安装步骤.md` 的首单实测。
-- Mac 和 Windows 右键压缩是否带上隐藏的 `.scratch/` 和 `.dsh`：未验证；2026-11-07 决定不测（没有对应主机）。
-- Windows 解压、中文路径、`.dsh` 被隐藏时 dsh 是否正常：未验证；2026-11-07 决定不测（没有对应主机）。
+- 客户机实测：Windows 打包和上传已测（2026-11-16，见 `测试记录.md` 的 I-0050 一节）；`workspace-write` 沙箱、客户机 dsh 有没有 `subagent` 和 `subagent_fork`，仍没测。归 `安装步骤.md` 的首单实测。
+- Windows 右键压缩会带上 `.scratch/` 和 `.dsh`：2026-11-16 实测通过，见 `测试记录.md` 的 I-0050 一节。
+- Mac 右键压缩是否带上隐藏的 `.scratch/` 和 `.dsh`：未验证；2026-11-07 决定不测（没有对应主机）。
+- Windows 解压、中文路径、`.dsh` 被隐藏时 dsh 是否正常：仍未验证。
 - 两个需求合成一个软件的规则，待定。实测遇到再定。
 - 整包大小上限先写 50 MB（Cloudflare 免费版单次 100 MB，留余量）。对话记录 v1 不回。
 - 教程页样品在 `prototype/issue-31/`：`tutorial.html`、`截图清单.md`、`文案.md`。第一次对话那一节已并入整页。
