@@ -1,6 +1,6 @@
 # 说清楚，再开工：客户需求 → 自动软件工厂（可点原型）
 
-> 2026-11-14 起本目录是历史样品，已废弃。当前技能数和版本数据以 `customer-kit/manifest.json` 和 `customer-kit/release.json` 为准。
+> 2026-11-14 起本目录的旧页面样品（`index.html` 等）是历史，已废弃；`issue-109/` 的订单页样品仍被 `docs/客户进度.md` 引用。当前技能数和版本数据以 `customer-kit/manifest.json` 和 `customer-kit/release.json` 为准。
 
 给运营者看的单文件原型。看完应该能回答两件事：客户会经历什么，每一屏背后跑了什么。
 

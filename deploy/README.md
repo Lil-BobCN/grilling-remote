@@ -93,7 +93,7 @@ Caddyfile 里的 `/app/api/*` 已经反代到 `127.0.0.1:8787`。服务没起时
 | `/etc/caddy/products/<交付地址>.caddy` | 这个软件的 Caddy 路由 |
 | `/usr/local/sbin/afk-product` | 部署、回滚和 `pg_dump` 的固定 helper；sudo 白名单只加这一条 |
 
-一次性安装、构建、密钥、回滚、备份和巡检按手册第十二节。`deploy/Caddyfile` 和 `deploy/ops-dates.json` 等签完新 Origin CA、装好 Docker 后再改，不在本票改。
+一次性安装、构建、密钥、回滚、备份和巡检按手册第十二节。`deploy/Caddyfile` 和 `deploy/ops-dates.json` 等签完新 Origin CA、装好 Docker 后再改，不在 I-0037 改。
 
 ## 客户成品预览（2026-11-16 定，脚本未实现）
 
