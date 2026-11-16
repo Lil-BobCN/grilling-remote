@@ -69,7 +69,9 @@ export function createApp({ product = '预约取货' } = {}) {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   const port = Number(process.env.PORT || 4317)
-  createApp({ product: process.env.APP_NAME || '预约取货' }).listen(port, '127.0.0.1', () => {
-    console.log(`应用已启动：http://127.0.0.1:${port}`)
+  // 本地直接跑默认只听回环；容器里 Dockerfile 设 HOST=0.0.0.0，端口映射才进得来。
+  const host = process.env.HOST || '127.0.0.1'
+  createApp({ product: process.env.APP_NAME || '预约取货' }).listen(port, host, () => {
+    console.log(`应用已启动：http://${host}:${port}`)
   })
 }

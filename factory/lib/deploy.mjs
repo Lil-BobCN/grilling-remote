@@ -139,8 +139,8 @@ function missingFunctions(names, fns) {
  * 部署一套成品。同一个交付地址重复部署只换镜像，不建第二套。
  *
  * 步骤：构建镜像 → 传 tar → 服务器 load → product-init（幂等，第一次会建目录、
- * 数据库和路由）→ product-deploy → 健康检查。任何一步失败整套重跑一次；
- * 两次都失败发「出事」，返回 `{ok:false, reason:'部署失败', tried}`，不标已交付。
+ * 数据库和路由，已有的 .env 不动）→ product-deploy（换镜像，失败退回上一版）→ 健康检查。
+ * 任何一步失败整套重跑一次；两次都失败发「出事」，返回 `{ok:false, reason:'部署失败', tried}`，不标已交付。
  */
 export async function deployProduct({
   repoDir,
@@ -218,7 +218,8 @@ export async function deployProduct({
       const serverTar = uploaded || remoteTar
       await loadImage({ tar: serverTar, image: builtImage, address, version: textVersion })
 
-      // product-init 幂等：第一次建目录、数据库和 Caddy 路由，之后只更新镜像。
+      // product-init 幂等：第一次建目录、数据库和 Caddy 路由；已有的 .env 不动，
+      // 换镜像和失败恢复都交给 product-deploy。
       await helper(['product-init', address, '--image', builtImage])
       await helper(['product-deploy', address, '--image', builtImage])
 

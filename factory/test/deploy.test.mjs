@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { runDeploy } from '../bin/deploy.mjs'
+import { runDeploy, publishZipWithDefaults } from '../bin/deploy.mjs'
 import { runFinish } from '../bin/finish.mjs'
 import {
   DEFAULT_DELIVERY_TRIES,
@@ -367,7 +367,7 @@ async function finishRepo(childNumber) {
   return dir
 }
 
-function finishDeps(gh, sent, deployCalls, deployResult) {
+function finishDeps(gh, sent, deployCalls, zipCalls, deployResult) {
   return {
     gh,
     runner: {
@@ -381,6 +381,10 @@ function finishDeps(gh, sent, deployCalls, deployResult) {
         deployResult || { ok: true, address: 'acme-shop.afkfactory.space', version: args.version }
       )
     },
+    publishZip: async (args) => {
+      zipCalls.push(args)
+      return `https://afkfactory.space/downloads/${args.address}-${args.version}.zip`
+    },
   }
 }
 
@@ -389,6 +393,7 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
   const dir = await finishRepo(child.number)
   const sent = []
   const deployCalls = []
+  const zipCalls = []
   try {
     const { output, exitCode } = await runFinish(
       {
@@ -400,9 +405,9 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
         main: 'main',
         ...finishOptions,
       },
-      finishDeps(gh, sent, deployCalls, deployResult),
+      finishDeps(gh, sent, deployCalls, zipCalls, deployResult),
     )
-    return { output, exitCode, sent, deployCalls, dir, fake }
+    return { output, exitCode, sent, deployCalls, zipCalls, dir, fake }
   } catch (error) {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
@@ -410,8 +415,8 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
   }
 }
 
-test('finish 合主干成功后默认调用部署，版本用 merge SHA 短号', async () => {
-  const { output, exitCode, deployCalls, sent, fake, dir } = await runFinishFlow()
+test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge SHA 短号', async () => {
+  const { output, exitCode, deployCalls, zipCalls, sent, fake, dir } = await runFinishFlow()
   try {
     assert.equal(exitCode, 0, JSON.stringify(output))
     assert.equal(output.ok, true)
@@ -424,17 +429,28 @@ test('finish 合主干成功后默认调用部署，版本用 merge SHA 短号',
     assert.equal(args.repoDir, dir)
     assert.equal(output.deploy.ok, true)
     assert.ok(sent.some((event) => event.event === '自己合并'))
+
+    assert.equal(zipCalls.length, 1)
+    assert.equal(zipCalls[0].repoDir, dir)
+    assert.equal(zipCalls[0].ref, 'merge-1')
+    assert.equal(zipCalls[0].address, 'acme-shop.afkfactory.space')
+    assert.equal(zipCalls[0].version, 'merge-1')
+    assert.equal(
+      output.deploy.codeZipUrl,
+      'https://afkfactory.space/downloads/acme-shop.afkfactory.space-merge-1.zip',
+    )
   } finally {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
   }
 })
 
-test('finish --no-deploy 不调用部署', async () => {
-  const { exitCode, deployCalls, fake, dir } = await runFinishFlow({}, { noDeploy: true })
+test('finish --no-deploy 不调用部署，也不发代码 zip', async () => {
+  const { exitCode, deployCalls, zipCalls, fake, dir } = await runFinishFlow({}, { noDeploy: true })
   try {
     assert.equal(exitCode, 0)
     assert.equal(deployCalls.length, 0)
+    assert.equal(zipCalls.length, 0)
   } finally {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
@@ -442,9 +458,12 @@ test('finish --no-deploy 不调用部署', async () => {
 })
 
 test('父工单缺客户简称或需求名时拒绝部署，发出事通知，CLI 退出非零', async () => {
-  const { output, exitCode, deployCalls, sent, fake, dir } = await runFinishFlow({ product: '' })
+  const { output, exitCode, deployCalls, zipCalls, sent, fake, dir } = await runFinishFlow({
+    product: '',
+  })
   try {
     assert.equal(deployCalls.length, 0)
+    assert.equal(zipCalls.length, 0)
     assert.equal(exitCode, 1)
     assert.equal(output.deploy.ok, false)
     assert.equal(output.deploy.reason, 'bad_parent')
@@ -559,20 +578,47 @@ exit 1
   }
 })
 
-test('finish 部署失败时 CLI 退出非零，结果里带 deploy 失败', async () => {
-  const { output, exitCode, deployCalls, fake, dir } = await runFinishFlow(
+test('finish 部署失败时 CLI 退出非零，结果里带 deploy 失败，不发代码 zip', async () => {
+  const { output, exitCode, deployCalls, zipCalls, fake, dir } = await runFinishFlow(
     {},
     {},
     { ok: false, reason: '部署失败', tried: '第 1 次：502；第 2 次：502' },
   )
   try {
     assert.equal(deployCalls.length, 1)
+    assert.equal(zipCalls.length, 0)
     assert.equal(exitCode, 1)
     assert.equal(output.ok, true)
     assert.equal(output.deploy.ok, false)
     assert.equal(output.deploy.reason, '部署失败')
   } finally {
     await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('代码 zip 的 ref 不在本地时退回需求分支', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-deploy-zip-ref-'))
+  try {
+    await git(dir, ['init', '-b', 'main'])
+    await git(dir, ['config', 'user.name', 'AFK Test'])
+    await git(dir, ['config', 'user.email', 'test@afkfactory.space'])
+    await writeFile(join(dir, 'README.md'), 'hello\n')
+    await git(dir, ['add', '-A'])
+    await git(dir, ['commit', '-m', 'base'])
+
+    const transfer = recorder(undefined)
+    const url = await publishZipWithDefaults({
+      repoDir: dir,
+      ref: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+      fallbackRef: 'main',
+      address: 'acme-shop.afkfactory.space',
+      version: 'abc1234',
+      transfer,
+    })
+    assert.equal(url, 'https://afkfactory.space/downloads/acme-shop.afkfactory.space-abc1234.zip')
+    assert.equal(transfer.calls.length, 1)
+  } finally {
     await rm(dir, { recursive: true, force: true })
   }
 })

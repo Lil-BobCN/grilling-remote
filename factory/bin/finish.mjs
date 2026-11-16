@@ -8,7 +8,8 @@
  * 默认注入真实 git、gh、agent runner 和 notifier。
  * `--dry-run` 只读：打印四栏和检查结果，不建 PR、不合、不通知。
  * 合主干成功后默认部署：客户简称和软件简称从父工单正文取，订单号从
- * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。`--no-deploy` 关掉。
+ * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
+ * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
 import { readFile } from 'node:fs/promises'
@@ -26,7 +27,7 @@ import { git } from '../lib/git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
-import { deployWithDefaults } from './deploy.mjs'
+import { deployWithDefaults, publishZipWithDefaults } from './deploy.mjs'
 import { parseVerdict } from './evidence.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
@@ -321,6 +322,23 @@ export async function runFinish(options, deps = {}) {
       tried: `部署脚本抛错：${errorText(error)}`,
       link: parentIssue?.html_url || '',
     })
+  }
+  if (deployed?.ok) {
+    const publishZip = deps.publishZip || publishZipWithDefaults
+    try {
+      const codeZipUrl = await publishZip({
+        repoDir,
+        ref: result.mergeSha,
+        fallbackRef: reqBranch,
+        address: deployed.address,
+        version,
+      })
+      if (codeZipUrl) deployed.codeZipUrl = codeZipUrl
+    } catch (error) {
+      deployed.warning = [deployed.warning, `代码 zip 没发出去：${errorText(error)}`]
+        .filter(Boolean)
+        .join('；')
+    }
   }
   result.deploy = deployed
   return { output: result, exitCode: deployed?.ok ? 0 : 1 }

@@ -34,6 +34,8 @@ const NINE_LABELS = [
 const REQUIRED_FILES = [
   'AGENTS.md',
   '.gitignore',
+  '.dockerignore',
+  'Dockerfile',
   'package.json',
   'docs/agents/issue-tracker.md',
   'docs/agents/triage-labels.md',

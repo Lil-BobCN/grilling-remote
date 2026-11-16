@@ -257,6 +257,24 @@ compose_up() { # 目录
     --env-file "$dir/.env" -f "$dir/compose.yml" up -d --remove-orphans
 }
 
+# 新版没起来时把 .env 和容器都退回上一版。恢复失败只报错，不掩盖原始的部署失败。
+restore_previous_image() { # 目录 旧镜像
+  local dir=$1 old=$2
+  [[ -n $old ]] || return 0
+  env_set "$dir/.env" IMAGE "$old"
+  IMAGE=$old
+  if ! compose_up "$dir"; then
+    printf '恢复上一版 %s 失败，容器保留现场，看 docker logs\n' "$old" >&2
+    return 0
+  fi
+  if wait_http "$PORT"; then
+    log "已恢复上一版 ${old}"
+  else
+    printf '恢复上一版 %s 后 30 秒内没应答，看 docker logs\n' "$old" >&2
+  fi
+  return 0
+}
+
 wait_http() { # 端口
   local port=$1 i=0
   while [[ $i -lt 30 ]]; do
@@ -587,11 +605,7 @@ cmd_init() {
 
   if [[ -f $env ]]; then
     load_product_env "$dir"
-    if [[ -n $image ]]; then
-      env_set "$env" IMAGE "$image"
-      IMAGE=$image
-    fi
-    log "已有 .env，密钥和端口保持不动"
+    log "已有 .env，密钥、端口和镜像保持不动（换版本用 product-deploy --image）"
   else
     [[ -n $image ]] || image=${AFK_APP_IMAGE:-}
     [[ -n $image ]] || die "第一次 product-init 要 --image <镜像:tag>"
@@ -675,22 +689,31 @@ cmd_deploy() {
   local dir="$PRODUCTS_ROOT/$address"
   load_product_env "$dir"
   [[ -f $dir/compose.yml ]] || die "找不到 $dir/compose.yml，先跑 product-init"
+  local old_image=$IMAGE
+  local switched=0
   if [[ -n $image && $image != "$IMAGE" ]]; then
     env_set "$dir/.env" IMAGE "$image"
     IMAGE=$image
+    switched=1
   fi
 
   require_pg
   ensure_network "$APP_NETWORK"
-  compose_up "$dir"
-  record_release "$dir"
+  if ! compose_up "$dir"; then
+    printf 'compose up 失败（镜像 %s）\n' "$IMAGE" >&2
+    if [[ $switched -eq 1 ]]; then restore_previous_image "$dir" "$old_image"; fi
+    exit 1
+  fi
 
+  # 健康检查通过才记版本；失败不把坏版本留在 .env 和 releases 里。
   if wait_http "$PORT"; then
+    record_release "$dir"
     log "部署完成：$address 在 127.0.0.1:$PORT 应答（镜像 ${IMAGE}）"
   else
     printf '部署后 30 秒内 127.0.0.1:%s 没应答（镜像 %s），容器保留现场\n' "$PORT" "$IMAGE" >&2
     "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$address")" \
       --env-file "$dir/.env" -f "$dir/compose.yml" logs --tail 30 >&2 || true
+    if [[ $switched -eq 1 ]]; then restore_previous_image "$dir" "$old_image"; fi
     exit 1
   fi
 }

@@ -32,7 +32,7 @@ bash deploy/products/test/local-test.sh
 断言的内容：
 
 - `product-init`：目录、权限、Compose、`.env`、database/role、Caddy 路由；两个软件的 role 互不连通。
-- `product-deploy`：本机端口回 200；重复 deploy 不建第二套；容器非 root、不挂 Docker socket、不用 host 网络。
+- `product-deploy`：本机端口回 200；重复 deploy 不建第二套；容器非 root、不挂 Docker socket、不用 host 网络；坏镜像部署失败后 `.env` 和 `product-status` 仍是上一版。
 - `product-status --check` 通过；回滚能回到上一版。
 - 备份写进备份目录；日备留 7 个、周备留 4 个；第一次失败不告警，连续第二次失败退出非零并打印告警。
 - Caddy 能读两个 include 目录；样例成品回 200；未知子域回 404；不带客户端证书握手失败。
@@ -98,6 +98,8 @@ sudo afk-product product-deploy <客户简称>-<软件简称>.afkfactory.space
 4. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
 5. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
 
+已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。
+
 ## Mac 侧部署脚本
 
 合主干后自动部署、手工回滚和默认交付的代码 zip 在 `factory/`：
@@ -108,7 +110,7 @@ node factory/bin/deploy.mjs rollback --address <交付地址>
 node factory/bin/deploy.mjs zip --repo-dir <仓库目录> --ref <提交> --address <交付地址> --version <版本>
 ```
 
-`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，`--no-deploy` 可关。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
+`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后再打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
 
 ## 预览环境
 

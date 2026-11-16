@@ -29,6 +29,7 @@ import {
   publishCodeZip,
   rollbackProduct,
 } from '../lib/deploy.mjs'
+import { git } from '../lib/git.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 
 const execFileAsync = promisify(execFile)
@@ -178,6 +179,28 @@ export async function rollbackWithDefaults({
     healthCheck: httpHealthCheck,
     notifier: notifier || createNotifier(),
   })
+}
+
+/** 默认实现的代码 zip：git archive 打包，scp 到下载目录，返回下载 URL。 */
+export async function publishZipWithDefaults({
+  repoDir,
+  ref,
+  fallbackRef,
+  address,
+  version,
+  transfer,
+} = {}) {
+  const outDir = await mkdtemp(join(tmpdir(), 'afk-deploy-zip-'))
+  // 合主干走 GitHub API 时，merge SHA 可能还没到本地；退回刚合并的需求分支。
+  let target = ref
+  try {
+    await git(repoDir, ['cat-file', '-e', `${ref}^{commit}`])
+  } catch {
+    target = fallbackRef || ''
+  }
+  if (!target) throw new Error(`本地找不到要打包的提交：${ref}`)
+  const zip = await buildCodeZip({ repoDir, ref: target, outDir, name: `${address}-${version}.zip` })
+  return publishCodeZip({ zip, address, version, transfer: transfer || scpTransfer })
 }
 
 function parseArgs(argv) {
