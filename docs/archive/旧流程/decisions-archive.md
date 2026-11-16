@@ -4,7 +4,7 @@
 
 > 2026-11-12 冻结：本文件只到 D-0009。D-0010 以后的取代关系在中台，不在旧台账。`scripts/decisions` 和两份台账冻结到 v1 验收，之后归档。
 
-由 `scripts/decisions build` 生成，禁止手改。这里只放被取代的条目，现行决定在 `docs/decisions.md`。
+由 `scripts/decisions build` 生成，禁止手改。这里只放被取代的条目；现行决定已迁到中台，不在本仓库（旧台账的 `docs/decisions.md` 只作历史）。
 
 | id | 决定 | 取代 | 解答未定 | 产出文件 |
 | --- | --- | --- | --- | --- |

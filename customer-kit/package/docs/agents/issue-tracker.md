@@ -81,7 +81,7 @@
 
 | 对客户说的词 | `Type:` | 怎么做 | 产出放哪 |
 | --- | --- | --- | --- |
-| 聊 | `grilling` | 用 `grill-with-docs` 一轮问一件，带推荐答案，客户自己答 | 结论写票里；问答进 `问答记录.md` |
+| 聊 | `grilling` | 用 `grill-with-docs` 一轮列出几个问题，每题带推荐答案，客户自己答 | 结论写票里；问答进 `问答记录.md` |
 | 看个样子 | `prototype` | 用 `prototype` 做一个单文件 HTML，客户双击就能开 | `.scratch/<需求名>/prototypes/` |
 | 我去查 | `research` | 用 `research` 查一手来源，每条结论带出处 | `.scratch/<需求名>/research/<name>.md` |
 | 动手做 | `task` | 照票里 `## Question` 列的步骤带客户做，做到哪、拿到什么事实都记下来 | 按票里写的产出，放 `.scratch/<需求名>/` 内 |

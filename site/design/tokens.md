@@ -79,7 +79,7 @@
 - 顶栏右侧第二枚胶囊切语言：中文页写 EN，英文页写中文，选择存 `localStorage` 的 `afk-lang`。
 - 切换时给 `<html>` 设 `lang="en"` 和 `data-lang="en"`；切回中文时移除 `data-lang`，`lang` 回到 `zh-CN`。
 - 六个 HTML 的 `<head>` 先读 `afk-lang`，英文时预加载两个字体、加 `lang-pending`，脚本接上前不画中文预渲染；`main.jsx` 接上后撤掉这个类，2.5 秒兜底。
-- 公开页的预渲染始终是中文。英文用户的首屏由客户端渲染，避免水合结果对不上。
+- 公开页的预渲染始终是中文。英文访客的首屏由客户端渲染，避免水合结果对不上。
 - 文案在 `src/content/zh.js` 和 `src/content/en.js`，两份结构相同；页面和账号区都从 `copy` 取字。
 - 页面标题和 description 跟着语言换；不跑脚本时保留 HTML 里的中文标题。
 

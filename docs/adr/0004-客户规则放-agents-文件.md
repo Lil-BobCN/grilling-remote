@@ -8,4 +8,4 @@
 
 代价：`dsh` 注入时写明不覆盖客户的直接指令。客户跳步时，这份规则只能提醒，拦不住。提醒满 3 次客户仍坚持，就照做，记一笔。上下文压缩后还注不注入，没验证。
 
-依据：#25 结论；`customer-kit/package/AGENTS-TEMPLATE.md`；`docs/research/项目脚手架分层.md`。
+依据：#25 结论；`customer-kit/package/AGENTS.md`；`docs/research/项目脚手架分层.md`。

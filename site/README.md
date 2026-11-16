@@ -12,7 +12,7 @@ npm run build
 npm run preview
 ```
 
-`npm run dev` 和 `npm run preview` 都支持干净 URL：`/download`、`/skills`、`/tutorial`、`/help`、`/app/*`。线上映射按 D-0097，由上线票 I-0070 落 Caddy。
+`npm run dev` 和 `npm run preview` 都支持干净 URL：`/download`、`/skills`、`/tutorial`、`/help`、`/app/*`。线上映射按 D-0097，2026-11-15 随 I-0086 上线落到 Caddy（I-0070 当时暂缓）。
 
 ## 路由
 
@@ -27,6 +27,7 @@ npm run preview
 | `/app/upload` | 上传工作区 | 客户端 |
 | `/app/orders` | 我的订单 | 客户端 |
 | `/app/orders/{id}` | 订单详情 | 客户端 |
+| `/app/admin` | 管理视图 | 客户端 |
 
 登录是账号区入口，不单独成页。
 
@@ -104,7 +105,7 @@ npm run preview
 
 ## 检测器
 
-`impeccable detect site/dist` 现在 0 条。例外都记在 `.impeccable/config.json` 的 `detector.ignoreValues` 里，每条带理由：
+构建后跑 `impeccable detect site/dist`，应为 0 条。例外都记在 `.impeccable/config.json` 的 `detector.ignoreValues` 里，每条带理由：
 
 - `cream-palette`：暖白纸 `#f0eee6` 是方向契约定的底色，地图 I-0058 写着「配色不再改」。
 - `low-contrast`（只限 `dist/index.html`）：静态扫描把首屏视频里的白字当成纸色背景；1440 URL 扫描不报，渲染后的背景是深色渐变。
