@@ -68,6 +68,12 @@
     groups.forEach(function (g) {
       node(g.key, "group", g);
     });
+    var groupByKey = {};
+    groups.forEach(function (g) { groupByKey[g.key] = g; });
+    function groupTicket(gk) {
+      var g = groupByKey[gk];
+      return g && g.ticket ? "ticket:" + g.ticket : null;
+    }
     board.tickets.forEach(function (t) {
       node("ticket:" + t.id, "ticket", t);
     });
@@ -83,7 +89,7 @@
         var found = [];
         ticketSources(t).forEach(function (did) {
           var gk = groupOf[did];
-          if (gk && level[gk] != null) found.push(level[gk]);
+          if (gk && level[gk] != null && groupTicket(gk) !== key) found.push(level[gk]);
         });
         if (found.length) {
           var next = Math.max.apply(null, found) + 1;
@@ -109,6 +115,21 @@
       nodes[key].level = level[key];
     });
 
+    /* 环会让松弛一路加层，80 轮能推到上百层，世界高度被撑爆。
+       把层级压成排名，只保留先后顺序。 */
+    var levelValues = [];
+    Object.keys(nodes).forEach(function (key) {
+      if (levelValues.indexOf(level[key]) < 0) levelValues.push(level[key]);
+    });
+    levelValues.sort(function (a, b) { return a - b; });
+    var levelRank = {};
+    levelValues.forEach(function (v, i) { levelRank[v] = i; });
+    Object.keys(nodes).forEach(function (key) {
+      level[key] = levelRank[level[key]];
+      nodes[key].level = level[key];
+    });
+    maxLevel = levelValues.length - 1;
+
     /* 主来源：票的 confirmed + inferred 来源里取最深的一条；同层优先已确认。
        只有主来源画实线；同层次要来源画短虚线；跨层来源不画线，写在票卡上。 */
     var primary = {}, primaryKey = {}, primaryInferred = {}, edgeModes = {};
@@ -118,10 +139,10 @@
       var inferred = t.derived_from_inferred || [];
       var candidates = [];
       confirmed.forEach(function (did) {
-        if (groupOf[did]) candidates.push({ id: did, inferred: false });
+        if (groupOf[did] && groupTicket(groupOf[did]) !== key) candidates.push({ id: did, inferred: false });
       });
       inferred.forEach(function (did) {
-        if (groupOf[did] && confirmed.indexOf(did) < 0) {
+        if (groupOf[did] && groupTicket(groupOf[did]) !== key && confirmed.indexOf(did) < 0) {
           candidates.push({ id: did, inferred: true });
         }
       });
@@ -613,6 +634,8 @@
       seen[dedupe] = true;
       var a = LAST.nodes[fromKey], b = LAST.nodes[toKey];
       if (!a || !b) return;
+      /* 票产出新决定、又沿旧决定回到自己：这条边是自环，左上角票卡已写产出，不画。 */
+      if (a.kind === "group" && a.obj.ticket && "ticket:" + a.obj.ticket === toKey) return;
       /* 推翻根决定的票会「产出」新根；根在顶部，这条回边横穿全图，票卡已写产出，不画。 */
       if (kind === "produced" && toKey === LAST.rootKey) return;
       var cls = ["edge-a"];
@@ -764,7 +787,8 @@
     if (!rect.width || !rect.height) return;
     var b = bounds(), pad = 26;
     var k = Math.min(1.05, (rect.width - pad * 2) / b.w, (rect.height - pad * 2) / b.h);
-    k = Math.max(0.05, k);
+    /* 图很宽时按宽度缩到 6% 就没法看了；留一个可读下限，超出的部分靠平移。 */
+    k = Math.max(0.16, k);
     VIEW = {
       k: k,
       x: (rect.width - b.w * k) / 2 - b.x * k,
