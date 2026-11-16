@@ -11,6 +11,9 @@
 | `lib/scaffold.mjs` | 建客户仓和模板应用 | #458（在 `backend/`） |
 | `lib/map-issues.mjs` | 按 `map.md` 建地图 issue 和决定票 | #460、#462 |
 | `lib/scheduler.mjs` | 30 秒一轮的路由表 | #463、#470 |
+| `lib/progress.mjs` | 客户进度转档行 `进度 v1｜…` | #463 |
+| `lib/notify.mjs` | 调 `notifier/` 命令行发通知 | #463 |
+| `lib/lock.mjs` | 每仓一把文件锁 | #463 |
 | `lib/ignition.mjs` | 挑 frontier、贴标签、跑一次 Sandcastle | #464 |
 | `lib/evidence.mjs` | 验证、评审、四样证据、合需求分支 | #465 |
 | `lib/finish.mjs` | 收尾评审、`/pr` 四栏、合主干 | #466 |
