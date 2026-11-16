@@ -238,6 +238,40 @@
 
 小需求没有地图，默认不做原型。客户坚持，也按这条处理。
 
+### 每页从模板开始
+
+新建原型页，从下面这段开始写。首段的 CSP 原样照抄，一个字符都不改。
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; form-action 'none'">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型</title>
+<style>
+/* 样式写在这里 */
+</style>
+</head>
+<body>
+<!-- 页面写在这里 -->
+</body>
+</html>
+```
+
+- 一个页面一个 HTML 文件，放 `.scratch/{需求名}/prototypes/`，客户双击就能打开。
+- 样式和脚本写在这个文件里。正文不写 `http://` 或 `https://` 地址，不用外链脚本、外链样式、iframe、表单、fetch、XMLHttpRequest、WebSocket、EventSource，不开新窗口，不改页面地址。
+- 图片用 `data:` 内嵌，或者用 CSS 和字符画。
+- 写完自查四项：
+  1. 首段 CSP 和模板一字不差。
+  2. 正文搜不到 `http://` 和 `https://`，CSP 那行的 `http-equiv` 不算。
+  3. 没有外链脚本、外链样式、iframe 和表单。
+  4. 页面里没有客户真实信息。
+- 自查没过就整份重写，不带着问题交给客户。
+
+原型一律用示例数据，不放客户说过的真实价格、商品名、门店名和内部规则。
+
 ## 技术题
 
 客户可以不答任何技术题。技术题分五组，每组一个例子：
