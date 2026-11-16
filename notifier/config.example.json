@@ -1,0 +1,19 @@
+{
+  "channels": {
+    "email": {
+      "enabled": true,
+      "to": "you@example.com",
+      "from": "notify@example.com",
+      "host": "smtpdm.aliyun.com",
+      "port": 465,
+      "timeout_seconds": 30
+    },
+    "push": {
+      "enabled": true,
+      "timeout_seconds": 15
+    }
+  },
+  "log": {
+    "level": "info"
+  }
+}
