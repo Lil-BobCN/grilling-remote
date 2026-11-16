@@ -9,14 +9,15 @@
 | 文件 | 干什么 |
 | --- | --- |
 | `install.sh` | 一次性安装，root 跑，可重复跑。装 Docker、建目录、起 Postgres、加 Caddy include、装 helper 和 timer、写 sudoers |
-| `afk-product` | 服务器上的 helper。`product-init`、`product-deploy`、`product-rollback`、`product-backup`、`product-status` |
-| `compose.template.yml` | 一个成品一套 Compose 的模板，`product-init` 复制成 `compose.yml` |
+| `afk-product` | 服务器上的 helper。成品：`product-init`、`product-deploy`、`product-rollback`、`product-backup`、`product-status`；预览：`preview-start`、`preview-stop`、`preview-status`、`preview-sweep` |
+| `compose.template.yml` | 一个成品或一套预览一套 Compose 的模板，`product-init`、`preview-start` 复制成 `compose.yml` |
 | `caddy/product.caddy` | 成品路由模板，每个成品生成一个文件 |
-| `caddy/preview.caddy` | 预览路由模板，Basic Auth 只加在预览上 |
+| `caddy/preview.caddy` | 预览路由模板，Basic Auth 和访问日志只加在预览上 |
 | `caddy/not-found.caddy` | 通配兜底，不认识的子域回 404 |
 | `backup.sh` | 遍历成品 `pg_dump`，留 7 个日备和 4 个周备，连续两次失败告警 |
 | `systemd/` | 每天 3 点备份的 service 和 timer |
-| `test/local-test.sh` | 本机 Docker 集成测试 |
+| `test/local-test.sh` | 成品、备份和 Caddy 的本机 Docker 集成测试 |
+| `test/preview-test.sh` | 预览起停、排队、Basic Auth、种子、sweep 和故障隔离的本机 Docker 集成测试 |
 
 ## 本机怎么跑测试
 
@@ -37,6 +38,22 @@ bash deploy/products/test/local-test.sh
 - Caddy 能读两个 include 目录；样例成品回 200；未知子域回 404；不带客户端证书握手失败。
 
 跳过 Caddy 那段：`AFK_TEST_NO_CADDY=1 bash deploy/products/test/local-test.sh`。
+
+预览单独跑，起临时 Postgres、临时 Caddy、临时 app 镜像，跑完清理：
+
+```bash
+bash deploy/products/test/preview-test.sh
+```
+
+断言的内容：
+
+- `preview-start`：目录、权限、Compose、`.env`、Basic Auth、独立 database/role、Caddy 路由和访问日志；空库跑过种子脚本，查得到种子行。
+- 无凭据访问预览回 401，带凭据回 200；成品地址同时回 200，互不影响。
+- 第二套预览排队，第一套销毁后才起；排队超时退出非零。
+- `preview-stop`：容器、独立网络、Caddy 路由、database/role、镜像和目录都没了；重复销毁不报错。
+- `preview-sweep`：刚起的不删；满 7 天删；24 小时内有过访问不删，访问和提交都超过 24 小时才删。
+- `preview-status --check`：容器在、库在、路由在才通过；容器停了不通过。
+- 镜像不存在时 `preview-start` 失败，不留目录、路由和库，成品地址照常。
 
 ## 服务器上装（运营者，要 sudo）
 
@@ -77,6 +94,42 @@ sudo afk-product product-deploy <客户简称>-<软件简称>.afkfactory.space
 3. 生成数据库密码和应用密钥，写 `.env`（600 root）。
 4. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
 5. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
+
+## 预览环境
+
+有界面的票在 D3 验证时起一套预览，地址 `<客户简称>-<软件简称>-pr<PR号>.afkfactory.space`，Basic Auth，只给验证队和运营者看。没有界面的票不建预览，约定见 `factory/agents/verify.md`。
+
+服务器上：
+
+```bash
+sudo afk-product preview-start <地址> <镜像:tag> --seed 'npm run db:seed' --commit-at <PR head 提交时间>
+sudo afk-product preview-stop <地址>
+sudo afk-product preview-status [--check]
+sudo afk-product preview-sweep
+```
+
+`preview-start` 做这些事：
+
+1. 等预览名额。全局最多 1 套，第二套排队，先来先起；默认最多等 3600 秒，`AFK_PREVIEW_QUEUE_TIMEOUT` 可改。
+2. 建 `/data/previews/<地址>/`，复制 Compose 模板，生成 `.env`（600 root），从 19200 起挑端口。
+3. 建独立 database 和 role，名字都是 `preview_<地址 slug>`（最多 63 字符）。
+4. 随机生成 Basic Auth 用户名和密码，哈希写进 `/etc/caddy/previews/<地址>.caddy`，reload Caddy。
+5. 起容器，等本机端口应答，再跑 `--seed` 给的命令（在 app 容器里 `sh -c`，能读 `DATABASE_URL`）。
+6. 打印 `AFK_PREVIEW user=...`、`password=...`、`env=...` 几行，给 Mac 侧写凭据文件。
+
+预览和成品共用同一个 Postgres、Caddy、证书和 helper。预览容器限额、非 root、不挂 Docker socket，和成品一样；网络是独立的。
+
+`preview-stop` 删容器、独立网络、Caddy 路由、database/role、镜像和预览目录，重复调用不报错。`preview-sweep` 按「24 小时无新提交且无访问」或「满 7 天」销毁，访问时间取 `/var/log/caddy/previews/<地址>.log` 的修改时间；记录的最后提交时间由 `--commit-at` 更新。PR 有新提交但没重建时，helper 看不到这些提交，调度器侧要用 `sweepPreviews` 按 GitHub 上的真实提交时间判断。`preview-status --check` 在容器、库、路由任一缺失时退出非零。
+
+Mac 侧编排在 `factory/lib/preview.mjs`，命令行入口在 `factory/bin/preview.mjs`：
+
+```bash
+node factory/bin/preview.mjs start --address <地址> --image <镜像:tag> --seed 'npm run db:seed'
+node factory/bin/preview.mjs stop --address <地址>
+node factory/bin/preview.mjs sweep --once
+```
+
+默认调本机 `afk-product`；跨机器用 `AFK_SSH_TARGET='dev@<服务器>'` 走 ssh 加 sudo，或用 `AFK_HELPER` 指定命令前缀。凭据写到 Mac 的 `private/预览/<地址>.env`，`AFK_LOCAL_PREVIEW_DIR` 可改目录。
 
 ## 备份
 
@@ -123,4 +176,4 @@ import /etc/caddy/previews/*.caddy
 
 helper、备份脚本和 `install.sh` 的路径都能用环境变量覆盖，测试靠这个不碰 `/data`：
 
-`AFK_PRODUCTS_ROOT`、`AFK_PREVIEWS_ROOT`、`AFK_CADDY_PRODUCTS`、`AFK_CADDY_PREVIEWS`、`AFK_BACKUP_DIR`、`AFK_PG_ENV`、`AFK_PG_CONTAINER`、`AFK_PG_DATA_DIR`、`AFK_PG_DATA_MODE`、`AFK_PG_UID`、`AFK_PORT_START`、`AFK_NETWORK_PREFIX`、`AFK_TEMPLATE_DIR`、`AFK_APP_UID`、`AFK_APP_GID`、`AFK_APP_INTERNAL_PORT`、`AFK_UPSTREAM_HOST`、`AFK_CADDY_RELOAD`、`AFK_DOCKER`、`AFK_TODAY`、`AFK_DAILY_KEEP`、`AFK_WEEKLY_KEEP`。
+`AFK_PRODUCTS_ROOT`、`AFK_PREVIEWS_ROOT`、`AFK_CADDY_PRODUCTS`、`AFK_CADDY_PREVIEWS`、`AFK_CADDY_LOG_DIR`、`AFK_BACKUP_DIR`、`AFK_PG_ENV`、`AFK_PG_CONTAINER`、`AFK_PG_DATA_DIR`、`AFK_PG_DATA_MODE`、`AFK_PG_UID`、`AFK_PORT_START`、`AFK_PREVIEW_PORT_START`、`AFK_NETWORK_PREFIX`、`AFK_TEMPLATE_DIR`、`AFK_APP_UID`、`AFK_APP_GID`、`AFK_APP_INTERNAL_PORT`、`AFK_UPSTREAM_HOST`、`AFK_CADDY_RELOAD`、`AFK_DOCKER`、`AFK_TODAY`、`AFK_DAILY_KEEP`、`AFK_WEEKLY_KEEP`、`AFK_CADDY_IMAGE`、`AFK_CADDY_BIN`、`AFK_CADDY_USER`、`AFK_PREVIEW_QUEUE_TIMEOUT`、`AFK_PREVIEW_QUEUE_POLL`、`AFK_PREVIEW_LOCK_TIMEOUT`、`AFK_NOW`。

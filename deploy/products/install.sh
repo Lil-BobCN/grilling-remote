@@ -5,7 +5,8 @@
 #
 # 做这些事：
 #   1. 检查 Docker Engine 和 Compose；没装就按 Docker 官方 apt 源装。
-#   2. 建 /data/products/、/data/previews/、/etc/caddy/products/、/etc/caddy/previews/。
+#   2. 建 /data/products/、/data/previews/、/etc/caddy/products/、/etc/caddy/previews/
+#      和 /var/log/caddy/previews/（预览访问日志，preview-sweep 靠它判断有没有人访问）。
 #   3. 起共享 Postgres 16（不发布端口，数据在 /data/products/postgres/，总钥匙 600 root）。
 #   4. 在 /etc/caddy/Caddyfile 末尾追加两个 include（已有就跳过），校验后 reload。
 #   5. 装 afk-product、备份脚本和模板到 /usr/local/{sbin,share}。
@@ -28,6 +29,8 @@ PREVIEWS_ROOT=${AFK_PREVIEWS_ROOT:-/data/previews}
 BACKUP_DIR=${AFK_BACKUP_DIR:-$PRODUCTS_ROOT/backups}
 CADDY_PRODUCTS=${AFK_CADDY_PRODUCTS:-/etc/caddy/products}
 CADDY_PREVIEWS=${AFK_CADDY_PREVIEWS:-/etc/caddy/previews}
+CADDY_LOG_DIR=${AFK_CADDY_LOG_DIR:-/var/log/caddy/previews}
+CADDY_USER=${AFK_CADDY_USER:-caddy}
 CADDYFILE=${AFK_CADDYFILE:-/etc/caddy/Caddyfile}
 PG_CONTAINER=${AFK_PG_CONTAINER:-afk-products-postgres}
 PG_IMAGE=${AFK_PG_IMAGE:-postgres:16}
@@ -87,10 +90,16 @@ log "== 目录"
 install -d -m 755 -o root -g root "$PRODUCTS_ROOT" "$PREVIEWS_ROOT"
 install -d -m 700 -o root -g root "$PRODUCTS_ROOT/postgres" "$BACKUP_DIR"
 install -d -m 755 -o root -g root "$CADDY_PRODUCTS" "$CADDY_PREVIEWS"
+if id -u "$CADDY_USER" >/dev/null 2>&1; then
+  install -d -m 755 -o "$CADDY_USER" -g "$CADDY_USER" "$CADDY_LOG_DIR"
+else
+  install -d -m 755 "$CADDY_LOG_DIR"
+  log "没有 $CADDY_USER 用户，$CADDY_LOG_DIR 先归 root；装好 Caddy 后 chown $CADDY_USER:$CADDY_USER"
+fi
 install -d -m 700 "$PG_DATA_DIR"
 chown "$PG_UID:$PG_UID" "$PG_DATA_DIR"
 chmod "$PG_DATA_MODE" "$PG_DATA_DIR"
-log "目录建好：${PRODUCTS_ROOT}、${PREVIEWS_ROOT}、${CADDY_PRODUCTS}、${CADDY_PREVIEWS}"
+log "目录建好：${PRODUCTS_ROOT}、${PREVIEWS_ROOT}、${CADDY_PRODUCTS}、${CADDY_PREVIEWS}、${CADDY_LOG_DIR}"
 
 # ---------------------------------------------------------------- 共享 Postgres
 

@@ -525,7 +525,7 @@ test_caddy() {
   fi
 
   make_test_certs
-  mkdir -p "$TMP/caddy/data" "$TMP/caddy/config"
+  mkdir -p "$TMP/caddy/data" "$TMP/caddy/config" "$TMP/caddy/logs"
   # install.sh 会把这个兜底片段装进 include 目录，测试里手动放一份。
   cp "$PRODUCTS/caddy/not-found.caddy" "$TMP/caddy/products/00-not-found.caddy"
   assert_file "$TMP/caddy/products/00-not-found.caddy" "通配兜底片段进了 include 目录"
@@ -544,6 +544,7 @@ test_caddy() {
   sed -e "s|__ADDRESS__|$preview_addr|g" \
     -e "s|__BASIC_AUTH_USER__|tester|g" \
     -e "s|__BASIC_AUTH_HASH__|$hash|g" \
+    -e "s|__ACCESS_LOG__|$TMP/caddy/logs/$preview_addr.log|g" \
     -e "s|__UPSTREAM__|$SLUG-app-1:$APP_INTERNAL_PORT|g" \
     "$PRODUCTS/caddy/preview.caddy" >"$TMP/caddy/previews/$preview_addr.caddy"
   assert_contains "$TMP/caddy/previews/$preview_addr.caddy" 'basicauth' "预览模板带 Basic Auth"
@@ -552,6 +553,7 @@ test_caddy() {
     -v "$TMP/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
     -v "$TMP/caddy/products:/etc/caddy/products:ro"
     -v "$TMP/caddy/previews:/etc/caddy/previews:ro"
+    -v "$TMP/caddy/logs:$TMP/caddy/logs"
     -v "$TMP/certs:/etc/caddy/certs:ro"
     -v "$TMP/caddy/data:/data"
     -v "$TMP/caddy/config:/config"
