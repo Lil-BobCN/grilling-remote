@@ -26,6 +26,7 @@ BASE_CONFIG = {
         "push": {"enabled": True, "timeout_seconds": 15},
     },
     "log": {"level": "info"},
+    "retry": {"attempts": 3, "interval_seconds": 0},
 }
 
 
@@ -184,10 +185,12 @@ class TestLogging(Base):
             "email": self.fake_sender("email"),
             "push": self.fake_sender("push", fail=True),
         }
-        self.run_cli(senders=senders)
+        event = base_event()
+        event["key"] = "k-2"
+        self.run_cli(event=event, senders=senders)
         records = self.log_records()
-        self.assertEqual(len(records), 1)
-        self.assertFalse(records[0]["ok"])
+        self.assertEqual(len(records), 3)
+        self.assertTrue(all(not record["ok"] for record in records))
 
 
 class TestInputErrors(Base):
