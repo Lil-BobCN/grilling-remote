@@ -58,7 +58,7 @@ React + Vite。公开页面构建时预渲染成静态 HTML；账号区客户端
 
 - `customer-kit/dist/客户工作区-v1.zip`：42,103 字节，2026-11-16，SHA256 `5bb7add4…`（I-0151 重打发布；数字以 `customer-kit/release.json` 为准）。
 - `customer-kit/manifest.json`：七个技能的 v1 快照。
-- `docs/客户工作区方案.md` 第六、七节：回传和官网的内容要求。
+- `docs/客户工作区.md` 的「回传」「官网和客服要什么」两节：回传和官网的内容要求。
 - `docs/客户进度.md`：五档状态和客户看的消息。
 - `prototype/issue-31/`：教程页样品。
 - `prototype/issue-109/`：登录和订单四屏样品。

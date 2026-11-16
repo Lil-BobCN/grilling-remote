@@ -1,12 +1,12 @@
 2026-11-14：按 I-0077 重打包。包内技能是 I-0080 换好的七个上游原版，包内 `AGENTS.md` 和追踪器文档按 I-0081 改完；`manifest.json` 日期改 2026-11-14；构建通过，结果记在 `测试记录.md`。版本仍是 v1，下载链接不变。
 
-2026-11-07：按 docs/客户工作区方案.md 更新，改了标题和简介、目录表、打包、没测到的项、还没定的、相关票。装配提示词流程换成工作区 zip。`package/` 已换成新摆法，`setup` 和 `ask-matt` 已删。构建脚本和 `manifest.json` 已改，在本机构建并解压核对过。
+2026-11-07：按 docs/archive/合并前-2026-11-16/客户工作区方案.md 更新，改了标题和简介、目录表、打包、没测到的项、还没定的、相关票。装配提示词流程换成工作区 zip。`package/` 已换成新摆法，`setup` 和 `ask-matt` 已删。构建脚本和 `manifest.json` 已改，在本机构建并解压核对过。
 
 # 客户工作区包（#23）
 
 > 状态：现行
 
-一句话：给非技术客户用的 DeepSeek Harness 工作区 zip。解压后根目录就是工作区，客户用 dsh 打开，说「开始需求澄清」就开始。技能在 `.dsh/skills/`，七个，全部照上游 `mattpocock/skills` 提交 `5863806` 原样装；只删 `wayfinder` 和 `grill-with-docs` 的 `disable-model-invocation: true`。`AGENTS.md` 是成品，`docs/agents/` 两份追踪器文档已预生成。没有装配提示词。
+一句话：给非技术客户用的 DeepSeek Harness 工作区 zip。解压后根目录就是工作区，客户用 dsh 打开，说「开始需求澄清」就开始。技能在 `.dsh/skills/`，七个，全部照上游 `mattpocock/skills` 提交 `5863806` 原样装；只删 `wayfinder` 和 `grill-with-docs` 的 `disable-model-invocation: true`。`AGENTS.md` 是成品，`docs/agents/` 两份追踪器文档已预生成。没有装配提示词。客户工作区的完整规则见 `docs/客户工作区.md`；本文只讲包的结构、构建和发布。
 
 ## 目录
 

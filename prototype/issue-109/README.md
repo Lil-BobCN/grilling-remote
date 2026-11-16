@@ -151,10 +151,10 @@
 
 旧说法统一，把「填客户简称和邮箱」改成「登录后传，简称和邮箱由账号带出」：
 
-- `docs/客户侧流程样本.md`
+- `docs/回传样例/客户侧流程样本.md`
 - `docs/讲解.md`
-- `docs/客户工作区方案.md`
-- `docs/客户 AGENTS.md 设计说明.md`
+- `docs/archive/合并前-2026-11-16/客户工作区方案.md`
+- `docs/archive/合并前-2026-11-16/客户 AGENTS.md 设计说明.md`
 - `customer-kit/package/AGENTS.md`
 - `customer-kit/安装步骤.md`
 - `docs/介入点.md`
