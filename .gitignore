@@ -4,6 +4,8 @@
 # 密钥与凭据
 .env
 .env.*
+*.env
+*.env.*
 !.env.example
 *.pem
 *.key
