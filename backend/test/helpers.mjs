@@ -48,7 +48,7 @@ export async function seedCustomer(config, extras = {}) {
     display_name: 'Acme 老板',
     email: EMAIL,
     status: 'active',
-    repo: null,
+    repos: {},
     wechat: '',
     note: '',
     password_hash: passwordHash,
