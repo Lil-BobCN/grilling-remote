@@ -16,8 +16,9 @@ from urllib.parse import quote
 CUSTOMER_RE = re.compile(r"^- 客户简称：(.*)$", re.MULTILINE)
 REQUIREMENT_RE = re.compile(r"^- 需求名：(.*)$", re.MULTILINE)
 TICKET_BRANCH_RE = re.compile(r"(?:^|/)issue-(\d+)$")
-AUDIT_HEADER = ("ts", "phase", "decision", "why", "evidence", "result")
 GATE_PREFIX = "问："
+ANSWER_PREFIX = "答："
+ANSWERED_RESULTS = ("answered", "parked")
 RECOMMEND_PREFIX = "推荐："
 MISSING_RECOMMEND = "未写推荐"
 
@@ -153,24 +154,26 @@ def parse_gate_rows(text: str):
     行格式按 factory-skills/pstack：六列 ts/phase/decision/why/evidence/result。
     decision 以「问：」开头、result=open 的行才算等待回答。
     推荐答案写在 decision 或 why 的「推荐：」后面；没有就写「未写推荐」。
+
+    trail 是追加式的，问题行不会改。后面的 `答：` 行按出现顺序配给最早的
+    未答问题（result=answered 或 parked），配上后不再提醒。
     """
-    rows = []
-    header_seen = False
+    pending = []
     for line in text.splitlines():
         if not line.strip():
             continue
         cells = line.split("\t")
-        if not header_seen:
-            header_seen = True
-            if tuple(cell.strip() for cell in cells[:6]) == AUDIT_HEADER:
-                continue
         if len(cells) < 6:
             continue
         ts, phase, decision, why, _evidence, result = (
             cell.strip() for cell in cells[:6])
-        if phase != "gate" or result != "open":
+        if phase != "gate":
             continue
-        if not decision.startswith(GATE_PREFIX):
+        if decision.startswith(ANSWER_PREFIX) and result in ANSWERED_RESULTS:
+            if pending:
+                pending.pop(0)
+            continue
+        if result != "open" or not decision.startswith(GATE_PREFIX):
             continue
         body = decision[len(GATE_PREFIX):].strip()
         question, recommended = body, None
@@ -181,9 +184,9 @@ def parse_gate_rows(text: str):
         question = question.strip(" ；;，,。")
         recommended = (recommended or MISSING_RECOMMEND).strip(" ；;，,。")
         if question:
-            rows.append(GateRow(
+            pending.append(GateRow(
                 ts=ts, question=question, recommended=recommended))
-    return rows
+    return pending
 
 
 def list_audit_files(repo: str, sha: str, ticket=None, *, run: Runner = gh):

@@ -87,13 +87,27 @@ class TestParseGateRows(unittest.TestCase):
     def test_only_open_gate_rows(self):
         rows = sources.parse_gate_rows(GATE_TSV)
         self.assertEqual([row.question for row in rows], [
-            "选哪个方案？",
             "要不要加一条？",
             "没写推荐怎么显示？",
         ])
         self.assertEqual([
             row.recommended for row in rows
-        ], ["方案 A", "不加", "未写推荐"])
+        ], ["不加", "未写推荐"])
+
+    def test_answer_closes_earliest_open_question(self):
+        rows = sources.parse_gate_rows(
+            "ts\tphase\tdecision\twhy\tevidence\tresult\n"
+            "2026-11-16T10:00:00+08:00\tgate\t问：第一问\t理由\te\topen\n"
+            "2026-11-16T10:01:00+08:00\tgate\t问：第二问\t理由\te\topen\n"
+            "2026-11-16T10:02:00+08:00\tgate\t答：第一答\t理由\te\tanswered\n")
+        self.assertEqual([row.question for row in rows], ["第二问"])
+
+    def test_parked_answer_also_stops_reminder(self):
+        rows = sources.parse_gate_rows(
+            "ts\tphase\tdecision\twhy\tevidence\tresult\n"
+            "2026-11-16T10:00:00+08:00\tgate\t问：先搁置\t理由\te\topen\n"
+            "2026-11-16T10:02:00+08:00\tgate\t答：先搁置\t理由\te\tparked\n")
+        self.assertEqual(rows, [])
 
     def test_ticket_from_branch(self):
         self.assertEqual(
@@ -130,7 +144,7 @@ class TestGateEvents(unittest.TestCase):
         events = sources.build_gate_events(
             REPO, 12, ticket=355, customer="工厂", run=gate_runner,
             now=datetime(2026, 11, 16, 9, 0, tzinfo=TZ))
-        self.assertEqual(len(events), 3)
+        self.assertEqual(len(events), 2)
         first = events[0]
         self.assertEqual(first["event"], "需要你答")
         self.assertEqual(first["link"], "https://example.test/pull/12")
@@ -138,10 +152,10 @@ class TestGateEvents(unittest.TestCase):
         self.assertEqual(first["data"], {
             "customer": "工厂",
             "requirement": "每日汇总与 gate 链接",
-            "question": "选哪个方案？",
-            "recommended": "方案 A",
+            "question": "要不要加一条？",
+            "recommended": "不加",
         })
-        self.assertEqual(len({event["key"] for event in events}), 3)
+        self.assertEqual(len({event["key"] for event in events}), 2)
 
     def test_missing_audit_file(self):
         def runner(args):
