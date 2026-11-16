@@ -140,6 +140,17 @@ test('新软件校验通过后建仓、拷快照、建父工单并回写订单�
   assert.equal(meta.status, 'imported')
   assert.ok(meta.imported_at)
   assert.deepEqual(meta.orders, [order.id])
+  assert.deepEqual(meta.imported, [
+    {
+      order_id: order.id,
+      requirement: 'xianguopu',
+      product: 'xianguopu',
+      owner: 'acme',
+      repo: 'acme-xianguopu',
+      issue_url: 'https://github.com/acme/acme-xianguopu/issues/1',
+      branch: `req/${order.id}`,
+    },
+  ])
   await stat(dir)
 
   const savedOrder = JSON.parse(await readFile(join(config.dataDir, 'orders', `${order.id}.json`), 'utf8'))

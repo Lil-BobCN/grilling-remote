@@ -348,10 +348,31 @@ async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, di
 
   await backfillRepos(config, account, passedOrders)
 
+  // 给 Mac 上的补缺口 Agent：#460 要从 inbox 的 meta 找到仓、父工单和分支。
+  const freshOrders = await readOrders(config)
+  const imported = passedOrders.map((order) => {
+    const fresh = freshOrders.find((item) => item.id === order.id) || order
+    const product = fresh.product || fresh.requirement
+    const repo =
+      repoFromIssue(fresh.issue) ||
+      (account.repos && account.repos[product]) ||
+      `${account.short_name}-${product}`
+    return {
+      order_id: fresh.id,
+      requirement: fresh.requirement,
+      product,
+      owner,
+      repo,
+      issue_url: fresh.issue || '',
+      branch: fresh.branch || `req/${fresh.id}`,
+    }
+  })
+
   const next = {
     ...meta,
     status: 'imported',
     orders: uploadOrders.map((order) => order.id),
+    imported,
     imported_at: stamp,
   }
   await writeJsonAtomic(join(dir, 'meta.json'), next)

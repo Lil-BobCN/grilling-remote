@@ -10,8 +10,12 @@
  *   AFK_SSH_KEY       ssh -i 的私钥路径
  *   AFK_UPLOAD_DIR    服务器上的上传目录，默认 /data/uploads
  *   AFK_INBOX         本地存档目录，默认当前目录下的 inbox
+ *   AFK_CUSTOMERS_FILE 本机 customers.json 路径，默认 inbox 的上一层
  *   NOTIFIER_COMMAND  有 operator_alert 时调的通知命令，默认 `python3 -m notifier send`
  *   SITE_BASE         通知里的链接前缀，默认 https://afkfactory.space
+ *
+ * 每轮还会把服务器 `/data/customers/customers.json` 同步到本机，给调度器读。
+ * 拉取失败保留上一份并记 warning。
  *
  * 服务器上的 `dev` 用户在 sudo 组，读 `/data/uploads` 用 `sudo -n`。
  * 脚本只在本地副本完整并且 `meta.status === 'imported'` 时删远端目录。
@@ -19,7 +23,7 @@
 import { randomUUID } from 'node:crypto'
 import { rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { createSshRemote, pullInbox } from '../lib/inbox.mjs'
 import { logLine } from '../lib/log.mjs'
@@ -88,16 +92,20 @@ async function main() {
     process.exit(2)
   }
   const inboxDir = resolve(option('--inbox', process.env.AFK_INBOX || 'inbox'))
+  const customersPath = resolve(
+    option('--customers', process.env.AFK_CUSTOMERS_FILE || join(dirname(inboxDir), 'customers.json')),
+  )
   const remote = createSshRemote({
     server,
     uploadDir: process.env.AFK_UPLOAD_DIR || '/data/uploads',
     key: process.env.AFK_SSH_KEY || '',
   })
 
-  const result = await pullInbox({ remote, inboxDir, notify: notifyOperator })
+  const result = await pullInbox({ remote, inboxDir, customersPath, notify: notifyOperator })
   logLine({
     msg: '回传件拉取结束',
     inbox: inboxDir,
+    customers: result.customers,
     pulled: result.pulled,
     removed: result.removed,
     notified: result.notified,

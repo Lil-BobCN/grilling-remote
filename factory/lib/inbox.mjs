@@ -10,7 +10,8 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { logLine } from './log.mjs'
 
 const UPLOAD_ID = /^upload-[A-Za-z0-9._-]+$/
 const ALLOWED_FILES = new Set(['meta.json', 'package.zip'])
@@ -34,9 +35,18 @@ async function fileComplete(path, meta) {
 }
 
 async function writeAtomic(path, bytes) {
+  await mkdir(dirname(path), { recursive: true })
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
   await writeFile(tmp, bytes)
   await rename(tmp, path)
+}
+
+/** 客户表先校验再原子替换；坏 JSON 不覆盖上一份。 */
+async function writeCustomers(path, bytes) {
+  const parsed = JSON.parse(bytes.toString('utf8'))
+  const rows = Array.isArray(parsed) ? parsed : parsed?.customers
+  if (!Array.isArray(rows)) throw new Error('customers.json 不是数组')
+  await writeAtomic(path, bytes)
 }
 
 async function readJsonOrNull(path) {
@@ -49,8 +59,8 @@ async function readJsonOrNull(path) {
 }
 
 /** 把远端当成一个本地目录，测试和小范围演练用。 */
-export function createDirRemote(root) {
-  return {
+export function createDirRemote(root, { customersFile } = {}) {
+  const remote = {
     async list() {
       let names = []
       try {
@@ -69,6 +79,14 @@ export function createDirRemote(root) {
       await rm(join(root, id), { recursive: true, force: true })
     },
   }
+
+  if (customersFile) {
+    remote.syncCustomers = async (destination) => {
+      await writeCustomers(destination, await readFile(customersFile))
+      return destination
+    }
+  }
+  return remote
 }
 
 function shellQuote(value) {
@@ -76,11 +94,16 @@ function shellQuote(value) {
 }
 
 /**
- * 默认远端：ssh 到服务器，用 `sudo -n` 读 `/data/uploads`。
+ * 默认远端：ssh 到服务器，用 `sudo -n` 读 `/data/uploads` 和 `/data/customers/customers.json`。
  * `server` 形如 `dev@1.2.3.4`；`key` 可选，对应 `ssh -i`。
  * 服务器上的 `dev` 在 sudo 组，上传目录 700 afkapp。
  */
-export function createSshRemote({ server, uploadDir = '/data/uploads', key = '' }) {
+export function createSshRemote({
+  server,
+  uploadDir = '/data/uploads',
+  customersPath = '/data/customers/customers.json',
+  key = '',
+}) {
   if (!server) throw new Error('缺少服务器地址（AFK_SERVER，例如 dev@1.2.3.4）')
 
   function run(command, { binary = false } = {}) {
@@ -121,6 +144,11 @@ export function createSshRemote({ server, uploadDir = '/data/uploads', key = '' 
       if (!UPLOAD_ID.test(id)) throw new Error(`不删这个目录：${id}`)
       await run(`sudo -n rm -rf ${shellQuote(join(uploadDir, id))}`)
     },
+    async syncCustomers(destination) {
+      const bytes = await run(`sudo -n cat ${shellQuote(customersPath)}`, { binary: true })
+      await writeCustomers(destination, bytes)
+      return destination
+    },
   }
 }
 
@@ -129,11 +157,36 @@ export function createSshRemote({ server, uploadDir = '/data/uploads', key = '' 
  * @param {object} options
  * @param {object} options.remote 远端适配器
  * @param {string} options.inboxDir 本地存档根目录
+ * @param {string} [options.customersPath] 本机 customers.json 路径，默认 inbox 的上一层
  * @param {(payload: {meta: object, alert: object, dir: string}) => Promise<void>} [options.notify]
  * @param {Date} [options.now]
  */
-export async function pullInbox({ remote, inboxDir, notify = async () => {}, now = new Date() }) {
+export async function pullInbox({
+  remote,
+  inboxDir,
+  customersPath = join(dirname(inboxDir), 'customers.json'),
+  notify = async () => {},
+  now = new Date(),
+}) {
   const stamp = now.toISOString()
+
+  let customers = { path: customersPath, skipped: '远端没有 syncCustomers' }
+  if (typeof remote.syncCustomers === 'function') {
+    try {
+      await remote.syncCustomers(customersPath)
+      customers = { path: customersPath }
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error)
+      customers = { path: customersPath, error: message }
+      logLine({
+        level: 'warning',
+        msg: 'customers.json 拉取失败，保留上一份',
+        path: customersPath,
+        error: message,
+      })
+    }
+  }
+
   let ids = []
   try {
     ids = await remote.list()
@@ -225,5 +278,5 @@ export async function pullInbox({ remote, inboxDir, notify = async () => {}, now
     }
   }
 
-  return { pulled, removed, notified }
+  return { pulled, removed, notified, customers }
 }

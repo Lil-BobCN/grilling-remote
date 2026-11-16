@@ -18,7 +18,7 @@ function zipBytes(id) {
   return Buffer.from(`zip-${id}`)
 }
 
-async function seedUpload(remoteRoot, id, { status = 'ready', operator_alert } = {}) {
+async function seedUpload(remoteRoot, id, { status = 'ready', operator_alert, extra = {} } = {}) {
   const dir = join(remoteRoot, id)
   await mkdir(dir, { recursive: true })
   const bytes = zipBytes(id)
@@ -32,6 +32,7 @@ async function seedUpload(remoteRoot, id, { status = 'ready', operator_alert } =
     requirements: [{ name: 'demo', passed: true }],
     orders: ['o-0001'],
     ...(operator_alert ? { operator_alert } : {}),
+    ...extra,
   }
   await writeFile(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
   return meta
@@ -77,13 +78,26 @@ test('ready 的上传只拷到本地，不删远端', async (t) => {
 
 test('imported 的上传拷完删远端', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
-  await seedUpload(remoteRoot, 'upload-done', { status: 'imported' })
+  const imported = [
+    {
+      order_id: 'o-0001',
+      requirement: 'demo',
+      product: 'demo',
+      owner: 'acme',
+      repo: 'acme-demo',
+      issue_url: 'https://github.com/acme/acme-demo/issues/1',
+      branch: 'req/o-0001',
+    },
+  ]
+  await seedUpload(remoteRoot, 'upload-done', { status: 'imported', extra: { imported } })
 
   const result = await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
   assert.equal(result.removed.length, 1)
 
   const local = join(inboxDir, 'upload-done')
   await stat(join(local, 'package.zip'))
+  const savedMeta = JSON.parse(await readFile(join(local, 'meta.json'), 'utf8'))
+  assert.deepEqual(savedMeta.imported, imported)
   const archive = JSON.parse(await readFile(join(local, 'archived.json'), 'utf8'))
   assert.equal(archive.status, 'imported')
   assert.ok(archive.removed_remote_at)
@@ -169,6 +183,48 @@ test('failed 上传带 operator_alert 时只转发提醒，不拷包也不删远
   assert.equal(notified[0].alert.reason, 'multiple_new_requirements')
   await assert.rejects(stat(join(inboxDir, 'upload-rejected', 'package.zip')))
   await stat(join(remoteRoot, 'upload-rejected', 'package.zip'))
+})
+
+test('每轮把 customers.json 同步到本机数据目录', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  const customersFile = join(remoteRoot, 'customers.json')
+  const rows = [{ id: 'c-0001', short_name: 'acme', repos: { demo: 'acme-demo' } }]
+  await writeFile(customersFile, `${JSON.stringify(rows, null, 2)}\n`, 'utf8')
+  const customersPath = join(inboxDir, 'data', 'customers.json')
+
+  const result = await pullInbox({
+    remote: createDirRemote(remoteRoot, { customersFile }),
+    inboxDir,
+    customersPath,
+  })
+
+  assert.equal(result.customers.path, customersPath)
+  assert.deepEqual(JSON.parse(await readFile(customersPath, 'utf8')), rows)
+})
+
+test('customers.json 拉取失败时保留上一份并记 warning', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  const customersPath = join(inboxDir, 'data', 'customers.json')
+  await mkdir(join(inboxDir, 'data'), { recursive: true })
+  await writeFile(customersPath, '[{"id":"old"}]\n', 'utf8')
+
+  const missing = await pullInbox({
+    remote: createDirRemote(remoteRoot, { customersFile: join(remoteRoot, 'missing.json') }),
+    inboxDir,
+    customersPath,
+  })
+  assert.match(missing.customers.error, /ENOENT/)
+  assert.equal(await readFile(customersPath, 'utf8'), '[{"id":"old"}]\n')
+
+  const badFile = join(remoteRoot, 'bad-customers.json')
+  await writeFile(badFile, '不是 JSON\n', 'utf8')
+  const badJson = await pullInbox({
+    remote: createDirRemote(remoteRoot, { customersFile: badFile }),
+    inboxDir,
+    customersPath,
+  })
+  assert.ok(badJson.customers.error)
+  assert.equal(await readFile(customersPath, 'utf8'), '[{"id":"old"}]\n')
 })
 
 test('通知失败时保留远端目录，下次重试', async (t) => {
