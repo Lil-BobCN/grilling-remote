@@ -501,6 +501,11 @@ def _fold_issue_parent(state, event):
         if issue["kind"] == "map":
             raise DtError("地图不能有父票")
     issue["parent"] = parent
+    if "covers" in event["payload"]:
+        covers = list(event["payload"]["covers"])
+        if issue["kind"] == "ticket":
+            _check_covers(state, parent, covers)
+        issue["covers"] = covers
     issue["updated_at"] = event["ts"]
 
 

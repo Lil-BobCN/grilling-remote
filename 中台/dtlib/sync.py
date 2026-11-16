@@ -10,6 +10,8 @@ from .util import DtError, now_ts
 MARK_BEGIN = "<!-- 中台:begin -->"
 MARK_END = "<!-- 中台:end -->"
 SECTION_LIMIT = 60 * 1024
+# GitHub 一个父 issue 最多挂 100 个子 issue，超过的名额要跳过。
+SUB_ISSUE_LIMIT = 100
 
 
 def compute_plan(store, repo, map_id, gh_bin="gh"):
@@ -25,6 +27,7 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
     actions = []
     warnings = []
     seen_remote = set()
+    attached_remote = set()
 
     if map_number is None:
         # 本地新建的地图还没有 GitHub 号：先建地图，远端按空地图比对
@@ -41,15 +44,18 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
                 "detail": f"新建后关掉地图 {map_id}",
             })
         remote_map = None
-        remote_by_number = {}
+        remote_by_number = _fetch_mapped_tickets(
+            gh, repo, _mapped_numbers(store, local_tickets))
         remote_subs = []
         remote_subs_numbers = set()
+        parent_room = SUB_ISSUE_LIMIT
     else:
         remote = _fetch_remote(store, repo, map_number, local_tickets, gh)
         remote_map = remote["map"]
         remote_by_number = remote["issues"]
         remote_subs = remote["sub_issues"]
         remote_subs_numbers = remote["sub_numbers"]
+        parent_room = max(0, SUB_ISSUE_LIMIT - len(remote_subs_numbers))
         # 地图本身
         map_actions = _diff_issue(store, repo, map_issue, remote_map, is_map=True)
         actions.extend(map_actions)
@@ -62,6 +68,8 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
             match = _match_unclaimed_remote(store, issue, remote_subs, seen_remote, warnings)
             if match:
                 remote_number = int(match["number"])
+                seen_remote.add(remote_number)
+                attached_remote.add(issue["id"])
                 actions.append({
                     "kind": "comment.map", "phase": 0,
                     "ref": issue["id"], "issues": [],
@@ -86,19 +94,52 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
             seen_remote.add(remote_number)
             actions.extend(_diff_issue(store, repo, issue, remote_by_number.get(remote_number), is_map=False))
 
-    for number in remote_by_number:
-        if number not in seen_remote:
+    reverse_issues = {}
+    for local, number in store.sync.get("issues", {}).items():
+        reverse_issues.setdefault(int(number), str(local))
+    leaving = []
+    for number in sorted(remote_by_number, key=_num_key):
+        if number in seen_remote:
+            continue
+        local_id = reverse_issues.get(int(number))
+        local_issue = state["issues"].get(local_id) if local_id else None
+        if local_issue and local_issue["kind"] == "ticket" and local_issue["parent"] != map_id:
+            leaving.append((number, local_id))
+        else:
             warnings.append(f"GitHub 上的 #{number} 不在中台这张地图下，本次跳过（中台为准）")
+    for number, local_id in leaving:
+        actions.append({
+            "kind": "parent.remove", "phase": 3, "ref": local_id,
+            "parent": map_id,
+            "detail": (f"把 #{local_id} 从地图 {map_id} 下摘掉"
+                       f"（中台已移到地图 {state['issues'][local_id]['parent']}）"),
+        })
+    parent_room = max(0, parent_room + len(leaving))
 
     # 父子、阻塞、评论
+    overflow = []
     for issue in local_tickets:
         remote_number = _remote_number(store, issue["id"], remote_by_number)
-        if remote_number is None or remote_number not in remote_subs_numbers:
-            actions.append({
-                "kind": "parent.add", "phase": 3,
-                "ref": issue["id"], "parent": map_id,
-                "detail": f"把 #{issue['id']} 挂到地图 {map_id} 下",
-            })
+        attached = issue["id"] in attached_remote or (
+            remote_number is not None and remote_number in remote_subs_numbers)
+        if not attached:
+            if parent_room <= 0:
+                overflow.append(issue["id"])
+                detail = (f"GitHub 子票已满 {SUB_ISSUE_LIMIT}，跳过把 #{issue['id']} 挂到地图 "
+                          f"{map_id} 下；票本身照常镜像")
+                if not _last_parent_skipped(store, map_id, issue["id"]):
+                    actions.append({
+                        "kind": "parent.skip", "phase": 3,
+                        "ref": issue["id"], "parent": map_id,
+                        "detail": detail,
+                    })
+            else:
+                actions.append({
+                    "kind": "parent.add", "phase": 3,
+                    "ref": issue["id"], "parent": map_id,
+                    "detail": f"把 #{issue['id']} 挂到地图 {map_id} 下",
+                })
+                parent_room -= 1
         remote = remote_by_number.get(remote_number) or {}
         remote_blockers = {int(b) for b in (remote.get("blocked_by") or [])}
         local_by_number = {}
@@ -135,6 +176,10 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
         remote_comments = remote.get("comments") or []
         actions.extend(_diff_comments(store, issue, remote_number, remote_comments, warnings))
 
+    if overflow:
+        warnings.append(f"GitHub 子票已满 {SUB_ISSUE_LIMIT}：{len(overflow)} 张票不挂到地图 "
+                        f"{map_id} 下，票本身照常镜像")
+
     # 地图自己的评论
     map_comments = (remote_map or {}).get("comments") or []
     map_comment_number = int(remote_map["number"]) if remote_map else None
@@ -164,6 +209,15 @@ def compute_plan(store, repo, map_id, gh_bin="gh"):
 
 
 def _fetch_remote(store, repo, map_id, local_tickets, gh):
+    mapped = _mapped_numbers(store, local_tickets)
+    try:
+        return _fetch_remote_graphql(repo, map_id, mapped, gh)
+    except Exception as exc:
+        store._log(f"GraphQL 读取失败，退回 REST：{exc}")
+        return _fetch_remote_rest(gh, repo, map_id, mapped)
+
+
+def _mapped_numbers(store, local_tickets):
     mapped = set()
     for issue in local_tickets:
         mapped_number = store.sync.get("issues", {}).get(str(issue["id"]))
@@ -171,11 +225,58 @@ def _fetch_remote(store, repo, map_id, local_tickets, gh):
             mapped.add(int(mapped_number))
         elif str(issue["id"]).isdigit():
             mapped.add(int(issue["id"]))
+    return mapped
+
+
+_ISSUE_FIELDS = """
+fragment IssueFields on Issue {
+  number title body state
+  labels(first: 50) { nodes { name } }
+  comments(first: 100) { nodes { databaseId body } }
+  blockedBy(first: 100) { nodes { number } }
+}
+"""
+
+
+def _fetch_mapped_tickets(gh, repo, mapped):
+    """地图还没建出来时，先读已有 GitHub 号的票，别把已有评论当成新评论。"""
+    if not mapped:
+        return {}
     try:
-        return _fetch_remote_graphql(repo, map_id, mapped, gh)
-    except Exception as exc:
-        store._log(f"GraphQL 读取失败，退回 REST：{exc}")
-        return _fetch_remote_rest(gh, repo, map_id, mapped)
+        return _fetch_mapped_tickets_graphql(repo, mapped, gh)
+    except Exception:
+        issues = {}
+        for number in sorted(mapped):
+            item = gh.api(f"repos/{repo}/issues/{number}")
+            if item:
+                issues[int(number)] = _rest_issue(gh, repo, item)
+        return issues
+
+
+def _fetch_mapped_tickets_graphql(repo, mapped, gh):
+    owner, name = repo.split("/", 1)
+    aliases = " ".join(
+        f'i{number}: issue(number: {number}) {{ ...IssueFields }}'
+        for number in sorted(mapped)
+    )
+    query = f"""
+query {{
+  repository(owner: "{owner}", name: "{name}") {{
+    {aliases}
+  }}
+}}
+{_ISSUE_FIELDS}
+"""
+    data = gh.api("graphql", fields={"query": query})
+    if data.get("errors"):
+        raise DtError(f"GraphQL 返回错误：{data['errors']}")
+    repo_data = (data.get("data") or {}).get("repository") or {}
+    issues = {}
+    for number in sorted(mapped):
+        node = repo_data.get(f"i{number}")
+        if node:
+            issues[int(number)] = _graph_issue(node)
+    return issues
 
 
 def _fetch_remote_graphql(repo, map_id, mapped, gh):
@@ -196,12 +297,7 @@ query {{
     {aliases}
   }}
 }}
-fragment IssueFields on Issue {{
-  number title body state
-  labels(first: 50) {{ nodes {{ name }} }}
-  comments(first: 100) {{ nodes {{ databaseId body }} }}
-  blockedBy(first: 100) {{ nodes {{ number }} }}
-}}
+{_ISSUE_FIELDS}
 """
     data = gh.api("graphql", fields={"query": query})
     if data.get("errors"):
@@ -297,9 +393,10 @@ def _remote_number(store, local_id, remote_by_number):
 
 
 def _match_unclaimed_remote(store, issue, remote_subs, seen_remote, warnings):
+    mapped_numbers = {int(v) for v in store.sync.get("issues", {}).values()}
     for item in remote_subs:
         number = int(item["number"])
-        if number in seen_remote:
+        if number in seen_remote or number in mapped_numbers:
             continue
         if (item.get("title") or "") != issue["title"]:
             continue
@@ -309,6 +406,16 @@ def _match_unclaimed_remote(store, issue, remote_subs, seen_remote, warnings):
             continue
         return item
     return None
+
+
+def _last_parent_skipped(store, map_id, ref):
+    """上一次父子动作已经记为跳过的，不再重复记一条。"""
+    for record in reversed(store.sync.get("history", [])):
+        if str(record.get("map")) != str(map_id) or record.get("ref") != ref:
+            continue
+        if record.get("action") in ("parent.add", "parent.skip"):
+            return record.get("status") == "skipped"
+    return False
 
 
 def _diff_issue(store, repo, issue, remote, is_map):
@@ -550,6 +657,7 @@ def execute_plan(store, repo, map_id, plan, gh_bin="gh"):
     results = []
     new_numbers = {}
     failed_refs = set()
+    warnings = list(plan.get("warnings") or [])
     actions = sorted(plan["actions"], key=lambda a: (a["phase"], _num_key(a.get("ref", ""))))
 
     for action in actions:
@@ -588,10 +696,21 @@ def execute_plan(store, repo, map_id, plan, gh_bin="gh"):
                 number = _number_for(store, ref, new_numbers)
                 gh.api(f"repos/{repo}/issues/{number}/labels", method="PUT",
                        input_json={"labels": action["labels"]})
+            elif kind == "parent.skip":
+                results.append({"action": kind, "ref": ref, "status": "skipped",
+                                "detail": action["detail"]})
+                store.sync_record({"type": "sync", "map": map_id, "action": kind,
+                                   "ref": ref, "status": "skipped", "detail": action["detail"]})
+                continue
             elif kind == "parent.add":
                 child = _number_for(store, ref, new_numbers)
                 parent = _number_for(store, action["parent"], new_numbers)
-                _gh_edit(repo, parent, "--add-sub-issue", str(child), gh_bin=gh_bin)
+                # --parent 会替换已有的父票，换图和补挂父子共用一条路径
+                _gh_edit(repo, child, "--parent", str(parent), gh_bin=gh_bin)
+            elif kind == "parent.remove":
+                child = _number_for(store, ref, new_numbers)
+                parent = _number_for(store, action["parent"], new_numbers)
+                _gh_edit(repo, parent, "--remove-sub-issue", str(child), gh_bin=gh_bin)
             elif kind == "block.add":
                 child = _number_for(store, ref, new_numbers)
                 blocker = action.get("blocker_number") or _number_for(store, action["blocker"], new_numbers)
@@ -624,6 +743,14 @@ def execute_plan(store, repo, map_id, plan, gh_bin="gh"):
             store.sync_record({"type": "sync", "map": map_id, "action": kind,
                                "ref": ref, "status": "ok", "detail": action["detail"]})
         except DtError as exc:
+            if kind == "parent.add" and _is_sub_issue_cap(str(exc)):
+                detail = f"GitHub 子票已满 {SUB_ISSUE_LIMIT}，跳过挂父子：{action['detail']}"
+                warnings.append(detail)
+                results.append({"action": "parent.skip", "ref": ref, "status": "skipped",
+                                "detail": detail})
+                store.sync_record({"type": "sync", "map": map_id, "action": "parent.skip",
+                                   "ref": ref, "status": "skipped", "detail": detail})
+                continue
             failed_refs.add(ref)
             results.append({"action": kind, "ref": ref, "status": "failed", "detail": str(exc)})
             store.sync_record({"type": "sync", "map": map_id, "action": kind,
@@ -636,7 +763,7 @@ def execute_plan(store, repo, map_id, plan, gh_bin="gh"):
                                "ref": ref, "status": "failed", "detail": detail})
     store.sync_record({"type": "position", "map": map_id, "at": now_ts()})
     ok = not any(r["status"] == "failed" for r in results)
-    return {"ok": ok, "results": results, "warnings": plan["warnings"]}
+    return {"ok": ok, "results": results, "warnings": warnings}
 
 
 def _number_for(store, local_id, new_numbers):
@@ -657,9 +784,15 @@ def _gh_edit(repo, number, *flags, gh_bin="gh"):
     )
     if result.returncode != 0:
         message = (result.stderr or result.stdout).strip()
-        if "already" in message.lower():
+        lowered = message.lower()
+        if ("already" in lowered or "not a sub-issue" in lowered
+                or "is not a sub" in lowered):
             return
         raise DtError(f"gh issue edit #{number} 失败：{message}")
+
+
+def _is_sub_issue_cap(text):
+    return "more than 100 sub-issues" in text
 
 
 def _num_key(value):

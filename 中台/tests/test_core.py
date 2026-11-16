@@ -63,6 +63,29 @@ class TestFold(Base):
         rows = coverage_rows(self.store.state, map_id)
         self.assertEqual(rows[0]["status"], "已落")
 
+    def test_ticket_moves_to_another_map_with_covers(self):
+        map_a, root_a = self.make_map("甲。乙。", ["甲。", "乙。"])
+        map_b, root_b = self.make_map("丙。丁。", ["丙。", "丁。"])
+        ticket = self.make_ticket(map_a, root_a["id"], covers=[root_a["fragments"][0]["id"]])
+        self.append(self.board.issue_parent(
+            "agent:test", ticket, map_b, covers=[root_b["fragments"][1]["id"]]))
+        moved = self.store.state["issues"][ticket]
+        self.assertEqual(moved["parent"], map_b)
+        self.assertEqual(moved["covers"], [root_b["fragments"][1]["id"]])
+        self.assertEqual(coverage_rows(self.store.state, map_a)[0]["status"], "缺口")
+        self.assertEqual(coverage_rows(self.store.state, map_b)[1]["status"], "进行中")
+
+    def test_ticket_move_requires_new_root_covers(self):
+        map_a, root_a = self.make_map("甲。乙。", ["甲。", "乙。"])
+        map_b, root_b = self.make_map("丙。丁。", ["丙。", "丁。"])
+        ticket = self.make_ticket(map_a, root_a["id"], covers=[root_a["fragments"][0]["id"]])
+        with self.assertRaises(DtError):
+            self.store.append_event(self.board.issue_parent("agent:test", ticket, map_b))
+        with self.assertRaises(DtError):
+            self.store.append_event(self.board.issue_parent(
+                "agent:test", ticket, map_b, covers=[root_a["fragments"][0]["id"]]))
+        self.assertEqual(self.store.state["issues"][ticket]["parent"], map_a)
+
     def test_comment_edit_delete(self):
         map_id, _ = self.make_map()
         event = self.board.comment_add("agent:test", map_id, "第一版")

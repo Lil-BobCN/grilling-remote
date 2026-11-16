@@ -158,8 +158,29 @@ class Board:
     def issue_block(self, actor, iid, add, remove):
         return self._event("issue.block", iid, {"add": list(add), "remove": list(remove)}, actor)
 
-    def issue_parent(self, actor, iid, parent):
-        raise DtError("v1 不开放改父票；建错地图就关掉重建", 1)
+    def issue_parent(self, actor, iid, parent, covers=None):
+        issue = self.state["issues"].get(iid)
+        if not issue:
+            raise DtError(f"找不到 issue {iid}")
+        if issue["kind"] != "ticket":
+            raise DtError("只有票能换地图", 2)
+        target = self.state["issues"].get(parent)
+        if not target or target["kind"] != "map":
+            raise DtError(f"父 issue 不是地图：{parent}", 2)
+        root = current_root(self.state, parent)
+        if root is None:
+            raise DtError(f"地图 {parent} 没有现行根决定", 2)
+        if covers is None:
+            if issue.get("covers"):
+                raise DtError("换地图时必须同时给 --covers，指向新地图根决定的拆句", 2)
+            covers = []
+        valid = {f["id"] for f in root["fragments"]}
+        for cid in covers:
+            if cid not in valid:
+                raise DtError(f"covers 指向不属于当前根决定的拆句：{cid}", 2)
+        return self._event("issue.parent", iid,
+                           {"parent": parent, "covers": list(covers)}, actor,
+                           reason=None)
 
     # ---------- 评论 ----------
 
@@ -669,6 +690,9 @@ def dispatch(board, op, args, actor, reason=None):
         return board.issue_label(actor, args["id"], args.get("add") or [], args.get("remove") or [])
     if op == "issue.block":
         return board.issue_block(actor, args["id"], args.get("add") or [], args.get("remove") or [])
+    if op == "issue.parent":
+        return board.issue_parent(
+            actor, args["id"], args["parent"], covers=args.get("covers"))
     if op == "comment.add":
         return board.comment_add(actor, args["issue"], args["body"])
     if op == "comment.edit":
