@@ -48,7 +48,7 @@ if [[ -f /etc/afkapp/app.env ]]; then
   echo "/etc/afkapp/app.env 已存在，没覆盖"
 else
   install -m 600 -o root -g root "$ENV_EXAMPLE" /etc/afkapp/app.env
-  echo "写入 /etc/afkapp/app.env，记得填 GITHUB_TOKEN、SESSION_SECRET；SMTP_PASSWORD 留空，通知模块的密码走钥匙串"
+  echo "写入 /etc/afkapp/app.env，记得填 GITHUB_TOKEN、GITHUB_ADMIN_TOKEN、GITHUB_OWNER、SESSION_SECRET 和客户邮件 SMTP"
 fi
 
 echo "== systemd 单元"
@@ -84,7 +84,7 @@ cat <<'EOF'
 
 装完了。下一步：
 
-1. 填 /etc/afkapp/app.env 里的三项密钥，权限保持 600 root:root。
+1. 填 /etc/afkapp/app.env 里的密钥：GITHUB_TOKEN、GITHUB_ADMIN_TOKEN、GITHUB_OWNER、SESSION_SECRET 和客户邮件 SMTP，权限保持 600 root:root。
 2. 把第一版发布包传上去，用 deploy/backend/deploy.sh 发布。
-3. 发布成功后跑 deploy/backend/check.sh 复核。
+3. 发布成功后跑 deploy/backend/check.sh 复核，再 systemctl start afk-import.timer。
 EOF
