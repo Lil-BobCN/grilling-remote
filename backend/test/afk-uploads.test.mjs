@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -115,4 +115,181 @@ test('helper 没有上传目录时 list 回空，不报错', async (t) => {
   const list = await runHelper(['list'], env)
   assert.equal(list.code, 0)
   assert.equal(list.stdout.trim(), '')
+})
+
+async function setupDelivery(t) {
+  const root = await mkdtemp(join(tmpdir(), 'afk-uploads-mail-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const orders = join(root, 'orders')
+  await mkdir(orders, { recursive: true })
+  const customers = join(root, 'customers.json')
+  await writeFile(
+    customers,
+    `${JSON.stringify([
+      {
+        id: 'c-0001',
+        short_name: 'acme',
+        display_name: 'Acme 老板',
+        email: 'boss@example.com',
+        status: 'active',
+        password_hash: '$argon2id$secret',
+      },
+    ])}\n`,
+  )
+  await writeFile(
+    join(orders, 'o-0001.json'),
+    `${JSON.stringify({
+      id: 'o-0001',
+      customer_id: 'c-0001',
+      customer_snapshot: { short_name: 'acme', display_name: 'Acme 老板' },
+      product: 'shop',
+      requirement: 'shop',
+    })}\n`,
+  )
+  await writeFile(
+    join(orders, 'o-0002.json'),
+    `${JSON.stringify({
+      id: 'o-0002',
+      customer_id: 'c-9999',
+      customer_snapshot: {},
+      product: 'shop',
+      requirement: 'shop',
+    })}\n`,
+  )
+  const appEnv = join(root, 'app.env')
+  await writeFile(
+    appEnv,
+    [
+      'SMTP_HOST=smtp.example.com',
+      'SMTP_PORT=465',
+      'SMTP_USER=notify@mail.example.com',
+      'SMTP_PASSWORD=s3cret-pass',
+      'SMTP_FROM=notify@mail.example.com',
+      '',
+    ].join('\n'),
+  )
+  const mailScript = join(root, 'customer-mail.py')
+  await writeFile(
+    mailScript,
+    [
+      'import json',
+      'import os',
+      'import sys',
+      '',
+      'record = {"argv": sys.argv[1:], "body": sys.stdin.read()}',
+      'with open(os.environ["FAKE_MAIL_OUT"], "w", encoding="utf-8") as fh:',
+      '    json.dump(record, fh, ensure_ascii=False)',
+      'if os.environ.get("FAKE_MAIL_FAIL"):',
+      '    raise SystemExit("SMTP 535 auth failed for boss@example.com password s3cret-pass")',
+      '',
+    ].join('\n'),
+  )
+  const outFile = join(root, 'mail.json')
+  return {
+    orders,
+    customers,
+    appEnv,
+    mailScript,
+    outFile,
+    env: {
+      AFK_ORDERS_DIR: orders,
+      AFK_CUSTOMERS_FILE: customers,
+      AFK_APP_ENV: appEnv,
+      AFK_CUSTOMER_MAIL: mailScript,
+      FAKE_MAIL_OUT: outFile,
+    },
+  }
+}
+
+test('send-delivery-mail 读订单和客户表，正文带地址和 2 到 3 件试的事', async (t) => {
+  const { outFile, env } = await setupDelivery(t)
+  const result = await runHelper(
+    [
+      'send-delivery-mail',
+      'o-0001',
+      'acme-shop.afkfactory.space',
+      '--tries',
+      '打开首页；填一条数据；刷新看还在不在',
+    ],
+    env,
+  )
+  assert.equal(result.code, 0, result.stderr)
+
+  const record = JSON.parse(await readFile(outFile, 'utf8'))
+  const toIndex = record.argv.indexOf('--to')
+  assert.equal(record.argv[toIndex + 1], 'boss@example.com')
+  const subject = record.argv[record.argv.indexOf('--subject') + 1]
+  assert.match(subject, /Acme 老板 · shop：做好了，可以试了/)
+  assert.ok(record.body.includes('https://acme-shop.afkfactory.space/'))
+  assert.ok(record.body.includes('①打开首页'))
+  assert.ok(record.body.includes('②填一条数据'))
+  assert.ok(record.body.includes('③刷新看还在不在'))
+  assert.ok(record.body.includes('①打开首页\n②填一条数据\n③刷新看还在不在'))
+  assert.ok(record.body.includes('哪里不对，直接微信说'))
+
+  assert.ok(!result.stdout.includes('boss@example.com'))
+  assert.ok(!result.stdout.includes('s3cret-pass'))
+})
+
+test('不带 --tries 时用默认三件事', async (t) => {
+  const { outFile, env } = await setupDelivery(t)
+  const result = await runHelper(
+    ['send-delivery-mail', 'o-0001', 'acme-shop.afkfactory.space'],
+    env,
+  )
+  assert.equal(result.code, 0, result.stderr)
+  const record = JSON.parse(await readFile(outFile, 'utf8'))
+  assert.ok(record.body.includes('①'))
+  assert.ok(record.body.includes('②'))
+  assert.ok(record.body.includes('③'))
+})
+
+test('send-delivery-mail 失败时退出非零，不打印邮箱和密码', async (t) => {
+  const { env } = await setupDelivery(t)
+  const result = await runHelper(
+    ['send-delivery-mail', 'o-0001', 'acme-shop.afkfactory.space', '--tries', '看首页；填数据'],
+    { ...env, FAKE_MAIL_FAIL: '1' },
+  )
+  assert.notEqual(result.code, 0)
+  assert.match(result.stderr, /客户邮件没发出去/)
+  assert.ok(!result.stderr.includes('boss@example.com'))
+  assert.ok(!result.stderr.includes('s3cret-pass'))
+})
+
+test('订单不存在或客户没有邮箱时不发信', async (t) => {
+  const { outFile, env } = await setupDelivery(t)
+  const missing = await runHelper(
+    ['send-delivery-mail', 'o-0404', 'acme-shop.afkfactory.space'],
+    env,
+  )
+  assert.notEqual(missing.code, 0)
+  assert.match(missing.stderr, /没这个订单/)
+
+  const noEmail = await runHelper(
+    ['send-delivery-mail', 'o-0002', 'acme-shop.afkfactory.space'],
+    env,
+  )
+  assert.notEqual(noEmail.code, 0)
+  assert.match(noEmail.stderr, /没有邮箱/)
+  await assert.rejects(stat(outFile))
+})
+
+test('--tries 只给一件或超过三件都拒绝', async (t) => {
+  const { env } = await setupDelivery(t)
+  const one = await runHelper(
+    ['send-delivery-mail', 'o-0001', 'acme-shop.afkfactory.space', '--tries', '只有一件事'],
+    env,
+  )
+  assert.equal(one.code, 2)
+  const four = await runHelper(
+    [
+      'send-delivery-mail',
+      'o-0001',
+      'acme-shop.afkfactory.space',
+      '--tries',
+      '一；二；三；四',
+    ],
+    env,
+  )
+  assert.equal(four.code, 2)
 })

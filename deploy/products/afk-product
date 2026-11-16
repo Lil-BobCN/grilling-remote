@@ -3,6 +3,7 @@
 # 负责部署、回滚、备份、预览起停和状态。服务器上用 sudo 跑，sudo 白名单只放这一条。
 #
 #   sudo afk-product product-init <交付地址> --image <镜像:tag>
+#   sudo afk-product product-load <镜像 tar>
 #   sudo afk-product product-deploy <交付地址> [--image <镜像:tag>]
 #   sudo afk-product product-rollback <交付地址>
 #   sudo afk-product product-backup [<交付地址>]
@@ -643,6 +644,24 @@ EOF
   log "下一步：afk-product product-deploy $address --image $IMAGE"
 }
 
+cmd_load() {
+  local tar=${1:?用法：afk-product product-load <镜像 tar>}
+  [[ $# -eq 1 ]] || die "用法：afk-product product-load <镜像 tar>"
+  [[ -f $tar ]] || die "找不到镜像包：$tar"
+  local out tags tag
+  if ! out=$("$DOCKER" load -i "$tar" 2>&1); then
+    printf '%s\n' "$out" >&2
+    die "docker load 失败：$tar"
+  fi
+  printf '%s\n' "$out"
+  tags=$(printf '%s\n' "$out" | sed -n 's/^Loaded image: //p')
+  if [[ -n $tags ]]; then
+    while IFS= read -r tag; do
+      log "镜像 tag：$tag"
+    done <<<"$tags"
+  fi
+}
+
 cmd_deploy() {
   local address="" image=""
   while [[ $# -gt 0 ]]; do
@@ -1083,6 +1102,7 @@ cmd=${1:-}
 shift
 case $cmd in
   product-init) cmd_init "$@" ;;
+  product-load) cmd_load "$@" ;;
   product-deploy) cmd_deploy "$@" ;;
   product-rollback) cmd_rollback "$@" ;;
   product-backup) cmd_backup "$@" ;;

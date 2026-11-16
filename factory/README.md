@@ -21,6 +21,7 @@
 | `lib/finish.mjs` | 收尾评审、`/pr` 四栏、合主干 | #466 |
 | `lib/inbox.mjs` | 从服务器拉回传件到 `inbox/` | #459 |
 | `lib/deploy.mjs` | 构建镜像、部署、回滚、交付地址 | #468 |
+| `bin/deploy.mjs` | 手工部署、回滚、打代码 zip；默认走 Docker、SSH 和 HTTPS | #468 |
 | `lib/preview.mjs` | 按 PR 起停预览 | #469 |
 
 `lib/scaffold.mjs` 写在 `backend/`，因为建仓和建单在服务器上跑，发布包只装 `backend/`。Mac 侧需要同一份模板时，从 `backend/scaffold/` 读，不复制。
