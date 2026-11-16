@@ -33,23 +33,16 @@
 
 | 文件 | 讲什么 |
 | --- | --- |
-| [domain.md](agents/domain.md) | 领域文档怎么读，ADR 准入和修剪规则 |
+| [domain.md](agents/domain.md) | 领域文档怎么读，决策记录的准入、读写和核对 |
 | [issue-tracker.md](agents/issue-tracker.md) | 中台、GitHub 镜像、建票、关票、同步 |
 | [operator-daily.md](agents/operator-daily.md) | 运营者每天看什么，信号亮了做什么 |
 | [triage-labels.md](agents/triage-labels.md) | 五个处理状态标签 |
 
 ## docs/adr
 
-ADR 全部保留。被取代的留在原位，标历史，不删。`0006`、`0008` 已随旧流程归档到 `docs/archive/旧流程/`。
+只有一份 [决策记录.md](adr/决策记录.md)，收够三条标准的决定：难回退、不写会让人意外、有真实取舍。完整决策记录在中台。被取代的条目留在原位，标「被取代，见 D-xxxx」，不删。
 
-| ADR | 状态 |
-| --- | --- |
-| [0001 接单走客户本机 dsh](adr/0001-接单走客户本机-dsh.md) | 部分历史 |
-| [0002 调度器替代编排循环](adr/0002-调度器替代编排循环.md) | 现行 |
-| [0003 回传走官网上传页](adr/0003-回传走官网上传页.md) | 部分历史 |
-| [0004 客户规则放 AGENTS.md](adr/0004-客户规则放-agents-文件.md) | 部分历史 |
-| [0005 调度器直接点火](adr/0005-调度器直接点火.md) | 部分历史 |
-| [0007 问题树单独存一份](adr/0007-问题树单独存一份.md) | 历史 |
+旧 ADR 0006、0008 已随旧流程归档到 `docs/archive/旧流程/`。
 
 ## docs/research
 
