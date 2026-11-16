@@ -1,4 +1,4 @@
-"""模板单元测试：固定措辞按 docs/通知与事件表.md 第二节。"""
+"""模板单元测试：固定措辞按 docs/通知.md 的「事件表」。"""
 from __future__ import annotations
 
 import copy

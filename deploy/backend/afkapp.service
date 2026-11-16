@@ -1,6 +1,6 @@
 [Unit]
 Description=afkfactory backend
-Documentation=https://github.com/Lil-BobCN/grilling-remote/blob/main/docs/后端服务部署.md
+Documentation=https://github.com/Lil-BobCN/grilling-remote/blob/main/docs/后端服务.md
 After=network-online.target
 Wants=network-online.target
 
