@@ -30,6 +30,13 @@ def _new_order(data, link):
     )
 
 
+def _reupload_map(data, link):
+    return (
+        f"{data['customer']} · {data['requirement']} · 回传地图已更新",
+        f"地图按新回传换好了，待复查的票列在重传评论里。打开 Orca 看一眼。{link}",
+    )
+
+
 def _gap_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你补缺口（{data['question_count']} 题）",
@@ -106,6 +113,8 @@ def _daily_sample(data, link):
 
 EVENTS: dict[str, EventSpec] = {
     "新单进队列": EventSpec((PUSH,), ("customer", "requirement"), True, _new_order),
+    "重传地图已更新": EventSpec(
+        (PUSH,), ("customer", "requirement"), True, _reupload_map),
     "补缺口提案": EventSpec(
         (PUSH, EMAIL), ("customer", "requirement", "question_count"),
         True, _gap_proposal),
@@ -185,7 +194,7 @@ def render_event(event: str, data: Any, link: str | None) -> tuple[str, str]:
     spec = EVENTS.get(event)
     if spec is None:
         raise EventError(
-            f"未知事件「{event}」，按 docs/通知与事件表.md 第二节的 11 类")
+            f"未知事件「{event}」，按 docs/通知与事件表.md 第二节的 12 类")
     if not isinstance(data, dict):
         raise EventError("data 必须是对象")
     _validate(event, spec, data, link)

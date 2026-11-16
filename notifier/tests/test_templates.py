@@ -13,6 +13,10 @@ def samples():
             {"customer": "B 店", "requirement": "预约送货"},
             "https://example.test/1",
         ),
+        "重传地图已更新": (
+            {"customer": "B 店", "requirement": "预约送货"},
+            "https://example.test/2",
+        ),
         "补缺口提案": (
             {"customer": "B 店", "requirement": "预约送货", "question_count": 3},
             "https://example.test/1",
@@ -78,14 +82,14 @@ def samples():
 
 class TestTemplates(unittest.TestCase):
     def test_event_count_and_channels(self):
-        self.assertEqual(len(EVENTS), 11)
+        self.assertEqual(len(EVENTS), 12)
         self.assertEqual(EVENTS["出事"].channels, (PUSH, EMAIL))
         self.assertEqual(EVENTS["点火超时"].channels, (EMAIL,))
         self.assertEqual(EVENTS["每日抽样"].channels, (PUSH,))
         for event in ("补缺口提案", "该跑 to-spec", "拆票提案", "需要你答"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH, EMAIL))
-        for event in ("新单进队列", "自己合并", "部署完成", "needs-info"):
+        for event in ("新单进队列", "重传地图已更新", "自己合并", "部署完成", "needs-info"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH,))
 
@@ -123,6 +127,16 @@ class TestTemplates(unittest.TestCase):
                 title, body = render_event(event, data, link)
                 self.assertTrue(title)
                 self.assertTrue(body or event == "每日抽样")
+
+    def test_reupload_map_exact(self):
+        data, link = samples()["重传地图已更新"]
+        title, body = render_event("重传地图已更新", data, link)
+        self.assertEqual(title, "B 店 · 预约送货 · 回传地图已更新")
+        self.assertEqual(
+            body,
+            "地图按新回传换好了，待复查的票列在重传评论里。打开 Orca 看一眼。"
+            "https://example.test/2",
+        )
 
     def test_need_answer_exact(self):
         data, link = samples()["需要你答"]
