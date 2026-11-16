@@ -15,8 +15,6 @@ import { execFile } from 'node:child_process'
 import { cp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { ensureCommentOnce } from '../../factory/lib/issues.mjs'
-import { ensureMapIssues } from '../../factory/lib/map-issues.mjs'
 import { sendValidationMail } from './customer-mail.mjs'
 import { readCustomers, setCustomerRepo } from './customers.mjs'
 import { createGithubApi } from './github-api.mjs'
@@ -40,6 +38,12 @@ async function exists(path) {
   } catch {
     return false
   }
+}
+
+/** 小需求只有需求草稿，没有地图；建单即锁，不走重传。 */
+async function isSmallRequirement(uploadDir, requirement) {
+  const dir = join(uploadDir, 'work', 'scratch', requirement)
+  return (await exists(join(dir, '需求草稿.md'))) && !(await exists(join(dir, 'map.md')))
 }
 
 function authEnv(config, remoteUrl) {
@@ -172,6 +176,14 @@ export function reuploadComment(at) {
   return `改口：重传 ${at}，旧的提案和点头作废。`
 }
 
+/** 同一 body 的评论只写一条；导入重跑不重复追加。 */
+async function commentOnce(gh, { owner, repo, number, body }) {
+  const comments = await gh.listComments({ owner, repo, number })
+  if (comments.some((row) => String(row.body).trim() === String(body).trim())) return false
+  await gh.createComment({ owner, repo, number, body })
+  return true
+}
+
 async function gitExitCode(cwd, args) {
   const result = await execFileAsync('git', ['-C', cwd, ...args], {
     timeout: 120000,
@@ -253,8 +265,10 @@ async function resetParentIssue({ gh, owner, repo, issue, rendered, orderId, sma
 }
 
 /**
- * 重传一条已有父工单的订单：换父工单五段、换需求目录快照、重置需求分支、
- * 写 `改口：` 评论，有地图时按新包换图。父工单复用，不建第二张。
+ * 重传一条已有父工单的订单：换父工单五段、换需求目录快照、重置需求分支，
+ * 写 `改口：` 评论。父工单复用，不建第二张。
+ * 地图和决定票的换新是补缺口 Agent 的活（`gap.mjs apply-map --mode replace`），
+ * 不在这里做。
  */
 export async function reuploadOrder({
   config,
@@ -266,7 +280,6 @@ export async function reuploadOrder({
   owner,
   commentAt,
   sha256,
-  mapIssues = ensureMapIssues,
 }) {
   const repos =
     account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
@@ -326,20 +339,11 @@ export async function reuploadOrder({
     orderId: order.id,
     small: rendered.small,
   })
-  await ensureCommentOnce(gh, {
+  await commentOnce(gh, {
     owner,
     repo: repoName,
     number: existing.number,
     body: reuploadComment(commentAt),
-  })
-  await mapIssues({
-    gh,
-    owner,
-    repo: repoName,
-    requirement: order.requirement,
-    scratchDir,
-    parentIssueUrl: existing.html_url,
-    mode: 'replace',
   })
 
   await updateOrder(config, order.id, {
@@ -584,7 +588,13 @@ async function importUpload({
     return next
   }
 
-  const reuploadOrders = passedOrders.filter((order) => needsReupload(order, meta))
+  const reuploadOrders = []
+  for (const order of passedOrders) {
+    if (!needsReupload(order, meta)) continue
+    // 小需求建单即锁，没有重传窗口；上传端已经拦，这里不补做。
+    if (await isSmallRequirement(dir, order.requirement)) continue
+    reuploadOrders.push(order)
+  }
   const lockedOrder = await findLockedReupload({ specLock, account, orders: reuploadOrders, owner })
   if (lockedOrder) {
     // 上传端已拦；这里兜底：锁单后同目录不能再改，不覆盖父工单和快照。

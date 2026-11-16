@@ -6,6 +6,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { initBareRepo } from '../../factory/lib/git.mjs'
+import { createGithub } from '../../factory/lib/github.mjs'
 import { createDirRemote, pullInbox } from '../../factory/lib/inbox.mjs'
 import { ensureMapIssues } from '../../factory/lib/map-issues.mjs'
 import { startFakeGithub } from '../../factory/test/fake-github.mjs'
@@ -291,6 +292,7 @@ test('to-spec 前整包重传：沿用父工单，五段、快照、标签和分
 
 test('重传换图：地图正文换新包，票按编号配对，旧票作废，新票建出，运营者的票待复查', async (t) => {
   const env = await setup(t)
+  const agentGh = createGithub({ apiBase: env.fake.base, token: 'test' })
   const orderId = await uploadWorkspace(env)
   await runImport(env)
 
@@ -301,7 +303,7 @@ test('重传换图：地图正文换新包，票按编号配对，旧票作废�
 
   // 补缺口 Agent 在 v1 建过图；运营者又在图上开了一张自己的票。
   const first = await ensureMapIssues({
-    gh: env.gh,
+    gh: agentGh,
     owner: OWNER,
     repo: REPO,
     requirement: REQUIREMENT,
@@ -314,7 +316,7 @@ test('重传换图：地图正文换新包，票按编号配对，旧票作废�
     title: '送货要不要设起送价',
     body: '## Question\n\n要不要设起送价？',
   })
-  await env.gh.addSubIssue({
+  await agentGh.addSubIssue({
     owner: OWNER,
     repo: REPO,
     number: first.mapIssue.number,
@@ -324,6 +326,21 @@ test('重传换图：地图正文换新包，票按编号配对，旧票作废�
   await uploadWorkspace(env, makeV2)
   const second = await runImport(env)
   assert.equal(second.uploads[0].status, 'imported')
+
+  // 服务器只换父工单、快照和分支；地图由补缺口 Agent 重跑时换。
+  const v2Dir = (await uploadDirs(env.config)).find(
+    (row) => row.meta.status === 'imported' && row.name !== v1Dir.name,
+  )
+  const v2Scratch = join(env.config.uploadDir, v2Dir.name, 'work', 'scratch', REQUIREMENT)
+  await ensureMapIssues({
+    gh: agentGh,
+    owner: OWNER,
+    repo: REPO,
+    requirement: REQUIREMENT,
+    scratchDir: v2Scratch,
+    parentIssueUrl: parent.html_url,
+    mode: 'replace',
+  })
 
   const maps = await env.gh.listIssues({
     owner: OWNER,
@@ -347,7 +364,7 @@ test('重传换图：地图正文换新包，票按编号配对，旧票作废�
     'Out of scope',
   ])
 
-  const children = await env.gh.listSubIssues({ owner: OWNER, repo: REPO, number: map.number })
+  const children = await agentGh.listSubIssues({ owner: OWNER, repo: REPO, number: map.number })
   assert.deepEqual(children.map((row) => row.title).sort(), [
     '01 顾客怎么看到今天有什么',
     '02 下单要不要先付钱',
@@ -401,6 +418,7 @@ test('重传换图：地图正文换新包，票按编号配对，旧票作废�
 
 test('重传中途失败再重跑同一份包：不重复追加评论，不建第二套', async (t) => {
   const env = await setup(t)
+  const agentGh = createGithub({ apiBase: env.fake.base, token: 'test' })
   const orderId = await uploadWorkspace(env)
   await runImport(env)
 
@@ -408,7 +426,7 @@ test('重传中途失败再重跑同一份包：不重复追加评论，不建�
   const parent = await env.gh.getIssue({ owner: OWNER, repo: REPO, number: parentNumber })
   const v1Dir = (await uploadDirs(env.config)).find((row) => row.meta.status === 'imported')
   await ensureMapIssues({
-    gh: env.gh,
+    gh: agentGh,
     owner: OWNER,
     repo: REPO,
     requirement: REQUIREMENT,
@@ -418,23 +436,56 @@ test('重传中途失败再重跑同一份包：不重复追加评论，不建�
 
   await uploadWorkspace(env, makeV2)
   const v2Dir = (await uploadDirs(env.config)).at(-1)
-  const v2MapPath = join(env.config.uploadDir, v2Dir.name, 'work', 'scratch', REQUIREMENT, 'map.md')
-  const v2Map = await readFile(v2MapPath, 'utf8')
+  const v2Scratch = join(env.config.uploadDir, v2Dir.name, 'work', 'scratch', REQUIREMENT)
 
-  // 先弄坏新包地图，让换图在父工单和分支已经换完之后失败。
-  await writeFile(v2MapPath, v2Map.replace('## Notes', '## 备注'), 'utf8')
-  const failed = await runImport(env)
+  // 第一次重传在写改口评论时失败：父工单和分支已经换完，订单还没记 import_sha256。
+  let commentFailed = false
+  const flaky = {
+    ...env.gh,
+    createComment: async (args) => {
+      if (!commentFailed && String(args.body).startsWith('改口：')) {
+        commentFailed = true
+        throw new Error('写评论炸了')
+      }
+      return env.gh.createComment(args)
+    },
+  }
+  const failed = await importOnce({
+    config: env.config,
+    gh: flaky,
+    remoteUrlFor: () => env.bare,
+  })
   assert.equal(failed.uploads[0].status, 'import_failed')
-  const parentAfterFail = await env.gh.getIssue({ owner: OWNER, repo: REPO, number: parentNumber })
+  const parentAfterFail = await env.gh.getIssue({
+    owner: OWNER,
+    repo: REPO,
+    number: parentNumber,
+  })
   assert.equal(parentAfterFail.title, V2_QUOTE)
 
-  // 修好同一份上传，重跑。
-  await writeFile(v2MapPath, v2Map, 'utf8')
+  // 重跑同一份上传。
   const metaPath = join(env.config.uploadDir, v2Dir.name, 'meta.json')
-  const brokenMeta = JSON.parse(await readFile(metaPath, 'utf8'))
-  await writeFile(metaPath, `${JSON.stringify({ ...brokenMeta, status: 'ready' }, null, 2)}\n`, 'utf8')
+  const failedMeta = JSON.parse(await readFile(metaPath, 'utf8'))
+  await writeFile(
+    metaPath,
+    `${JSON.stringify({ ...failedMeta, status: 'ready' }, null, 2)}\n`,
+    'utf8',
+  )
   const retried = await runImport(env)
   assert.equal(retried.uploads[0].status, 'imported')
+
+  // 补缺口 Agent 换图；同一份包重跑一次，也不重复追加。
+  const agentArgs = {
+    gh: agentGh,
+    owner: OWNER,
+    repo: REPO,
+    requirement: REQUIREMENT,
+    scratchDir: v2Scratch,
+    parentIssueUrl: parent.html_url,
+    mode: 'replace',
+  }
+  await ensureMapIssues(agentArgs)
+  await ensureMapIssues(agentArgs)
 
   const parents = await parentOf(env, orderId)
   assert.deepEqual(parents, [parentNumber])
@@ -602,7 +653,7 @@ test('需求分支上已有实现提交时不覆盖，导入停下报运营者',
   assert.equal(comments.filter((row) => row.body.startsWith('改口：')).length, 0)
 })
 
-test('小需求重传不建地图，保留 大小:小需求', async (t) => {
+test('小需求建单即锁，同一目录再上传 422', async (t) => {
   const env = await setup(t)
   const orderId = await uploadSmall(env, '想要预约取货。')
   const first = await runImport(env)
@@ -612,13 +663,18 @@ test('小需求重传不建地图，保留 大小:小需求', async (t) => {
   const before = await env.gh.getIssue({ owner: OWNER, repo: 'acme-demo', number: parentNumber })
   assert.deepEqual(before.labels.map((label) => label.name).sort(), ['大小:小需求', '状态:已提交'].sort())
 
-  await uploadSmall(env, '想要预约取货，最好能选时间。')
-  const second = await runImport(env)
-  assert.equal(second.uploads[0].status, 'imported')
+  const zipPath = await makeSmallWorkspaceZip(env.root, '想要预约取货，最好能选时间。')
+  const response = await upload(env.server.base, env.cookie, await readFile(zipPath))
+  assert.equal(response.status, 422)
+  const body = await response.json()
+  assert.match(body.message, /小需求建单即锁，改主意请等这一版交付后开新单/)
 
+  const order = (await readOrders(env.config)).find((item) => item.id === orderId)
+  assert.equal(order.uploads.length, 1)
   const parent = await env.gh.getIssue({ owner: OWNER, repo: 'acme-demo', number: parentNumber })
-  assert.match(parent.title, /最好能选时间/)
-  assert.deepEqual(parent.labels.map((label) => label.name).sort(), ['大小:小需求', '状态:已提交'].sort())
+  assert.equal(parent.title, before.title)
+  const comments = await env.gh.listComments({ owner: OWNER, repo: 'acme-demo', number: parentNumber })
+  assert.equal(comments.length, 0)
   const maps = await env.gh.listIssues({
     owner: OWNER,
     repo: 'acme-demo',
@@ -626,8 +682,6 @@ test('小需求重传不建地图，保留 大小:小需求', async (t) => {
     labels: 'wayfinder:map',
   })
   assert.equal(maps.length, 0)
-  const comments = await env.gh.listComments({ owner: OWNER, repo: 'acme-demo', number: parentNumber })
-  assert.match(comments.at(-1).body, /^改口：重传 /)
 })
 
 test('重传后 Mac 存档多一份新上传，指向同一张父工单', async (t) => {

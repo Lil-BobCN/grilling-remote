@@ -121,13 +121,6 @@ export function createGithubApi({
       return rows
     },
 
-    closeIssue({ owner, repo, number, stateReason = 'completed' }) {
-      return request('PATCH', repoPath(owner, repo, `/issues/${number}`), {
-        state: 'closed',
-        state_reason: stateReason,
-      })
-    },
-
     addLabels({ owner, repo, number, labels }) {
       return request('POST', repoPath(owner, repo, `/issues/${number}/labels`), { labels })
     },
@@ -137,26 +130,6 @@ export function createGithubApi({
         'DELETE',
         repoPath(owner, repo, `/issues/${number}/labels/${encodeURIComponent(name)}`),
       )
-    },
-
-    async listSubIssues({ owner, repo, number }) {
-      const rows = []
-      for (let page = 1; page <= 10; page += 1) {
-        const batch = await request(
-          'GET',
-          repoPath(owner, repo, `/issues/${number}/sub_issues?per_page=${PER_PAGE}&page=${page}`),
-        )
-        if (!Array.isArray(batch)) return rows
-        rows.push(...batch)
-        if (batch.length < PER_PAGE) break
-      }
-      return rows
-    },
-
-    addSubIssue({ owner, repo, number, subIssueId }) {
-      return request('POST', repoPath(owner, repo, `/issues/${number}/sub_issues`), {
-        sub_issue_id: subIssueId,
-      })
     },
 
     async listIssues({ owner, repo, state = 'open', labels = '' }) {
