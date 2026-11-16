@@ -36,5 +36,6 @@ export function loadConfig(env = process.env) {
     python: env.PYTHON || 'python3',
     gitSync: env.AFK_GIT_SYNC !== '0',
     gitTimeoutMs: readInt(env.AFK_GIT_TIMEOUT_MS, 15000),
+    syncRetryMs: readInt(env.AFK_SYNC_RETRY_MS, 60 * 1000),
   }
 }

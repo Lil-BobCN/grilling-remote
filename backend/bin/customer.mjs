@@ -8,6 +8,7 @@
 
 import { join, resolve } from 'node:path'
 import { hashPassword } from '../lib/auth.mjs'
+import { PENDING_PATHSPEC } from '../lib/orders.mjs'
 import { gitSync, readJson, withFileLock, writeJsonAtomic } from '../lib/store.mjs'
 
 const dataDir = resolve(process.env.DATA_DIR || '/data/customers')
@@ -157,6 +158,7 @@ async function save(rows, message) {
   const sync = await gitSync(dataDir, message, {
     enabled: process.env.AFK_GIT_SYNC !== '0',
     timeoutMs: 15000,
+    exclude: [PENDING_PATHSPEC],
   })
   if (sync.error) console.error(`写入成功，但同步到私有仓失败：${sync.error}`)
 }

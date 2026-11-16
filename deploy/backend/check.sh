@@ -74,6 +74,13 @@ else
   ok "过去 24 小时没有错误日志"
 fi
 
+if journalctl -q -u afkapp --since '15 minutes ago' --no-pager 2>/dev/null \
+  | grep -q '订单推送私有仓超过 10 分钟未成功'; then
+  bad "订单推送私有仓积压超过 10 分钟"
+else
+  ok "近 15 分钟没有订单同步积压"
+fi
+
 echo "最近 3 条请求："
 journalctl -u afkapp -n 3 --no-pager 2>/dev/null | sed 's/^/  /'
 

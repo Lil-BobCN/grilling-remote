@@ -1,9 +1,121 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { logLine } from './log.mjs'
 import { gitSync, readJson, withFileLock, writeJsonAtomic } from './store.mjs'
+
+export const SYNC_ALERT_MS = 10 * 60 * 1000
+export const PENDING_PATHSPEC = 'orders/*.sync-pending'
+const PENDING_SUFFIX = '.sync-pending'
 
 export function ordersDir(config) {
   return join(config.dataDir, 'orders')
+}
+
+function pendingPath(config, orderId) {
+  return join(ordersDir(config), `${orderId}${PENDING_SUFFIX}`)
+}
+
+async function readPending(config) {
+  let names
+  try {
+    names = await readdir(ordersDir(config))
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
+
+  const records = []
+  for (const name of names.sort()) {
+    if (!name.endsWith(PENDING_SUFFIX)) continue
+    const record = await readJson(join(ordersDir(config), name))
+    if (record && typeof record.order_id === 'string') records.push(record)
+  }
+  return records
+}
+
+async function writePending(config, orderId, requirement, error, now = new Date()) {
+  const file = pendingPath(config, orderId)
+  const previous = await readJson(file, null)
+  const record = {
+    order_id: orderId,
+    requirement,
+    failed_at: previous?.failed_at || now.toISOString(),
+    last_attempt_at: now.toISOString(),
+    attempts: (previous?.attempts || 0) + 1,
+    last_error: error,
+  }
+  await writeJsonAtomic(file, record)
+  return record
+}
+
+async function noteSyncFailure(config, order, error) {
+  const now = new Date()
+  try {
+    const record = await writePending(config, order.id, order.requirement, error, now)
+    logLine({
+      ts: now.toISOString(),
+      level: 'warning',
+      msg: '订单推送私有仓失败，已记待办',
+      order_id: order.id,
+      failed_at: record.failed_at,
+      error,
+    })
+  } catch (writeError) {
+    logLine({
+      ts: now.toISOString(),
+      level: 'error',
+      msg: '订单推送私有仓失败，待办也没写成',
+      order_id: order.id,
+      error,
+      write_error: String(writeError && writeError.message ? writeError.message : writeError),
+    })
+  }
+}
+
+let retrying = false
+
+export async function retryPendingSync(config, { now = new Date() } = {}) {
+  if (retrying) return { skipped: 'in progress', attempted: 0, remaining: null }
+  retrying = true
+  try {
+    const pending = await readPending(config)
+    if (pending.length === 0) return { attempted: 0, remaining: 0 }
+
+    const ids = pending.map((record) => record.order_id)
+    const sync = await gitSync(config.dataDir, `补寄：订单同步 ${ids.join('、')}`, {
+      enabled: config.gitSync,
+      timeoutMs: config.gitTimeoutMs,
+      exclude: [PENDING_PATHSPEC],
+    })
+
+    if (sync.ok) {
+      for (const id of ids) await unlink(pendingPath(config, id)).catch(() => {})
+      logLine({ ts: now.toISOString(), level: 'info', msg: '订单推送私有仓补寄成功', orders: ids })
+      return { attempted: ids.length, remaining: 0 }
+    }
+
+    if (sync.skipped) return { attempted: 0, remaining: ids.length, skipped: sync.skipped }
+
+    const records = []
+    for (const record of pending) {
+      records.push(await writePending(config, record.order_id, record.requirement, sync.error, now))
+    }
+    for (const record of records) {
+      const age = now.getTime() - Date.parse(record.failed_at)
+      if (age < SYNC_ALERT_MS) continue
+      logLine({
+        ts: now.toISOString(),
+        level: 'error',
+        msg: '订单推送私有仓超过 10 分钟未成功',
+        order_id: record.order_id,
+        failed_at: record.failed_at,
+        error: record.last_error,
+      })
+    }
+    return { attempted: ids.length, remaining: ids.length, error: sync.error }
+  } finally {
+    retrying = false
+  }
 }
 
 export async function readOrders(config) {
@@ -158,6 +270,8 @@ export async function recordUpload(config, account, upload) {
   const sync = await gitSync(config.dataDir, `订单：${order.id} ${order.requirement} 上传`, {
     enabled: config.gitSync,
     timeoutMs: config.gitTimeoutMs,
+    exclude: [PENDING_PATHSPEC],
   })
+  if (sync.error) await noteSyncFailure(config, order, sync.error)
   return { order, sync }
 }

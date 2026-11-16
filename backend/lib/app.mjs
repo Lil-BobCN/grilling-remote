@@ -2,7 +2,7 @@ import { authenticate, clearSession, issueSession, publicUser, readSession } fro
 import { HttpError } from './errors.mjs'
 import { assertSameOrigin, clientIp, readBody, sendJson } from './http.mjs'
 import { logLine } from './log.mjs'
-import { publicOrder, readOrders } from './orders.mjs'
+import { publicOrder, readOrders, retryPendingSync } from './orders.mjs'
 import { RateLimiter } from './rate-limit.mjs'
 import { handleUpload, cleanupExpired } from './uploads.mjs'
 
@@ -20,6 +20,20 @@ export function createHandler(config) {
     cleanupExpired(config).catch(() => {})
   }, 10 * 60 * 1000)
   sweeper.unref()
+
+  const runPendingSync = () => {
+    retryPendingSync(config).catch((error) => {
+      logLine({
+        ts: new Date().toISOString(),
+        level: 'error',
+        msg: '补寄订单同步时出错',
+        error: String(error && error.message ? error.message : error),
+      })
+    })
+  }
+  runPendingSync()
+  const syncRetry = setInterval(runPendingSync, config.syncRetryMs)
+  syncRetry.unref()
 
   const handler = async function handle(req, res) {
     try {
@@ -40,7 +54,10 @@ export function createHandler(config) {
     }
   }
 
-  handler.close = () => clearInterval(sweeper)
+  handler.close = () => {
+    clearInterval(sweeper)
+    clearInterval(syncRetry)
+  }
   return handler
 }
 

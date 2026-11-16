@@ -58,7 +58,7 @@ export async function withFileLock(lockPath, fn, { timeoutMs = 5000, staleMs = 6
   }
 }
 
-export async function gitSync(dataDir, message, { enabled = true, timeoutMs = 15000 } = {}) {
+export async function gitSync(dataDir, message, { enabled = true, timeoutMs = 15000, exclude = [] } = {}) {
   if (!enabled) return { skipped: 'disabled' }
   try {
     await stat(join(dataDir, '.git'))
@@ -73,12 +73,14 @@ export async function gitSync(dataDir, message, { enabled = true, timeoutMs = 15
     })
 
   try {
-    await run(['add', '-A'])
+    const addArgs = ['add', '-A', '--', '.']
+    for (const path of exclude) addArgs.push(`:(exclude)${path}`)
+    await run(addArgs)
     try {
       await run(['commit', '-m', message])
     } catch (error) {
       const text = `${error.stdout || ''}${error.stderr || ''}`
-      if (!/nothing to commit|no changes added|working tree clean/i.test(text)) throw error
+      if (!/nothing to commit|nothing added to commit|no changes added|working tree clean/i.test(text)) throw error
     }
     await run(['push'])
     return { ok: true }
