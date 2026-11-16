@@ -480,6 +480,14 @@ function slimIssue(issue, extra = {}) {
   }
 }
 
+function slimComments(comments = []) {
+  return comments.map((comment) => ({
+    id: comment.id,
+    body: comment.body,
+    created_at: comment.created_at,
+  }))
+}
+
 /**
  * 一个客户仓的纯数据快照。不做判断，只把路由要看的可检查事实读出来。
  */
@@ -492,7 +500,8 @@ export async function collectSnapshot({ gh, owner, repo }) {
 
   for (const issue of issues) {
     if (isMapIssue(issue)) {
-      maps.push(slimIssue(issue))
+      const comments = await gh.listComments({ owner, repo, number: issue.number })
+      maps.push(slimIssue(issue, { comments: slimComments(comments) }))
       continue
     }
     if (isDecisionIssue(issue)) {
@@ -542,11 +551,7 @@ export async function collectSnapshot({ gh, owner, repo }) {
 
     parentRows.push(
       slimIssue(parent, {
-        comments: comments.map((comment) => ({
-          id: comment.id,
-          body: comment.body,
-          created_at: comment.created_at,
-        })),
+        comments: slimComments(comments),
         subIssues,
         closedNumbers: [...closedNumbers],
         spec: spec ? slimIssue(spec) : null,
@@ -567,6 +572,41 @@ function stillSandcastle(ticket) {
     ticket.state !== 'closed' &&
     !hasLabel(ticket, '状态:待验收')
   )
+}
+
+/** 地图上最新一条 `重传：<日期>` 评论。 */
+function latestReupload(comments = []) {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const first = normalizedFirstLine(comments[index]?.body)
+    if (!first.startsWith('重传：')) continue
+    const rest = first.slice('重传：'.length).trim()
+    const date = /(\d{4}-\d{2}-\d{2})/.exec(rest)?.[1] || rest
+    return { date, comment: comments[index], index }
+  }
+  return null
+}
+
+/** 地图正文的 `<!-- factory:parent=<链接> -->` 或 Notes 里的父工单链接。 */
+function mapParentNumber(map) {
+  const body = String(map?.body || '')
+  const marker = /<!--\s*factory:parent=([^>]+?)\s*-->/.exec(body)
+  const note = /^\s*-\s*父工单：\s*(\S+)/m.exec(body)
+  const url = marker?.[1] || note?.[1] || ''
+  const match = /\/issues\/(\d+)/.exec(url)
+  return match ? Number(match[1]) : null
+}
+
+function mapFacts(map, parentsByNumber) {
+  const parent = parentsByNumber.get(mapParentNumber(map))
+  if (parent) {
+    const facts = parentFacts(parent)
+    return {
+      customer: parent.customer || facts.customer,
+      requirement: parent.requirement || facts.requirement,
+    }
+  }
+  const facts = parentFacts(map)
+  return { customer: facts.customer, requirement: facts.requirement || map?.title || '' }
 }
 
 export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner, repo }) {
@@ -596,7 +636,28 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
     }
     decisions.push({ parent, actions })
   }
-  return { decisions, activeCount: active }
+
+  const parentsByNumber = new Map((snapshot?.parents || []).map((parent) => [parent.number, parent]))
+  const maps = []
+  for (const map of snapshot?.maps || []) {
+    const reupload = latestReupload(map.comments || [])
+    if (!reupload) continue
+    const facts = mapFacts(map, parentsByNumber)
+    maps.push({
+      map,
+      actions: [
+        {
+          type: 'notify',
+          event: '重传地图已更新',
+          key: `#${map.number}:重传地图已更新:${reupload.date}`,
+          data: { customer: facts.customer, requirement: facts.requirement },
+          link: map.html_url || parentLink(map, owner, repo),
+        },
+      ],
+    })
+  }
+
+  return { decisions, maps, activeCount: active }
 }
 
 // ---- 执行动作 ----
@@ -965,7 +1026,35 @@ export async function runOnce({
         executed,
       })
     }
-    report.repos.push({ repo: row.repo, fullName: row.fullName, parents })
+    const maps = []
+    for (const { map, actions } of routed.maps) {
+      let executed = { skipped: null, results: [] }
+      try {
+        executed = await executeActions({
+          gh,
+          owner: row.owner,
+          repo: row.repo,
+          parent: map,
+          actions,
+          ignite,
+          decompose,
+          createFixTicket,
+          notifier,
+          config,
+          now: nowDate,
+        })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, map: map.number, message: error.message })
+        executed = { skipped: null, results: [], error: error.message }
+      }
+      maps.push({
+        map: map.number,
+        decision: actions.length ? 'notify' : 'wait',
+        actions: actions.map(summarizeAction),
+        executed,
+      })
+    }
+    report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps })
 
     for (const parent of snapshot.parents) {
       const needsAnswer = await resolveNeedsAnswer(config, {

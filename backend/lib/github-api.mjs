@@ -107,6 +107,31 @@ export function createGithubApi({
       return request('POST', repoPath(owner, repo, `/issues/${number}/comments`), { body })
     },
 
+    async listComments({ owner, repo, number }) {
+      const rows = []
+      for (let page = 1; page <= 10; page += 1) {
+        const batch = await request(
+          'GET',
+          repoPath(owner, repo, `/issues/${number}/comments?per_page=${PER_PAGE}&page=${page}`),
+        )
+        if (!Array.isArray(batch)) return rows
+        rows.push(...batch)
+        if (batch.length < PER_PAGE) break
+      }
+      return rows
+    },
+
+    addLabels({ owner, repo, number, labels }) {
+      return request('POST', repoPath(owner, repo, `/issues/${number}/labels`), { labels })
+    },
+
+    removeLabel({ owner, repo, number, name }) {
+      return request(
+        'DELETE',
+        repoPath(owner, repo, `/issues/${number}/labels/${encodeURIComponent(name)}`),
+      )
+    },
+
     async listIssues({ owner, repo, state = 'open', labels = '' }) {
       const rows = []
       for (let page = 1; page <= 10; page += 1) {
