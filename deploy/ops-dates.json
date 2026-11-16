@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-15",
+  "updated": "2026-11-16",
   "source_ticket": "I-0047",
   "items": [
     {
@@ -10,11 +10,25 @@
       "note": "Cloudflare Registrar 自动续费，到期前 30 天第一次扣款；Cloudflare 也会发续费邮件"
     },
     {
+      "id": "domain-space",
+      "name": "域名 afkfactory.space",
+      "date": "2027-11-15",
+      "remind_days": [30, 7, 1],
+      "note": "阿里云注册，手动续费；2026-11-15 注册，客户入口"
+    },
+    {
       "id": "aop-client-cert",
       "name": "AOP 客户端证书",
       "date": "2028-11-06",
       "remind_days": [90, 30, 7],
       "note": "Cloudflare zone 级 AOP 持有，序列号结尾 2C3C"
+    },
+    {
+      "id": "aop-client-cert-space",
+      "name": "AOP 客户端证书（afkfactory.space）",
+      "date": "2028-11-14",
+      "remind_days": [90, 30, 7],
+      "note": "Cloudflare zone 级 AOP 持有，序列号开头 0AC5，SAN 含 .dev 和 .space"
     },
     {
       "id": "aop-ca",

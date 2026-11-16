@@ -1,6 +1,10 @@
 # 官网下载包发布
 
-官网静态页在本仓库 `site/`，构建产物在 `site/dist/`，部署时放服务器 `/data/www`。路由映射按 D-0097，2026-11-15 随 I-0086 上线落到 Caddy（I-0070 当时暂缓）。这里的文件是发布和运维用的源：
+官网静态页在本仓库 `site/`，构建产物在 `site/dist/`，部署时放服务器 `/data/www`。路由映射按 D-0097，2026-11-15 随 I-0086 上线落到 Caddy（I-0070 当时暂缓）。
+
+客户入口是 `https://afkfactory.space/`；`afkfactory.dev` 保留兼容。`deploy/Caddyfile` 的裸域块同时匹配两个域名，站点和 API 共用。
+
+这里的文件是发布和运维用的源：
 
 | 文件 | 用途 |
 | --- | --- |
@@ -55,18 +59,18 @@ AFK_SERVER=dev@<服务器地址> bash deploy/publish.sh
 ## 验收
 
 ```bash
-curl -sSI https://afkfactory.dev/downloads/客户工作区-v1.zip | head -1
-curl -sSI https://afkfactory.dev/downloads/客户工作区-v1.zip | grep -i cache-control
-curl -sS https://afkfactory.dev/downloads/客户工作区-v1.zip | shasum -a 256
+curl -sSI https://afkfactory.space/downloads/客户工作区-v1.zip | head -1
+curl -sSI https://afkfactory.space/downloads/客户工作区-v1.zip | grep -i cache-control
+curl -sS https://afkfactory.space/downloads/客户工作区-v1.zip | shasum -a 256
 ```
 
-第一条要 `200`，第二条要 `cache-control: no-cache`，第三条要和 `customer-kit/dist/客户工作区-v1.zip.sha256` 一致。下载文件名带中文，链接要按 UTF-8 编码后使用，浏览器点按钮不用管。
+第一条要 `200`，第二条要 `cache-control: no-cache`，第三条要和 `customer-kit/dist/客户工作区-v1.zip.sha256` 一致。下载文件名带中文，链接要按 UTF-8 编码后使用，浏览器点按钮不用管。旧域名 `afkfactory.dev` 也能用，但内地线路会被干扰，验收以 `.space` 为准。
 
 ## 为什么下载加 `Cache-Control: no-cache`
 
 下载链接固定为 `.../客户工作区-v1.zip`，内容随每次重打包变。Cloudflare 默认缓存 `.zip`，不声明就会把旧包留给客户，SHA256 对不上。`no-cache` 让边缘每次都回来问源站。
 
-Cloudflare 的 Browser Cache TTL 必须是 0（Respect Existing Headers）。设成 4 小时，Cloudflare 会把源站的 `no-cache` 改成 `max-age=14400`，浏览器 4 小时内不回来问。2026-11-07 按 [#101](https://github.com/Lil-BobCN/grilling-remote/issues/101) 改过；换账号或重建 zone 时要重设。
+Cloudflare 两个 zone 的 Browser Cache TTL 都必须是 0（Respect Existing Headers）。设成 4 小时，Cloudflare 会把源站的 `no-cache` 改成 `max-age=14400`，浏览器 4 小时内不回来问。2026-11-07 按 [#101](https://github.com/Lil-BobCN/grilling-remote/issues/101) 改过；换账号或重建 zone 时要重设。
 
 ## 后端服务
 
