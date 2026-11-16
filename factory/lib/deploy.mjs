@@ -6,15 +6,19 @@
  * `afk-product` helper；这里只按顺序调，外部命令全部由调用方注入，测试不碰服务器。
  * 部署失败重试一次；两次都失败就保留上一版，发「出事」通知，不返回成功。
  */
-import { mkdir } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { promisify } from 'node:util'
 import { git } from './git.mjs'
+
+const execFileAsync = promisify(execFile)
 
 const HOST_SUFFIX = 'afkfactory.space'
 const ADDRESS_RE =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
 const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const CIRCLED = ['①', '②', '③']
 
 /** 默认给客户试的三件事。具体到某个功能时由调用方传 tries 覆盖。 */
 export const DEFAULT_DELIVERY_TRIES = [
@@ -314,26 +318,49 @@ export async function rollbackProduct({
 }
 
 /**
- * 「待客户验收」邮件的主题和正文。写清地址和 2 到 3 件试的事。
- * 24 小时那条不发邮件，返回 `{email:false}`；以后要别的消息也走这里。
+ * 构建一个 linux/amd64 镜像。`ref` 给了就从那个提交的临时 worktree 构建，
+ * 不给就用当前工作树。工作树用完就删，不留在仓库里。
+ *
+ * `run(command, args, options)` 可注入，测试不跑 Docker。
  */
-export function renderDeliveryMail({ customer, product, address, tries, message = '待客户验收' } = {}) {
-  if (message === '满 24 小时') return { email: false, subject: '', body: '' }
-  const list = normalizeTries(tries)
-  const who = String(customer ?? '').trim() || '客户'
-  const what = String(product ?? '').trim() || '这次需求'
-  const subject = `${who} · ${what}：做好了，可以试了`
-  const body = [
-    `${who} · ${what}：做好了，可以试了。`,
-    '',
-    `地址：https://${address}/`,
-    '',
-    '麻烦试这几件事：',
-    ...list.map((item, index) => `${CIRCLED[index]}${item}`),
-    '',
-    '哪里不对，直接微信说。',
-  ].join('\n')
-  return { email: true, subject, body }
+export async function buildDockerImage({
+  repoDir,
+  ref = '',
+  image,
+  platform = 'linux/amd64',
+  docker = process.env.AFK_DOCKER || 'docker',
+  run,
+} = {}) {
+  if (!repoDir || !image) throw new Error('buildDockerImage 缺 repoDir 或 image')
+  const execute =
+    run ||
+    (async (command, args) => {
+      const result = await execFileAsync(command, args, {
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 60 * 60 * 1000,
+      }).catch((error) => {
+        throw new Error(`${command} ${args[0] || ''} 失败：${String(error.stderr || error.message).trim()}`)
+      })
+      return String(result.stdout ?? '')
+    })
+
+  let context = repoDir
+  let worktree = ''
+  if (ref) {
+    worktree = await mkdtemp(join(tmpdir(), 'afk-image-src-'))
+    await rm(worktree, { recursive: true, force: true })
+    await git(repoDir, ['worktree', 'add', '--detach', worktree, ref], { timeoutMs: 120000 })
+    context = worktree
+  }
+  try {
+    await execute(docker, ['build', '--platform', platform, '-t', image, context])
+  } finally {
+    if (worktree) {
+      await git(repoDir, ['worktree', 'remove', '--force', worktree]).catch(() => {})
+      await rm(worktree, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+  return image
 }
 
 /** 从仓库某个提交打一个代码 zip，给默认交付地址配套。 */

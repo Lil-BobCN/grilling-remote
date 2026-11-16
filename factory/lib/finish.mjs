@@ -9,61 +9,9 @@ import { dirname } from 'node:path'
 import { git } from './git.mjs'
 import { hasLabel } from './scheduler.mjs'
 import { parentCustomer, parentRequirement } from './ignition.mjs'
-import { readTrail, riskLevel } from './evidence.mjs'
+import { MANIFEST_RE, readTrail, riskLevel, riskReasons } from './evidence.mjs'
 
 const SMALL_LABEL = '大小:小需求'
-
-// 和 evidence.mjs 的 riskLevel 用同一套判据，这里多给出触发原因。
-const MIGRATION_RE = /(^|\/)(migrations?|db\/migrate|alembic|prisma\/migrations)(\/|$)|\.sql$/i
-const CREDENTIAL_RE =
-  /(^|\/)\.env(\.[^/]+)?$|(^|\/)(credentials?|secrets?)(\.[^/]+)?$|(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$|\.(pem|key|p12|pfx)$|(^|\/)\.npmrc$/i
-const MANIFEST_RE =
-  /(^|\/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|Gemfile|Gemfile\.lock|composer\.json|composer\.lock)$/i
-
-function normalizeFiles(files) {
-  return (Array.isArray(files) ? files : []).map((file) => {
-    if (typeof file === 'string') return { path: file, status: '' }
-    return {
-      path: String(file?.path || file?.filename || file?.file || ''),
-      status: String(file?.status || '').toUpperCase(),
-    }
-  })
-}
-
-function changedLines(diffStat) {
-  if (typeof diffStat === 'number') return diffStat
-  if (typeof diffStat === 'string') {
-    const insertions = /(\d+)\s+insertions?/.exec(diffStat)
-    const deletions = /(\d+)\s+deletions?/.exec(diffStat)
-    return Number(insertions?.[1] || 0) + Number(deletions?.[1] || 0)
-  }
-  if (diffStat && typeof diffStat === 'object') {
-    if (Number.isFinite(Number(diffStat.changedLines))) return Number(diffStat.changedLines)
-    return Number(diffStat.additions || 0) + Number(diffStat.deletions || 0)
-  }
-  return 0
-}
-
-function versionPairs(text) {
-  const removed = new Map()
-  const added = new Map()
-  for (const line of String(text ?? '').split(/\r?\n/)) {
-    const sign = line[0]
-    if (sign !== '-' && sign !== '+') continue
-    const body = line.slice(1)
-    const match =
-      /"([@a-z0-9/_.-]+)"\s*:\s*"[~^>=<\s]*v?(\d+)(?:\.\d+){0,2}"/i.exec(body) ||
-      /\b([@a-z0-9/_.-]+)\s*==\s*v?(\d+)(?:\.\d+){0,2}/i.exec(body) ||
-      /\b([@a-z0-9/_.-]+)@v?(\d+)(?:\.\d+){0,2}/i.exec(body)
-    if (!match) continue
-    const table = sign === '-' ? removed : added
-    table.set(match[1], Number(match[2]))
-  }
-  for (const [name, major] of added) {
-    if (removed.has(name) && removed.get(name) !== major) return true
-  }
-  return false
-}
 
 /**
  * 门方向由规则判定，agent 只能往危险方向改。
@@ -73,28 +21,9 @@ export function mergeRisk({ files = [], diffStat = {}, direction, maxLines = 400
   if (direction !== undefined && !['one-way', 'two-way'].includes(direction)) {
     throw new Error(`门方向只能是 one-way 或 two-way，收到：${String(direction)}`)
   }
-  const list = normalizeFiles(files)
-  const ruleDirection = riskLevel({ files, diffStat, maxLines, maxFiles }) === 'high' ? 'one-way' : 'two-way'
-  const reasons = []
-  const text = typeof diffStat === 'object' && diffStat ? String(diffStat.text || diffStat.patch || '') : ''
-  const lines = changedLines(diffStat)
-  const fileCount = Number(diffStat && typeof diffStat === 'object' ? diffStat.files : 0) || list.length
-
-  const migrations = list.filter((file) => MIGRATION_RE.test(file.path))
-  if (migrations.length) reasons.push(`碰迁移：${migrations.map((file) => file.path).join('、')}`)
-  const deleted = list.filter(
-    (file) => file.status === 'D' || file.status === 'DELETED' || /\(deleted\)/.test(file.path),
-  )
-  if (deleted.length) reasons.push(`删文件：${deleted.map((file) => file.path).join('、')}`)
-  const credentials = list.filter((file) => CREDENTIAL_RE.test(file.path))
-  if (credentials.length) reasons.push(`碰凭证：${credentials.map((file) => file.path).join('、')}`)
-  const manifests = list.filter((file) => MANIFEST_RE.test(file.path))
-  if (Boolean(diffStat?.dependencyMajor) || (manifests.length && versionPairs(text))) {
-    reasons.push(`依赖大版本变化：${manifests.map((file) => file.path).join('、')}`)
-  }
-  if (lines > maxLines) reasons.push(`改动 ${lines} 行，超过 ${maxLines} 行`)
-  if (fileCount > maxFiles) reasons.push(`改动 ${fileCount} 个文件，超过 ${maxFiles} 个`)
-  if (reasons.length === 0) reasons.push('没碰迁移、删除、凭证、大版本依赖，改动范围不大')
+  const ruleDirection =
+    riskLevel({ files, diffStat, maxLines, maxFiles }) === 'high' ? 'one-way' : 'two-way'
+  const reasons = riskReasons({ files, diffStat, maxLines, maxFiles })
 
   if (direction === 'one-way' && ruleDirection === 'two-way') {
     return { direction: 'one-way', reasons: [...reasons, '标成单向门（规则判的是双向门）'] }

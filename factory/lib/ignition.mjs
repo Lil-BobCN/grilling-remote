@@ -10,6 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
+import { git } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { hasLabel, labelNames } from './scheduler.mjs'
@@ -112,16 +113,7 @@ function gitAuthEnv(url, token) {
 }
 
 async function runGit(args, { cwd, env } = {}) {
-  const result = await execFileAsync('git', cwd ? ['-C', cwd, ...args] : args, {
-    timeout: 120000,
-    maxBuffer: 8 * 1024 * 1024,
-    ...(env && Object.keys(env).length ? { env: { ...process.env, ...env } } : {}),
-  }).catch((error) => error)
-  if (result.code) {
-    const output = String(result.stderr || result.stdout || result.message || '').trim()
-    throw new Error(`git ${args.join(' ')} 失败：${output}`)
-  }
-  return String(result.stdout || '').trim()
+  return git(cwd || process.cwd(), args, { env, timeoutMs: 120000 })
 }
 
 /** 客户仓 checkout：没有就 clone，有就 fetch，然后切到需求分支。 */
@@ -261,12 +253,14 @@ async function collectRelevantCode({ repoDir, ticket }) {
   return rows
 }
 
-export function buildPrBody({ ticket, reqBranch, ticketBranch }) {
+export function buildPrBody({ ticket, reqBranch, ticketBranch, customer = '', requirement = '' }) {
   return [
     '## 摘要',
     '',
     `- 票：#${ticket.number} ${ticket.title || ''}`.trimEnd(),
     `- 分支：\`${ticketBranch}\` → \`${reqBranch}\``,
+    ...(customer ? [`- 客户简称：${customer}`] : []),
+    ...(requirement ? [`- 需求名：${requirement}`] : []),
     '',
     '## 证据',
     '',
@@ -280,6 +274,8 @@ export function buildPrBody({ ticket, reqBranch, ticketBranch }) {
     '',
     '- 待补全：这次改动碰到哪些功能、顾客从哪里能看到。',
     '',
+    ...(customer ? [`<!-- factory:customer=${customer} -->`] : []),
+    ...(requirement ? [`<!-- factory:requirement=${requirement} -->`] : []),
   ].join('\n')
 }
 
@@ -668,7 +664,7 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
           base: reqBranch,
           head: ticketBranch,
           title: ticket.title || `票 #${ticket.number}`,
-          body: buildPrBody({ ticket, reqBranch, ticketBranch }),
+          body: buildPrBody({ ticket, reqBranch, ticketBranch, customer, requirement }),
         })
         prUrl =
           typeof created === 'string'

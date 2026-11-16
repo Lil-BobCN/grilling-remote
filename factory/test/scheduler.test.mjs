@@ -768,6 +768,78 @@ test('小需求却是排队中 → needs-info，写卡住进度并推需要人�
   assert.equal(notifier.delivered.size, 1)
 })
 
+test('新单进队列：已提交且没有评论时推一次，同一轮再跑不重复', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  const notifier = fakeNotifier()
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+
+  const events = notifier.calls.filter((event) => event.event === '新单进队列')
+  assert.equal(events.length, 1)
+  assert.equal(events[0].key, `#${parent.number}:新单进队列`)
+  assert.equal(events[0].data.customer, 'acme')
+  assert.equal(events[0].data.requirement, 'yuyue-quhuo')
+  assert.equal(labelsOf(fake, OWNER, REPO, parent.number).length, 1)
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+  assert.equal(notifier.calls.filter((event) => event.event === '新单进队列').length, 1)
+
+  // 重启后 key 不变，通知模块按 key 去重。
+  const restarted = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+  const second = fakeNotifier()
+  await runOnce({ gh, customers: customers(), notifier: second, clock: () => NOW, config: restarted })
+  assert.equal(second.calls[0].key, events[0].key)
+})
+
+test('已有评论的父工单不再推新单进队列', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const notifier = fakeNotifier()
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+  })
+  assert.equal(notifier.calls.filter((event) => event.event === '新单进队列').length, 0)
+})
+
+test('每日 preview-sweep：一天只调一次，失败只记错误', async (t) => {
+  const { gh } = await setupRepo(t)
+  const calls = []
+  const notifier = fakeNotifier()
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    previewSweep: async () => {
+      calls.push('sweep')
+      return { output: '' }
+    },
+  }
+
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+  assert.equal(calls.length, 1)
+  await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
+  assert.equal(calls.length, 1)
+
+  const bad = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    previewSweep: async () => {
+      throw new Error('helper 不在')
+    },
+  }
+  const report = await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config: bad })
+  assert.equal(report.previewSweep.ok, false)
+  assert.ok(report.errors.some((row) => row.previewSweep))
+})
+
 test('每日抽样：8:30 推前一天合并的单，当天只发一次；没有合并不发', async (t) => {
   const { gh } = await setupRepo(t)
   const notifier = fakeNotifier()

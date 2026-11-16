@@ -59,16 +59,13 @@
 
 ## 输出
 
-最后一行固定写：
+最后一行只写一行 JSON：
 
 ```
-AFK_VERDICT: pass
+AFK_VERDICT {"ok":true,"evidence":["https://github.com/<owner>/<repo>/pull/<n>#discussion_r1"],"problems":[]}
 ```
 
-或
-
-```
-AFK_VERDICT: fail 一句话原因
-```
-
-正文按两轴分节，每条意见带文件路径和行号，四类各自成组。结论只看标准轴和 spec 轴：有一个「采纳」就是 fail。
+- `ok` 是这次评审的结论。有一个「采纳」就写 `false`。
+- `problems` 写清哪些意见是「采纳」，一条一句。
+- `evidence` 写评论链接；没有链接时写成一句话摘要。
+- 不改代码，不提交，不推分支。正文按两轴分节，每条意见带文件路径和行号，四类各自成组。

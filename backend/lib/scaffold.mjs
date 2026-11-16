@@ -34,6 +34,7 @@ const STEP_NAMES = {
   query: '检查已有仓',
   generate: '生成文件',
   check: '本地检查',
+  verify: '本地验证',
   'create-repo': '建 GitHub 仓',
   commit: '初始提交',
   push: '推送',
@@ -145,6 +146,30 @@ export async function runCheck(workDir) {
 }
 
 /**
+ * 跑模板自带的验证脚本：启动应用，走一条关键路径，有 Chrome 就留第一张截图。
+ * 没有 Chrome 时脚本跳过截图，这里记一句在 `.audit/verify.txt`。
+ */
+export async function runVerifyScript(workDir) {
+  return run('bash', ['scripts/verify.sh'], { cwd: workDir })
+}
+
+async function recordVerify({ workDir, stdout }) {
+  const shot = join(workDir, '.audit', 'screenshots', 'first-order.png')
+  const screenshot = await exists(shot)
+  const lines = [
+    '建仓时的第一轮验证（scripts/verify.sh）',
+    '',
+    String(stdout || '').trim(),
+    '',
+    screenshot ? '截图：.audit/screenshots/first-order.png' : '没有 Chrome，跳过截图。关键路径已验证。',
+    '',
+  ]
+  await mkdir(join(workDir, '.audit'), { recursive: true })
+  await writeFile(join(workDir, '.audit', 'verify.txt'), lines.join('\n'))
+  return screenshot ? '.audit/screenshots/first-order.png' : ''
+}
+
+/**
  * @param {object} options
  * @param {object} options.gh GitHub 客户端，见 factory/lib/github.mjs
  * @param {string} options.owner
@@ -154,6 +179,7 @@ export async function runCheck(workDir) {
  * @param {string} options.workDir 生成仓库的本地目录，必须不存在或为空
  * @param {string} options.remoteUrl git 远端地址
  * @param {'user'|'org'} [options.ownerType]
+ * @param {Function} [options.verify] 本机验证命令，默认跑 `bash scripts/verify.sh`；测试注入假实现
  * @returns {Promise<object>}
  */
 export async function scaffoldCustomerRepo({
@@ -165,6 +191,7 @@ export async function scaffoldCustomerRepo({
   workDir,
   remoteUrl,
   ownerType = 'user',
+  verify = runVerifyScript,
   token = process.env.GITHUB_TOKEN,
 }) {
   for (const [name, value] of Object.entries({ owner, repoName, shortName, product, workDir, remoteUrl })) {
@@ -207,6 +234,11 @@ export async function scaffoldCustomerRepo({
     step = 'check'
     await runCheck(workDir)
 
+    step = 'verify'
+    const verifyOutput = await verify(workDir)
+    const verifyText = typeof verifyOutput === 'string' ? verifyOutput : verifyOutput?.stdout || ''
+    const screenshot = await recordVerify({ workDir, stdout: verifyText })
+
     step = 'create-repo'
     const repo = await gh.createRepo({
       owner,
@@ -248,6 +280,7 @@ export async function scaffoldCustomerRepo({
       commit,
       labels: LABELS.map((row) => row.name),
       files,
+      verify: { screenshot },
     }
   } catch (error) {
     const cleanup = []

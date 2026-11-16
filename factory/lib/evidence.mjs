@@ -365,6 +365,8 @@ const CREDENTIAL_RE =
 const MANIFEST_RE =
   /(^|\/)(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|Gemfile|Gemfile\.lock|composer\.json|composer\.lock)$/i
 
+export { MANIFEST_RE }
+
 function normalizeFiles(files) {
   return (Array.isArray(files) ? files : []).map((file) => {
     if (typeof file === 'string') return { path: file, status: '' }
@@ -415,25 +417,38 @@ function versionPairs(text) {
  * 风险两栏：单向门和影响范围。碰迁移、删除、凭证、大版本依赖，
  * 或 diff 超过阈值（默认 400 行或 10 个文件）判高风险。
  *
- * @returns {'high'|'normal'}
+ * @returns {string[]} 触发原因；没有触发时给一句「没碰…」的说明。
  */
-export function riskLevel({ files = [], diffStat = {}, maxLines = 400, maxFiles = 10 } = {}) {
+export function riskReasons({ files = [], diffStat = {}, maxLines = 400, maxFiles = 10 } = {}) {
   const list = normalizeFiles(files)
   const text = typeof diffStat === 'object' && diffStat ? String(diffStat.text || diffStat.patch || '') : ''
-  const deleted = list.some(
+  const reasons = []
+
+  const migrations = list.filter((file) => MIGRATION_RE.test(file.path))
+  if (migrations.length) reasons.push(`碰迁移：${migrations.map((file) => file.path).join('、')}`)
+  const deleted = list.filter(
     (file) => file.status === 'D' || file.status === 'DELETED' || /\(deleted\)/.test(file.path),
   )
-  const migration = list.some((file) => MIGRATION_RE.test(file.path))
-  const credential = list.some((file) => CREDENTIAL_RE.test(file.path))
-  const manifest = list.some((file) => MANIFEST_RE.test(file.path))
-  const major = Boolean(diffStat?.dependencyMajor) || (manifest && versionPairs(text))
+  if (deleted.length) reasons.push(`删文件：${deleted.map((file) => file.path).join('、')}`)
+  const credentials = list.filter((file) => CREDENTIAL_RE.test(file.path))
+  if (credentials.length) reasons.push(`碰凭证：${credentials.map((file) => file.path).join('、')}`)
+  const manifests = list.filter((file) => MANIFEST_RE.test(file.path))
+  if (Boolean(diffStat?.dependencyMajor) || (manifests.length && versionPairs(text))) {
+    reasons.push(`依赖大版本变化：${manifests.map((file) => file.path).join('、')}`)
+  }
   const lines = changedLineCount(diffStat)
   const fileCount = Number(diffStat && typeof diffStat === 'object' ? diffStat.files : 0) || list.length
+  if (lines > maxLines) reasons.push(`改动 ${lines} 行，超过 ${maxLines} 行`)
+  if (fileCount > maxFiles) reasons.push(`改动 ${fileCount} 个文件，超过 ${maxFiles} 个`)
+  if (reasons.length === 0) reasons.push('没碰迁移、删除、凭证、大版本依赖，改动范围不大')
+  return reasons
+}
 
-  if (migration || deleted || credential || major || lines > maxLines || fileCount > maxFiles) {
-    return 'high'
-  }
-  return 'normal'
+/**
+ * @returns {'high'|'normal'}
+ */
+export function riskLevel(options = {}) {
+  return riskReasons(options).some((reason) => !reason.startsWith('没碰')) ? 'high' : 'normal'
 }
 
 /**

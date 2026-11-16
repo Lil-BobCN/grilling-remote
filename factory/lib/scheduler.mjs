@@ -336,6 +336,24 @@ function daysBetween(from, now) {
 }
 
 /**
+ * 新建父工单第一次出现时推一条「新单进队列」。
+ * 只看两条事实：状态是 `已提交`，且工单上还没有任何评论。
+ * key 固定用父工单号，通知模块记得发过，重启不重复。
+ */
+export function newTicketEvent({ parent, comments = [], owner, repo }) {
+  if (stateOf(parent) !== '已提交') return null
+  if (Array.isArray(comments) && comments.length > 0) return null
+  return notifyAction({
+    parent,
+    owner,
+    repo,
+    event: '新单进队列',
+    key: `#${parent.number}:新单进队列`,
+    data: {},
+  })
+}
+
+/**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
  * 每 24 小时换一个新 key，通知模块按 key 去重，同一事实同一天只送一次。
  */
@@ -363,7 +381,7 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
     const days = daysBetween(at, now)
     return { event: '补缺口提案', days_waited: days, key: `#${parent.number}:补缺口提案:${days}`, gate: latestGate }
   }
-  if (kind === '点头：补缺口' && !parent?.spec && !parent?.hasSpec && state === '排队中') {
+  if (kind === '点头：补缺口' && !parent?.spec && state === '排队中') {
     const days = daysBetween(at, now)
     if (days < 1) return null
     return { event: '该跑 to-spec', days_waited: days, key: `#${parent.number}:该跑 to-spec:${days}`, gate: latestGate }
@@ -1057,17 +1075,53 @@ export async function runOnce({
     report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps })
 
     for (const parent of snapshot.parents) {
-      const needsAnswer = await resolveNeedsAnswer(config, {
+      const newTicket = newTicketEvent({
+        parent,
+        comments: parent.comments || [],
         owner: row.owner,
         repo: row.repo,
-        parent,
-        snapshot,
       })
+      if (newTicket) {
+        try {
+          const result = await sendEvent({ notifier, event: newTicket, config, now: nowDate })
+          report.notifications.push({
+            repo: row.repo,
+            parent: parent.number,
+            event: newTicket.event,
+            key: newTicket.key,
+            ...result,
+          })
+        } catch (error) {
+          report.errors.push({
+            repo: row.repo,
+            parent: parent.number,
+            event: newTicket.event,
+            message: error.message,
+          })
+        }
+      }
+
+      let answers = []
+      try {
+        answers = await resolveNeedsAnswer(config, {
+          owner: row.owner,
+          repo: row.repo,
+          parent,
+          snapshot,
+        })
+      } catch (error) {
+        report.errors.push({
+          repo: row.repo,
+          parent: parent.number,
+          needsAnswer: true,
+          message: error.message,
+        })
+      }
       const reminder = pendingReminder({
         parent,
         latestGate: latestGate(parent.comments || []),
         now: nowDate,
-        needsAnswer,
+        needsAnswer: answers,
       })
       if (!reminder) continue
       const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
@@ -1091,15 +1145,33 @@ export async function runOnce({
     }
   }
 
+  if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
+    try {
+      const result = await config.previewSweep({ now: nowDate })
+      report.previewSweep = { ok: true, ...result }
+    } catch (error) {
+      report.errors.push({ previewSweep: true, message: error.message })
+      report.previewSweep = { ok: false, error: error.message }
+    }
+    // 每天只试一次：helper 不在或失败，留到明天，不每 30 秒重试。
+    config.lastPreviewSweepDate = localDate(nowDate)
+  }
+
   if (dueDigest({ now: nowDate, lastSentDate: config.lastSentDate })) {
     const date = localDateOffset(nowDate, -1)
     let items = []
+    let queryFailed = false
     if (typeof config.listMergedYesterday === 'function') {
-      const rows = await config.listMergedYesterday({
-        now: nowDate,
-        repos: snapshots.map(({ row }) => row),
-      })
-      if (Array.isArray(rows)) items = rows
+      try {
+        const rows = await config.listMergedYesterday({
+          now: nowDate,
+          repos: snapshots.map(({ row }) => row),
+        })
+        if (Array.isArray(rows)) items = rows
+      } catch (error) {
+        queryFailed = true
+        report.errors.push({ digest: true, listMergedYesterday: true, message: error.message })
+      }
     }
     const event = digestEvent({ items, date })
     let result = { sent: false, count: items.length }
@@ -1111,8 +1183,8 @@ export async function runOnce({
         result = { sent: false, count: items.length, error: error.message }
       }
     }
-    config.lastSentDate = localDate(nowDate)
-    report.digest = { due: true, date, ...result }
+    config.lastSentDate = queryFailed ? config.lastSentDate : localDate(nowDate)
+    report.digest = { due: true, date, ...(queryFailed ? { queryFailed: true } : {}), ...result }
   }
 
   return report

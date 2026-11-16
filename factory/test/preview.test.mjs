@@ -7,6 +7,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
+  createDefaultBuildImage,
   previewAddress,
   previewNeeded,
   startPreview,
@@ -480,4 +481,42 @@ test('CLI stop 调 helper 并删掉本机凭据', async (t) => {
   await assert.rejects(access(credentials))
   const args = (await readFile(fake.log, 'utf8')).trim().split('\n')
   assert.deepEqual(args, ['preview-stop', 'acme-shop-pr42.afkfactory.space'])
+})
+
+test('默认构建从 PR head 的临时 worktree 构建，用完删掉', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-preview-build-'))
+  try {
+    const git = (...args) =>
+      execFileAsync('git', ['-C', dir, ...args], { maxBuffer: 8 * 1024 * 1024 })
+    await git('init', '-b', 'main')
+    await git('config', 'user.name', 'AFK Test')
+    await git('config', 'user.email', 'test@afkfactory.space')
+    await writeFile(join(dir, 'README.md'), 'base\n')
+    await git('add', '-A')
+    await git('commit', '-m', 'base')
+    const head = (await git('rev-parse', 'HEAD')).stdout.trim()
+
+    const calls = []
+    const buildImage = createDefaultBuildImage({
+      run: async (command, args) => {
+        calls.push({ command, args })
+        await access(args.at(-1))
+      },
+    })
+    const image = await buildImage({
+      pr: { number: 77, headRefOid: head },
+      repoDir: dir,
+      address: 'acme-shop-pr77.afkfactory.space',
+    })
+
+    assert.equal(image, 'acme-shop-pr77.afkfactory.space:pr77')
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].command, 'docker')
+    assert.deepEqual(calls[0].args.slice(0, 5), ['build', '--platform', 'linux/amd64', '-t', image])
+    assert.notEqual(calls[0].args.at(-1), dir)
+    await assert.rejects(access(calls[0].args.at(-1)), '临时 worktree 没删掉')
+  } finally {
+    await execFileAsync('git', ['-C', dir, 'worktree', 'prune']).catch(() => {})
+    await execFileAsync('rm', ['-rf', dir]).catch(() => {})
+  }
 })

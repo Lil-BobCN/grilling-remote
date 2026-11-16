@@ -11,6 +11,7 @@
 | `lib/scaffold.mjs` | 建客户仓和模板应用 | #458（在 `backend/`） |
 | `lib/map-issues.mjs` | 按 `map.md` 建地图 issue 和决定票 | #460、#462 |
 | `lib/scheduler.mjs` | 30 秒一轮的路由表 | #463、#470 |
+| `lib/scheduler-jobs.mjs` | 调度器的默认实现：叫拆票、建修复子票、读待答问题、读昨日合并、每日 preview-sweep | #457 |
 | `lib/progress.mjs` | 客户进度转档行 `进度 v1｜…` | #463 |
 | `lib/notify.mjs` | 调 `notifier/` 命令行发通知 | #463 |
 | `lib/lock.mjs` | 每仓一把文件锁 | #463 |
@@ -18,6 +19,10 @@
 | `lib/sandcastle-runner.mjs` | 默认 runner：装依赖、起容器、收回提交 | #464 |
 | `bin/ignite.mjs` | 手工点火一张票，`--dry-run` 打印 prompt 和命令 | #464 |
 | `lib/evidence.mjs` | 验证、评审、四样证据、合需求分支 | #465 |
+| `lib/audit-agents.mjs` | 验证和评审 agent 的 `AFK_VERDICT` 解析、写 `.audit` trail | #457 |
+| `bin/verify.mjs` | 跑一次验证 agent，写 `phase=verify` 和 `phase=test` 行 | #457 |
+| `bin/review.mjs` | 跑一次评审 agent，写 `phase=review` 行 | #457 |
+| `lib/stall.mjs` | 停法判据：三圈没进展、同类问题跨票两次 | #457 |
 | `lib/finish.mjs` | 收尾评审、`/pr` 四栏、合主干 | #466 |
 | `lib/inbox.mjs` | 从服务器拉回传件到 `inbox/` | #459 |
 | `lib/deploy.mjs` | 构建镜像、部署、回滚、交付地址 | #468 |

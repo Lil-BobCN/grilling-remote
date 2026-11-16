@@ -15,10 +15,11 @@ export class GitError extends Error {
   }
 }
 
-export async function git(cwd, args, { timeoutMs = 60000 } = {}) {
+export async function git(cwd, args, { timeoutMs = 60000, env } = {}) {
   const result = await execFileAsync('git', ['-C', cwd, ...args], {
     timeout: timeoutMs,
     maxBuffer: 8 * 1024 * 1024,
+    ...(env && Object.keys(env).length ? { env: { ...process.env, ...env } } : {}),
   }).catch((error) => error)
   if (result.code) throw new GitError(args, result)
   return String(result.stdout || '').trim()

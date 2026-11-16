@@ -104,6 +104,7 @@ async function main() {
 
   const result = await pullInbox({ remote, inboxDir, customersPath, notify: notifyOperator })
   logLine({
+    level: 'info',
     msg: '回传件拉取结束',
     inbox: inboxDir,
     customers: result.customers,

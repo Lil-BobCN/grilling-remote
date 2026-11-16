@@ -3,13 +3,17 @@
  * 收尾合并的命令行入口。E1 用。
  *
  *   node factory/bin/finish.mjs finish --owner <owner> --repo <repo> \
- *     --parent <父工单号> --req-branch <分支> [--main main] [--dry-run] [--no-deploy]
+ *     --parent <父工单号> --req-branch <分支> [--main main] [--product <软件简称>] \
+ *     [--dry-run] [--no-deploy]
  *
  * 默认注入真实 git、gh、agent runner 和 notifier。
  * `--dry-run` 只读：打印四栏和检查结果，不建 PR、不合、不通知。
- * 合主干成功后默认部署：客户简称和软件简称从父工单正文取，订单号从
+ * 合主干成功后默认部署：客户简称和需求名从父工单正文取，软件简称取 `--product`
+ * 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜；订单号从
  * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
- * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`。`--no-deploy` 关掉部署和 zip。
+ * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`；在父工单写一条
+ * `进度 v1｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
+ * 把地址写进订单的 `delivery` 字段。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
 import { readFile } from 'node:fs/promises'
@@ -25,15 +29,17 @@ import {
 import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.mjs'
+import { ensureCommentOnce } from '../lib/issues.mjs'
 import { createNotifier } from '../lib/notify.mjs'
+import { parseProgress, progressLine } from '../lib/progress.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
-import { deployWithDefaults, publishZipWithDefaults } from './deploy.mjs'
+import { deployWithDefaults, markDeliveredWithDefaults, publishZipWithDefaults } from './deploy.mjs'
 import { parseVerdict } from './evidence.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
 const USAGE = `用法：
-  node factory/bin/finish.mjs finish --owner <owner> --repo <repo> --parent <父工单号> --req-branch <分支> [--main main] [--dry-run] [--no-deploy]`
+  node factory/bin/finish.mjs finish --owner <owner> --repo <repo> --parent <父工单号> --req-branch <分支> [--main main] [--product <软件简称>] [--dry-run] [--no-deploy]`
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
@@ -124,6 +130,37 @@ function verifyBrief({ instructions, parentIssue, reqBranch }) {
 
 function safeName(value) {
   return String(value || 'branch').replace(/[^a-zA-Z0-9._-]+/g, '-')
+}
+
+function labelNames(issue) {
+  return (issue?.labels || []).map((label) => (typeof label === 'string' ? label : label?.name))
+}
+
+/**
+ * 软件简称决定交付地址，只从显式参数或仓名 `<客户简称>-<软件简称>` 的后缀取。
+ * 拼不出就报错，不拿需求名顶替。
+ */
+export function productFromRepo({ repo, customer, explicit } = {}) {
+  const given = String(explicit ?? '').trim()
+  if (given) return given
+  const name = String(repo ?? '').split('/').filter(Boolean).pop() || ''
+  const prefix = customer ? `${customer}-` : ''
+  if (prefix && name.startsWith(prefix) && name.length > prefix.length) {
+    return name.slice(prefix.length)
+  }
+  return ''
+}
+
+/** 父工单评论里最新一条进度行的轮次；没有进度行按第 1 轮。 */
+export function latestRound(comments = []) {
+  let round = 1
+  for (const comment of comments) {
+    for (const line of String(comment?.body || '').split(/\r?\n/)) {
+      const parsed = parseProgress(line)
+      if (parsed) round = parsed.round
+    }
+  }
+  return round
 }
 
 /** 合并后清理绑定在需求分支上的 worktree。当前目录不删。 */
@@ -276,11 +313,11 @@ export async function runFinish(options, deps = {}) {
 
   const parentIssue = state.parent
   const customer = parentCustomer(parentIssue?.body)
-  const product = parentRequirement(parentIssue?.body)
+  const requirement = parentRequirement(parentIssue?.body)
   const orderId = parentOrder(parentIssue?.body)
   const missing = []
   if (!customer) missing.push('- 客户简称：')
-  if (!product) missing.push('- 需求名：')
+  if (!requirement) missing.push('- 需求名：')
   if (!orderId) missing.push('<!-- factory:order=... -->')
 
   if (missing.length) {
@@ -289,11 +326,26 @@ export async function runFinish(options, deps = {}) {
       notifier,
       key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
       customer: customer || '未知客户',
-      requirement: product || parentIssue?.title || '',
+      requirement: requirement || parentIssue?.title || '',
       tried: error,
       link: parentIssue?.html_url || '',
     })
     result.deploy = { ok: false, reason: 'bad_parent', error, missing }
+    return { output: result, exitCode: 1 }
+  }
+
+  const product = productFromRepo({ repo, customer, explicit: options.product })
+  if (!product) {
+    const error = `软件简称拼不出来：传 --product，或让仓名是 ${customer}-<软件简称>；不猜`
+    await notifyDeployFailure({
+      notifier,
+      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      customer,
+      requirement,
+      tried: error,
+      link: parentIssue?.html_url || '',
+    })
+    result.deploy = { ok: false, reason: 'bad_product', error }
     return { output: result, exitCode: 1 }
   }
 
@@ -307,7 +359,7 @@ export async function runFinish(options, deps = {}) {
       product,
       orderId,
       version,
-      requirement: product,
+      requirement,
       link: parentIssue?.html_url || '',
       pr: result.pr?.number,
       notifier,
@@ -318,7 +370,7 @@ export async function runFinish(options, deps = {}) {
       notifier,
       key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
       customer,
-      requirement: product,
+      requirement,
       tried: `部署脚本抛错：${errorText(error)}`,
       link: parentIssue?.html_url || '',
     })
@@ -336,6 +388,43 @@ export async function runFinish(options, deps = {}) {
       if (codeZipUrl) deployed.codeZipUrl = codeZipUrl
     } catch (error) {
       deployed.warning = [deployed.warning, `代码 zip 没发出去：${errorText(error)}`]
+        .filter(Boolean)
+        .join('；')
+    }
+
+    try {
+      const comments = await gh.listComments({
+        owner,
+        repo,
+        number: parentIssue.number,
+      })
+      await ensureCommentOnce(gh, {
+        owner,
+        repo,
+        number: parentIssue.number,
+        body: progressLine({
+          path: labelNames(parentIssue).includes('大小:小需求') ? '小需求' : '其余',
+          tier: '待客户验收',
+          step: '已部署',
+          round: latestRound(comments),
+          stuck: false,
+        }),
+      })
+    } catch (error) {
+      deployed.warning = [deployed.warning, `父工单进度评论没写成：${errorText(error)}`]
+        .filter(Boolean)
+        .join('；')
+    }
+
+    const markDelivered = deps.markDelivered || markDeliveredWithDefaults
+    try {
+      deployed.markDelivered = await markDelivered({
+        orderId,
+        address: deployed.address,
+        version,
+      })
+    } catch (error) {
+      deployed.warning = [deployed.warning, `订单 delivery 字段没写成：${errorText(error)}`]
         .filter(Boolean)
         .join('；')
     }

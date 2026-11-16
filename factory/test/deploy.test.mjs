@@ -7,14 +7,13 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { runDeploy, publishZipWithDefaults } from '../bin/deploy.mjs'
-import { runFinish } from '../bin/finish.mjs'
+import { productFromRepo, runFinish } from '../bin/finish.mjs'
 import {
   DEFAULT_DELIVERY_TRIES,
   buildCodeZip,
   deliveryAddress,
   deployProduct,
   publishCodeZip,
-  renderDeliveryMail,
   rollbackProduct,
 } from '../lib/deploy.mjs'
 import { appendTrail } from '../lib/evidence.mjs'
@@ -225,33 +224,6 @@ test('回滚失败也发出事通知', async () => {
   assert.equal(incident.data.reason, '回滚失败')
 })
 
-test('待客户验收邮件写清地址和 2 到 3 件试的事；24 小时那条不发邮件', () => {
-  const mail = renderDeliveryMail({
-    customer: 'B 店',
-    product: 'shuiguo',
-    address: 'b-shop-shuiguo.afkfactory.space',
-    tries: ['打开首页', '填一条数据', '刷新看还在不在'],
-  })
-  assert.equal(mail.email, true)
-  assert.match(mail.subject, /B 店/)
-  assert.match(mail.subject, /做好了，可以试了/)
-  const body = mail.body
-  assert.ok(body.includes('https://b-shop-shuiguo.afkfactory.space/'))
-  assert.ok(body.includes('①打开首页'))
-  assert.ok(body.includes('②填一条数据'))
-  assert.ok(body.includes('③刷新看还在不在'))
-  assert.ok(body.includes('哪里不对，直接微信说'))
-
-  const reminder = renderDeliveryMail({
-    customer: 'B 店',
-    product: 'shuiguo',
-    address: 'b-shop-shuiguo.afkfactory.space',
-    tries: DEFAULT_DELIVERY_TRIES,
-    message: '满 24 小时',
-  })
-  assert.equal(reminder.email, false)
-})
-
 test('默认的试三件事是 2 到 3 件', () => {
   assert.ok(DEFAULT_DELIVERY_TRIES.length >= 2)
   assert.ok(DEFAULT_DELIVERY_TRIES.length <= 3)
@@ -367,7 +339,7 @@ async function finishRepo(childNumber) {
   return dir
 }
 
-function finishDeps(gh, sent, deployCalls, zipCalls, deployResult) {
+function finishDeps(gh, sent, deployCalls, zipCalls, deployResult, deliveredCalls) {
   return {
     gh,
     runner: {
@@ -385,6 +357,10 @@ function finishDeps(gh, sent, deployCalls, zipCalls, deployResult) {
       zipCalls.push(args)
       return `https://afkfactory.space/downloads/${args.address}-${args.version}.zip`
     },
+    markDelivered: async (args) => {
+      deliveredCalls.push(args)
+      return { ok: true }
+    },
   }
 }
 
@@ -394,6 +370,7 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
   const sent = []
   const deployCalls = []
   const zipCalls = []
+  const deliveredCalls = []
   try {
     const { output, exitCode } = await runFinish(
       {
@@ -403,11 +380,12 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
         'repo-dir': dir,
         'req-branch': 'req/order-1',
         main: 'main',
+        product: 'shop',
         ...finishOptions,
       },
-      finishDeps(gh, sent, deployCalls, zipCalls, deployResult),
+      finishDeps(gh, sent, deployCalls, zipCalls, deployResult, deliveredCalls),
     )
-    return { output, exitCode, sent, deployCalls, zipCalls, dir, fake }
+    return { output, exitCode, sent, deployCalls, zipCalls, deliveredCalls, parent, fake, dir }
   } catch (error) {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
@@ -416,7 +394,8 @@ async function runFinishFlow(options = {}, finishOptions = {}, deployResult = un
 }
 
 test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge SHA 短号', async () => {
-  const { output, exitCode, deployCalls, zipCalls, sent, fake, dir } = await runFinishFlow()
+  const { output, exitCode, deployCalls, zipCalls, deliveredCalls, sent, parent, fake, dir } =
+    await runFinishFlow()
   try {
     assert.equal(exitCode, 0, JSON.stringify(output))
     assert.equal(output.ok, true)
@@ -439,6 +418,51 @@ test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge
       output.deploy.codeZipUrl,
       'https://afkfactory.space/downloads/acme-shop.afkfactory.space-merge-1.zip',
     )
+
+    assert.equal(deliveredCalls.length, 1)
+    assert.deepEqual(deliveredCalls[0], {
+      orderId: 'o-0001',
+      address: 'acme-shop.afkfactory.space',
+      version: 'merge-1',
+    })
+    const issue = fake.state.issues
+      .get(`${OWNER}/${REPO}`)
+      .find((row) => row.number === parent.number)
+    const progress = issue.comments.filter((row) => row.body.startsWith('进度 v1｜'))
+    assert.ok(
+      progress.some((row) =>
+        /^进度 v1｜路径：其余｜客户档：待客户验收｜细阶段：已部署｜轮次：1｜卡住：否$/.test(row.body),
+      ),
+      `父工单没有部署进度评论：${JSON.stringify(progress.map((row) => row.body))}`,
+    )
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('软件简称取 --product 或仓名后缀，拼不出就拒绝部署', () => {
+  assert.equal(productFromRepo({ repo: 'acme-shop', customer: 'acme' }), 'shop')
+  assert.equal(productFromRepo({ repo: 'acme/acme-shop', customer: 'acme' }), 'shop')
+  assert.equal(productFromRepo({ repo: 'demo', customer: 'acme' }), '')
+  assert.equal(productFromRepo({ repo: 'acme-shop', customer: 'acme', explicit: 'crm' }), 'crm')
+})
+
+test('仓名拼不出软件简称时拒绝部署，发出事通知，CLI 退出非零', async () => {
+  const { output, exitCode, deployCalls, zipCalls, sent, fake, dir } = await runFinishFlow(
+    {},
+    { product: '' },
+  )
+  try {
+    assert.equal(deployCalls.length, 0)
+    assert.equal(zipCalls.length, 0)
+    assert.equal(exitCode, 1)
+    assert.equal(output.deploy.ok, false)
+    assert.equal(output.deploy.reason, 'bad_product')
+    assert.match(output.deploy.error, /--product/)
+    const incident = sent.find((event) => event.event === '出事')
+    assert.ok(incident, '没有发出事通知')
+    assert.match(incident.data.tried, /软件简称/)
   } finally {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
