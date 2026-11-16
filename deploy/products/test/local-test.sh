@@ -505,6 +505,17 @@ make_test_certs() {
   chmod 644 "$dir"/*.pem
 }
 
+run_with_timeout() { # 秒数 命令…
+  local seconds=$1
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$seconds" "$@"
+  else
+    # macOS 没有 timeout；alarm 跨 exec 保留，够杀掉挂住的 docker 客户端。
+    perl -e 'alarm shift; exec @ARGV' "$seconds" "$@"
+  fi
+}
+
 caddy_curl() { # 主机 路径
   curl -sk --max-time 5 \
     --cert "$TMP/certs/client.pem" --key "$TMP/certs/client.key" \
@@ -518,7 +529,7 @@ test_caddy() {
     return
   fi
   if ! docker image inspect "$CADDY_IMAGE" >/dev/null 2>&1; then
-    if ! docker pull "$CADDY_IMAGE" >/dev/null 2>&1; then
+    if ! run_with_timeout 180 docker pull "$CADDY_IMAGE" >/dev/null 2>&1; then
       note "拉不到 ${CADDY_IMAGE}，跳过 Caddy 运行测试"
       return
     fi
@@ -539,7 +550,7 @@ test_caddy() {
 
   # 预览模板也渲染一份，确认 Basic Auth 语法能过校验。
   local hash preview_addr
-  hash=$(docker run --rm "$CADDY_IMAGE" caddy hash-password --plaintext tester 2>/dev/null)
+  hash=$(run_with_timeout 60 docker run --rm "$CADDY_IMAGE" caddy hash-password --plaintext tester 2>/dev/null)
   preview_addr="preview-$RANDOM.afkfactory.space"
   sed -e "s|__ADDRESS__|$preview_addr|g" \
     -e "s|__BASIC_AUTH_USER__|tester|g" \
@@ -559,20 +570,21 @@ test_caddy() {
     -v "$TMP/caddy/config:/config"
   )
 
-  if docker run --rm "${mount_opts[@]}" "$CADDY_IMAGE" \
+  if run_with_timeout 60 docker run --rm "${mount_opts[@]}" "$CADDY_IMAGE" \
     caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
     ok "Caddy 能读主配置和两个 include 目录"
   else
     bad "Caddy 校验不过"
-    docker run --rm "${mount_opts[@]}" "$CADDY_IMAGE" \
+    run_with_timeout 60 docker run --rm "${mount_opts[@]}" "$CADDY_IMAGE" \
       caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -10 >&2
     return
   fi
 
-  if ! docker run -d --name "$CADDY_NAME" --network "$NET" \
+  if ! run_with_timeout 60 docker run -d --name "$CADDY_NAME" --network "$NET" \
     -p "127.0.0.1:$CADDY_HOST_PORT:443" "${mount_opts[@]}" \
     "$CADDY_IMAGE" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null; then
     bad "Caddy 容器起不来"
+    docker rm -f "$CADDY_NAME" >/dev/null 2>&1 || true
     return
   fi
 

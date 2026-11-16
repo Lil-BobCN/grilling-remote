@@ -358,8 +358,29 @@ caddy_curl() { # 主机 路径 [用户名:密码]
     -o /dev/null -w '%{http_code}' "https://$host:$CADDY_HOST_PORT$path"
 }
 
+run_with_timeout() { # 秒数 命令…
+  local seconds=$1
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$seconds" "$@"
+  else
+    # macOS 没有 timeout；alarm 跨 exec 保留，够杀掉挂住的 docker 客户端。
+    perl -e 'alarm shift; exec @ARGV' "$seconds" "$@"
+  fi
+}
+
+caddy_validate() { # Caddy 挂载参数…
+  local name="afk-preview-validate-$$"
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  run_with_timeout 60 docker run --rm --name "$name" "$@"
+  local code=$?
+  [[ $code -eq 0 ]] || docker rm -f "$name" >/dev/null 2>&1 || true
+  return "$code"
+}
+
 caddy_reload() {
-  docker exec "$CADDY_NAME" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1
+  run_with_timeout 60 docker exec "$CADDY_NAME" caddy reload \
+    --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1
 }
 
 caddy_join() { # 网络名
@@ -373,7 +394,7 @@ test_caddy_start() {
     return
   fi
   if ! docker image inspect "$CADDY_IMAGE" >/dev/null 2>&1; then
-    if ! docker pull "$CADDY_IMAGE" >/dev/null 2>&1; then
+    if ! run_with_timeout 180 docker pull "$CADDY_IMAGE" >/dev/null 2>&1; then
       note "拉不到 ${CADDY_IMAGE}，跳过 Caddy 运行测试"
       return
     fi
@@ -398,20 +419,22 @@ test_caddy_start() {
     -v "$TMP/caddy/config:/config"
   )
 
-  if docker run --rm "${mounts[@]}" "$CADDY_IMAGE" \
+  if caddy_validate "${mounts[@]}" "$CADDY_IMAGE" \
     caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
     ok "Caddy 能读主配置和两个 include 目录"
   else
     bad "Caddy 校验不过"
-    docker run --rm "${mounts[@]}" "$CADDY_IMAGE" \
+    caddy_validate "${mounts[@]}" "$CADDY_IMAGE" \
       caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -10 >&2
     return
   fi
 
-  if ! docker run -d --name "$CADDY_NAME" --network "${NET_PREFIX}$(slug_of "$PRODUCT_ADDR")" \
+  if ! run_with_timeout 60 docker run -d --name "$CADDY_NAME" \
+    --network "${NET_PREFIX}$(slug_of "$PRODUCT_ADDR")" \
     -p "127.0.0.1:$CADDY_HOST_PORT:443" "${mounts[@]}" \
     "$CADDY_IMAGE" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null; then
     bad "Caddy 容器起不来"
+    docker rm -f "$CADDY_NAME" >/dev/null 2>&1 || true
     return
   fi
 
