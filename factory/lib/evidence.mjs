@@ -426,8 +426,6 @@ export function verifyPlan({ risk = 'normal', changedLines = 0, textOnly = false
   return { run: true, verifiers: 1, mode: 'single', reviewMode: 'standard' }
 }
 
-export { errorText, GitError }
-
 const STATE_PENDING = '状态:待验收'
 const SANDBOX_LABEL = 'Sandcastle'
 
