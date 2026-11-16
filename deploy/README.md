@@ -1,5 +1,7 @@
 # 官网下载包发布
 
+> 状态：现行
+
 官网静态页在本仓库 `site/`，构建产物在 `site/dist/`，部署时放服务器 `/data/www`。路由映射按 D-0097，2026-11-15 随 I-0086 上线落到 Caddy（I-0070 当时暂缓）。
 
 客户入口是 `https://afkfactory.space/`；`afkfactory.dev` 保留兼容。`deploy/Caddyfile` 的裸域块同时匹配两个域名，站点和 API 共用。

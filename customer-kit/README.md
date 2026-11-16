@@ -4,6 +4,8 @@
 
 # 客户工作区包（#23）
 
+> 状态：现行
+
 一句话：给非技术客户用的 DeepSeek Harness 工作区 zip。解压后根目录就是工作区，客户用 dsh 打开，说「开始需求澄清」就开始。技能在 `.dsh/skills/`，七个，全部照上游 `mattpocock/skills` 提交 `5863806` 原样装；只删 `wayfinder` 和 `grill-with-docs` 的 `disable-model-invocation: true`。`AGENTS.md` 是成品，`docs/agents/` 两份追踪器文档已预生成。没有装配提示词。
 
 ## 目录
