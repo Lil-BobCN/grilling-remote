@@ -21,13 +21,13 @@ async function orderFile(config, id) {
   return JSON.parse(await readFile(join(config.dataDir, 'orders', `${id}.json`), 'utf8'))
 }
 
-test('小需求完整包上传成功，写订单；重传沿用同一张单', async () => {
+test('地图型需求完整包上传成功，写订单；重传沿用同一张单', async () => {
   const { config } = await makeConfig()
   await seedCustomer(config)
   const server = await startServer(config)
   try {
     const { cookie } = await login(server.base)
-    const workspace = await makeWorkspace()
+    const workspace = await makeWorkspace({ small: false })
 
     const first = await upload(server.base, cookie, await readZip(workspace.zipPath))
     assert.equal(first.status, 200)
@@ -294,7 +294,7 @@ test('同一需求目录已锁单，重传 422 并提示新建需求目录', asy
   const server = await startServer(config)
   try {
     const { cookie } = await login(server.base)
-    const workspace = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const workspace = await makeWorkspace({ small: false, software: 'shuiguo\n', name: 'demo' })
     const bytes = await readZip(workspace.zipPath)
     assert.equal((await upload(server.base, cookie, bytes)).status, 200)
 
@@ -317,7 +317,7 @@ test('锁单检查读不到时放行，重传按新一轮记', async () => {
   const server = await startServer(config)
   try {
     const { cookie } = await login(server.base)
-    const workspace = await makeWorkspace({ software: 'shuiguo\n', name: 'demo' })
+    const workspace = await makeWorkspace({ small: false, software: 'shuiguo\n', name: 'demo' })
     const bytes = await readZip(workspace.zipPath)
     assert.equal((await upload(server.base, cookie, bytes)).status, 200)
 
@@ -528,7 +528,7 @@ test('同一账号上传限速返回 429', async () => {
   const server = await startServer(config)
   try {
     const { cookie } = await login(server.base)
-    const workspace = await makeWorkspace()
+    const workspace = await makeWorkspace({ small: false })
     const bytes = await readZip(workspace.zipPath)
     assert.equal((await upload(server.base, cookie, bytes)).status, 200)
     assert.equal((await upload(server.base, cookie, bytes)).status, 200)

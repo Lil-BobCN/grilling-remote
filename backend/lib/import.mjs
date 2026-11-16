@@ -22,11 +22,14 @@ import { logLine } from './log.mjs'
 import { readOrders, updateOrder } from './orders.mjs'
 import { renderParentIssue } from './parent-issue.mjs'
 import { scaffoldCustomerRepo } from './scaffold.mjs'
+import { createSpecLock } from './spec-lock.mjs'
 import { readJson, withFileLock, writeJsonAtomic } from './store.mjs'
 
 const execFileAsync = promisify(execFile)
 const SNAPSHOT_NOTE = '回传快照，以父工单和 spec 为准，不作为决策来源。'
 const SMALL_LABEL = { name: '大小:小需求', color: 'ededed', description: '小需求，跳过 spec 和拆票' }
+const SUBMITTED_LABEL = '状态:已提交'
+const REUPLOAD_CLEAR_LABELS = ['状态:排队中', '状态:开发中', '状态:待验收', 'Sandcastle']
 
 async function exists(path) {
   try {
@@ -35,6 +38,12 @@ async function exists(path) {
   } catch {
     return false
   }
+}
+
+/** 小需求只有需求草稿，没有地图；建单即锁，不走重传。 */
+async function isSmallRequirement(uploadDir, requirement) {
+  const dir = join(uploadDir, 'work', 'scratch', requirement)
+  return (await exists(join(dir, '需求草稿.md'))) && !(await exists(join(dir, 'map.md')))
 }
 
 function authEnv(config, remoteUrl) {
@@ -155,6 +164,201 @@ async function commitAndPush({ config, workDir, remoteUrl, message }) {
   await git(workDir, ['push', 'origin', 'main'], { env })
 }
 
+/** 这次上传要不要走重传：订单已有父工单，这包是最新上传，而且还没被导入过。 */
+export function needsReupload(order, meta) {
+  if (!order.issue) return false
+  const latest = order.uploads?.at(-1)
+  if (!latest || latest.sha256 !== meta.sha256) return false
+  return order.import_sha256 !== meta.sha256
+}
+
+export function reuploadComment(at) {
+  return `改口：重传 ${at}，旧的提案和点头作废。`
+}
+
+/** 同一 body 的评论只写一条；导入重跑不重复追加。 */
+async function commentOnce(gh, { owner, repo, number, body }) {
+  const comments = await gh.listComments({ owner, repo, number })
+  if (comments.some((row) => String(row.body).trim() === String(body).trim())) return false
+  await gh.createComment({ owner, repo, number, body })
+  return true
+}
+
+async function gitExitCode(cwd, args) {
+  const result = await execFileAsync('git', ['-C', cwd, ...args], {
+    timeout: 120000,
+    maxBuffer: 8 * 1024 * 1024,
+  }).catch((error) => error)
+  return {
+    code: result.code ?? 0,
+    stdout: String(result.stdout || '').trim(),
+    stderr: String(result.stderr || '').trim(),
+  }
+}
+
+/**
+ * 重传前查需求分支：to-spec 前分支上不该有实现提交。
+ * 分支不是 main 的祖先，说明有 ticket 合入的痕迹，不覆盖，报运营者。
+ */
+export async function inspectRequirementBranch({ workDir, branch }) {
+  await git(workDir, ['fetch', 'origin'])
+  const remote = await gitExitCode(workDir, ['rev-parse', '--verify', `refs/remotes/origin/${branch}`])
+  if (remote.code !== 0) return { exists: false, sha: '' }
+
+  const ancestor = await gitExitCode(workDir, ['merge-base', '--is-ancestor', remote.stdout, 'main'])
+  if (ancestor.code === 1) {
+    throw new Error(
+      `需求分支 ${branch} 上有没合进 main 的提交，可能已经有实现票合入。没有覆盖分支，停下报运营者。`,
+    )
+  }
+  if (ancestor.code !== 0) {
+    throw new Error(`检查需求分支 ${branch} 失败：${ancestor.stderr || `git 退出码 ${ancestor.code}`}`)
+  }
+  return { exists: true, sha: remote.stdout }
+}
+
+export async function resetRequirementBranch({ config, workDir, remoteUrl, branch, state }) {
+  await git(workDir, ['checkout', '-B', branch, 'main'])
+  const args = ['push']
+  if (state.exists) args.push(`--force-with-lease=refs/heads/${branch}:${state.sha}`)
+  args.push('origin', branch)
+  await git(workDir, args, { env: authEnv(config, remoteUrl) })
+  await git(workDir, ['checkout', 'main'])
+}
+
+export async function replaceRequirementSnapshot({ config, workDir, remoteUrl, scratchDir, requirement }) {
+  const destination = join(workDir, 'docs', 'requirements', requirement)
+  await rm(destination, { recursive: true, force: true })
+  await cp(scratchDir, destination, { recursive: true })
+  await writeFile(join(destination, 'README.md'), `${SNAPSHOT_NOTE}\n`)
+  await commitAndPush({
+    config,
+    workDir,
+    remoteUrl,
+    message: `FACTORY: 重传回传：${requirement}`,
+  })
+}
+
+async function resetParentIssue({ gh, owner, repo, issue, rendered, orderId, small }) {
+  await gh.updateIssue({
+    owner,
+    repo,
+    number: issue.number,
+    title: rendered.title,
+    body: bodyWithMarker(rendered.body, orderId),
+  })
+
+  const labels = (issue.labels || []).map((label) => label.name)
+  for (const name of REUPLOAD_CLEAR_LABELS) {
+    if (!labels.includes(name)) continue
+    await gh.removeLabel({ owner, repo, number: issue.number, name })
+  }
+  if (!labels.includes(SUBMITTED_LABEL)) {
+    await gh.addLabels({ owner, repo, number: issue.number, labels: [SUBMITTED_LABEL] })
+  }
+  if (small) {
+    await ensureSmallLabel(gh, owner, repo)
+    if (!labels.includes(SMALL_LABEL.name)) {
+      await gh.addLabels({ owner, repo, number: issue.number, labels: [SMALL_LABEL.name] })
+    }
+  }
+}
+
+/**
+ * 重传一条已有父工单的订单：换父工单五段、换需求目录快照、重置需求分支，
+ * 写 `改口：` 评论。父工单复用，不建第二张。
+ * 地图和决定票的换新是补缺口 Agent 的活（`gap.mjs apply-map --mode replace`），
+ * 不在这里做。
+ */
+export async function reuploadOrder({
+  config,
+  gh,
+  account,
+  order,
+  uploadDir,
+  remoteUrlFor,
+  owner,
+  commentAt,
+  sha256,
+}) {
+  const repos =
+    account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
+      ? account.repos
+      : {}
+  const product = order.product || order.requirement
+  const repoName = repos[product] || repoFromIssue(order.issue) || `${account.short_name}-${product}`
+  const scratchDir = join(uploadDir, 'work', 'scratch', order.requirement)
+  if (!(await exists(scratchDir))) {
+    throw new Error(`上传里找不到需求目录 ${order.requirement} 的快照，不能重传`)
+  }
+
+  const rendered = await renderParentIssue({
+    scratchDir,
+    shortName: account.short_name,
+    requirement: order.requirement,
+    owner,
+    repo: repoName,
+  })
+
+  const existing = await findParentIssue(gh, { owner, repo: repoName, orderId: order.id })
+  if (!existing) {
+    throw new Error(
+      `找不到带 <!-- factory:order=${order.id} --> 标记的父工单，不建第二张，报运营者。`,
+    )
+  }
+
+  const remoteUrl = remoteUrlFor({ owner, repo: repoName })
+  const { workDir } = await ensureRepo({
+    config,
+    gh,
+    owner,
+    repoName,
+    shortName: account.short_name,
+    product,
+    workDir: join(uploadDir, `repo-${repoName}`),
+    remoteUrl,
+  })
+
+  const branch = `req/${order.id}`
+  const branchState = await inspectRequirementBranch({ workDir, branch })
+  await replaceRequirementSnapshot({
+    config,
+    workDir,
+    remoteUrl,
+    scratchDir,
+    requirement: order.requirement,
+  })
+  await resetRequirementBranch({ config, workDir, remoteUrl, branch, state: branchState })
+
+  await resetParentIssue({
+    gh,
+    owner,
+    repo: repoName,
+    issue: existing,
+    rendered,
+    orderId: order.id,
+    small: rendered.small,
+  })
+  await commentOnce(gh, {
+    owner,
+    repo: repoName,
+    number: existing.number,
+    body: reuploadComment(commentAt),
+  })
+
+  await updateOrder(config, order.id, {
+    issue: existing.html_url,
+    product,
+    branch,
+    import_sha256: sha256,
+  })
+  if (repos[product] !== repoName) {
+    await setCustomerRepo(config, account.id, product, repoName)
+  }
+
+  return { issue: existing, repoName, branch, small: rendered.small }
+}
+
 /**
  * 导入一条订单。返回父工单。
  */
@@ -167,6 +371,7 @@ export async function importOrder({
   uploadDir,
   remoteUrlFor,
   owner,
+  sha256,
 }) {
   const repos =
     account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
@@ -245,6 +450,7 @@ export async function importOrder({
     issue: issue.html_url,
     product,
     branch,
+    import_sha256: sha256,
   })
 
   if (repos[product] !== repoName) {
@@ -313,7 +519,46 @@ async function backfillRepos(config, account, orders) {
   }
 }
 
-async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, dir, meta, now }) {
+async function findLockedReupload({ specLock, account, orders, owner }) {
+  if (!specLock) return null
+  const repos =
+    account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
+      ? account.repos
+      : {}
+  for (const order of orders) {
+    const product = order.product || order.requirement
+    const repo = repos[product] || repoFromIssue(order.issue) || `${account.short_name}-${product}`
+    let locked = false
+    try {
+      locked = await specLock({ owner, repo, requirement: order.requirement })
+    } catch (error) {
+      logLine({
+        ts: new Date().toISOString(),
+        level: 'warning',
+        msg: '重传导入锁单检查读不到 GitHub，按未锁放行',
+        owner,
+        repo,
+        requirement: order.requirement,
+        error: String(error && error.message ? error.message : error),
+      })
+      locked = false
+    }
+    if (locked) return order
+  }
+  return null
+}
+
+async function importUpload({
+  config,
+  gh,
+  scaffold,
+  mailSender,
+  remoteUrlFor,
+  specLock,
+  dir,
+  meta,
+  now,
+}) {
   const stamp = now.toISOString()
   const orders = await readOrders(config)
   const uploadOrders = (Array.isArray(meta.orders) ? meta.orders : [])
@@ -343,7 +588,30 @@ async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, di
     return next
   }
 
-  for (const order of pending) {
+  const reuploadOrders = []
+  for (const order of passedOrders) {
+    if (!needsReupload(order, meta)) continue
+    // 小需求建单即锁，没有重传窗口；上传端已经拦，这里不补做。
+    if (await isSmallRequirement(dir, order.requirement)) continue
+    reuploadOrders.push(order)
+  }
+  const lockedOrder = await findLockedReupload({ specLock, account, orders: reuploadOrders, owner })
+  if (lockedOrder) {
+    // 上传端已拦；这里兜底：锁单后同目录不能再改，不覆盖父工单和快照。
+    const next = {
+      ...meta,
+      status: 'needs_operator',
+      operator_alert: {
+        reason: 'requirement_locked',
+        message: `需求「${lockedOrder.requirement}」已经锁单（spec 已发布），这次重传没有覆盖父工单和快照。请新建需求目录再上传。`,
+        at: stamp,
+      },
+    }
+    await writeJsonAtomic(join(dir, 'meta.json'), next)
+    return next
+  }
+
+  for (const order of [...pending, ...reuploadOrders]) {
     const scratchDir = join(dir, 'work', 'scratch', order.requirement)
     const rendered = await renderParentIssue({
       scratchDir,
@@ -377,6 +645,21 @@ async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, di
       uploadDir: dir,
       remoteUrlFor,
       owner,
+      sha256: meta.sha256,
+    })
+  }
+
+  for (const order of reuploadOrders) {
+    await reuploadOrder({
+      config,
+      gh,
+      account,
+      order,
+      uploadDir: dir,
+      remoteUrlFor,
+      owner,
+      commentAt: meta.at || stamp,
+      sha256: meta.sha256,
     })
   }
 
@@ -413,7 +696,7 @@ async function importUpload({ config, gh, scaffold, mailSender, remoteUrlFor, di
   return next
 }
 
-async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, now }) {
+async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, specLock, now }) {
   let names = []
   try {
     names = await readdir(config.uploadDir)
@@ -434,6 +717,7 @@ async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, now }) {
         scaffold,
         mailSender,
         remoteUrlFor,
+        specLock,
         dir,
         meta,
         now,
@@ -468,6 +752,7 @@ export async function importOnce({
   gh,
   scaffold = scaffoldCustomerRepo,
   mailSender,
+  specLock,
   remoteUrlFor = ({ owner, repo }) => `https://github.com/${owner}/${repo}.git`,
   now = new Date(),
 }) {
@@ -478,11 +763,12 @@ export async function importOnce({
       apiBase: config.githubApi,
       timeoutMs: config.githubTimeoutMs,
     })
+  const lock = specLock || config.specLock || createSpecLock(config)
 
   try {
     return await withFileLock(
       join(config.uploadDir, '.import.lock'),
-      () => scan({ config, gh: client, scaffold, mailSender, remoteUrlFor, now }),
+      () => scan({ config, gh: client, scaffold, mailSender, remoteUrlFor, specLock: lock, now }),
       { timeoutMs: 2000 },
     )
   } catch (error) {
