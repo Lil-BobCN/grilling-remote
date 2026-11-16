@@ -6,10 +6,12 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { readTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { tryWithFileLock } from './lock.mjs'
+import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
 
@@ -127,6 +129,48 @@ function pathOf(parent) {
   return isSmall(parent) ? SMALL_PATH : NORMAL_PATH
 }
 
+/**
+ * 停法两条可检查判据：同一张票三圈没进展、同类问题跨票两次。
+ * 只看父工单的进度行和子票 trail，不猜内容。
+ *
+ * @returns {Array<{reason: string, detail: string}>} 命中的判据；空数组表示没停
+ */
+export function stallHits({ comments = [], trails = [] } = {}) {
+  const hits = []
+  const rounds = roundsWithoutProgress({ comments })
+  if (rounds.stalled) hits.push({ reason: '三圈没进展', detail: rounds.reason })
+
+  const repeated = repeatProblems({ trails })
+  if (repeated.repeat) {
+    hits.push({
+      reason: '同类两次',
+      detail: repeated.repeats
+        .map((item) => `${item.problem}（#${item.tickets.join('、#')}）`)
+        .join('；'),
+    })
+  }
+  return hits
+}
+
+/** 命中停法：打 needs-info、写卡住进度、推 `出事`，不点火。 */
+function stallActions({ parent, comments, state, hits, owner, repo }) {
+  const detail = hits.map((hit) => `${hit.reason}：${hit.detail}`).join('；')
+  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo })
+  for (const hit of hits) {
+    actions.push(
+      notifyAction({
+        parent,
+        owner,
+        repo,
+        event: '出事',
+        key: `#${parent.number}:出事:${hit.reason}`,
+        data: { reason: hit.reason, tried: hit.detail },
+      }),
+    )
+  }
+  return actions
+}
+
 function customerTier(state) {
   if (state === '已提交' || state === '排队中') return '安排中'
   if (state === '开发中' || state === '待验收') return '开发中'
@@ -204,6 +248,7 @@ export function routeParent({
   subIssues = [],
   spec = null,
   closedNumbers = [],
+  trails = [],
   now,
   maxActive = 5,
   activeCount = 0,
@@ -271,6 +316,10 @@ export function routeParent({
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }
+    if (state === '开发中') {
+      const hits = stallHits({ comments, trails })
+      if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
+    }
     return []
   }
 
@@ -288,6 +337,11 @@ export function routeParent({
         data: {},
       }),
     ]
+  }
+
+  if (state === '排队中' || state === '开发中') {
+    const hits = stallHits({ comments, trails })
+    if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
   }
 
   if (state === '排队中') {
@@ -582,6 +636,22 @@ export async function collectSnapshot({ gh, owner, repo }) {
   return { owner, repo, maps, decisions, parents: parentRows }
 }
 
+/**
+ * 读一个客户仓里所有子票的 trail，给「同类问题跨票两次」用。
+ * 仓库还没 clone 或没有 `.audit` 时返回空数组。
+ */
+export async function collectTrails({ repoDir, parents = [] } = {}) {
+  if (!repoDir) return []
+  const trails = []
+  for (const parent of parents) {
+    for (const ticket of parent.subIssues || []) {
+      const rows = await readTrail({ repoDir, ticket: ticket.number }).catch(() => [])
+      if (rows.length) trails.push({ ticket: ticket.number, rows })
+    }
+  }
+  return trails
+}
+
 // ---- 路由一个仓 ----
 
 function stillSandcastle(ticket) {
@@ -633,6 +703,7 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
     (parent.subIssues || []).some(stillSandcastle),
   )
   const decisions = []
+  const trails = snapshot?.trails || []
   for (const parent of snapshot?.parents || []) {
     const ownsSandcastle = (parent.subIssues || []).some(stillSandcastle)
     const actions = routeParent({
@@ -641,6 +712,7 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
       subIssues: parent.subIssues || [],
       spec: parent.spec || null,
       closedNumbers: parent.closedNumbers || [],
+      trails,
       now,
       maxActive,
       activeCount: active,
@@ -1003,6 +1075,16 @@ export async function runOnce({
   }
 
   for (const { row, snapshot } of snapshots) {
+    if (config.repoRoot) {
+      try {
+        snapshot.trails = await collectTrails({
+          repoDir: join(config.repoRoot, row.repo),
+          parents: snapshot.parents,
+        })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, trails: true, message: error.message })
+      }
+    }
     const routed = routeRepo({
       snapshot,
       now: nowDate,
