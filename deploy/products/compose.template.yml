@@ -1,0 +1,35 @@
+# 一个客户成品的栈模板。afk-product product-init 把它复制成
+# /data/products/<交付地址>/compose.yml，同目录的 .env 提供变量。
+#
+# 约束来自 docs/运维手册.md 第十二节：非 root、不挂 Docker socket、
+# 不用 host 网络、只绑 127.0.0.1、内存 512 MiB、CPU 0.5、pids 256、
+# 每个软件一个独立 bridge 网络。共享 Postgres 由 helper 接进这个网络。
+services:
+  app:
+    image: ${IMAGE:?先跑 product-init 生成 .env}
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "${APP_INTERNAL_PORT:-3000}"
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@${PG_HOST:-afk-products-postgres}:5432/${DB_NAME}"
+    ports:
+      # 只绑回环，外面进不来；Caddy 从 127.0.0.1 反代。
+      - "127.0.0.1:${PORT}:${APP_INTERNAL_PORT:-3000}"
+    volumes:
+      # 这个软件的上传文件和持久文件，容器用户可写。
+      - ./data:/app/data
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - app
+
+networks:
+  app:
+    # 网络由 afk-product 建好，共享 Postgres 也接在这个网络上。
+    external: true
+    name: ${APP_NETWORK:?先跑 product-init 生成 .env}

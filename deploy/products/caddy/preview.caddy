@@ -1,0 +1,23 @@
+# 预览路由模板。预览只给验证队和运营者看，Basic Auth 只加在预览上。
+# 生成方式见 docs/运维手册.md 第十二节「预览环境」：地址
+# <客户简称>-<软件简称>-pr<PR号>.afkfactory.space，用户名密码每次随机。
+#
+# afk-product 目前只实现成品的五个子命令，预览起停归后续票；这份模板先定路由形状。
+# 写出前把 __ADDRESS__、__BASIC_AUTH_USER__、__BASIC_AUTH_HASH__、__UPSTREAM__ 换掉。
+# 密码哈希用 `caddy hash-password` 生成，明文只写 Mac 和 /data/previews/<地址>/.env。
+#
+# 不认识的子域和成品一样：没有站点块，Caddy 回 404。
+__ADDRESS__ {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /etc/caddy/certs/aop-ca.pem
+		}
+	}
+
+	basicauth {
+		__BASIC_AUTH_USER__ __BASIC_AUTH_HASH__
+	}
+
+	reverse_proxy __UPSTREAM__
+}
