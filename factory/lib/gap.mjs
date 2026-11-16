@@ -33,7 +33,7 @@ const GATE_CHECKS = [
 ]
 
 function normalizeText(text) {
-  return String(text || '').replace(/\r\n/g, '\n')
+  return String(text || '').replace(/^﻿/, '').replace(/\r\n/g, '\n')
 }
 
 function escapeRegExp(text) {

@@ -28,7 +28,7 @@ export class MapFormatError extends Error {
 }
 
 function normalizeText(text) {
-  return String(text || '').replace(/\r\n/g, '\n')
+  return String(text || '').replace(/^﻿/, '').replace(/\r\n/g, '\n')
 }
 
 function escapeRegExp(text) {
