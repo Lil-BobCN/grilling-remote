@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 客户白名单命令行。命令和字段按 docs/客户白名单维护.md 第九节。
+ * 客户白名单命令行。命令和字段按 docs/客户工作区.md 的「注册机命令」和「一行写什么」两节。
  *
  * 用 afkapp 用户跑：
  *   sudo -u afkapp node /data/app/current/bin/customer.mjs add --short-name acme ...
