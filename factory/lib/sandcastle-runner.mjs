@@ -178,8 +178,9 @@ export function createSandcastleRunner({
   exec = defaultExec,
   buildImage = defaultBuildImage,
 } = {}) {
-  return async function runner(args) {
-    const { repoDir, ticketBranch, prompt, envFile, image, started } = args
+  /** 装依赖、备镜像、写脚本。不计入点火两分钟回执。 */
+  async function prepare(args) {
+    const { repoDir, ticketBranch, prompt, envFile, image } = args
     if (!repoDir || !ticketBranch || !prompt) {
       throw new Error('runner 缺少 repoDir、ticketBranch 或 prompt')
     }
@@ -188,10 +189,10 @@ export function createSandcastleRunner({
     }
 
     const envValues = await readEnvFile(envFile)
-    await ensureDeps({ home, env, exec })
+    const deps = await ensureDeps({ home, env, exec })
 
     const imageName = image || envValues.SANDCASTLE_IMAGE || `sandcastle:${basename(repoDir)}`
-    await buildImage({ image: imageName, home, env, exec })
+    const built = await buildImage({ image: imageName, home, env, exec })
 
     const ticketNumber = String(ticketBranch).split('/').pop().replace(/[^A-Za-z0-9._-]/g, '-')
     const scriptPath = join(home, `run-${ticketNumber}.mts`)
@@ -201,7 +202,20 @@ export function createSandcastleRunner({
       'utf8',
     )
 
-    const result = await exec(join(home, 'node_modules', '.bin', 'tsx'), [scriptPath], {
+    return {
+      imageName,
+      scriptPath,
+      installed: Boolean(deps?.installed),
+      built: Boolean(built?.built),
+    }
+  }
+
+  /** 真正起容器和会话；子进程起来时调用 started() 回执。 */
+  async function run(args) {
+    const { repoDir, ticketBranch, started, prepared } = args
+    if (!prepared?.scriptPath) throw new Error('先跑 prepare()，拿到 scriptPath 再 run()')
+
+    const result = await exec(join(home, 'node_modules', '.bin', 'tsx'), [prepared.scriptPath], {
       cwd: repoDir,
       env: { ...baseEnv(env), NODE_PATH: join(home, 'node_modules') },
       onStart: () => {
@@ -214,4 +228,6 @@ export function createSandcastleRunner({
     }
     return parseResult(result.stdout, ticketBranch)
   }
+
+  return { prepare, run }
 }

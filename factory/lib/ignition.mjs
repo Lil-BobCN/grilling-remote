@@ -296,6 +296,45 @@ export async function buildPromptForTicket({ gh, owner, repo, parent, ticket, re
   return buildPrompt({ spec, ticket, agentsMd, featureMap, relevantCode })
 }
 
+function commandTail(result, limit = 2000) {
+  const text = String(result?.stderr || result?.stdout || '').trim()
+  return text.length > limit ? text.slice(-limit) : text
+}
+
+/** 默认 openPr：在客户仓里跑 `gh pr create`。 */
+export function createGhOpenPr({ token = '', exec = null } = {}) {
+  async function runCommand(command, args, options) {
+    if (typeof exec === 'function') return exec(command, args, options)
+    const result = await execFileAsync(command, args, {
+      timeout: 120000,
+      maxBuffer: 4 * 1024 * 1024,
+      ...options,
+    }).catch((error) => error)
+    if (result.code === 0) {
+      return { code: 0, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') }
+    }
+    return {
+      code: typeof result.code === 'number' ? result.code : 1,
+      stdout: String(result.stdout || ''),
+      stderr: String(result.stderr || result.message || ''),
+    }
+  }
+
+  return async function openPr({ repoDir, base, head, title, body }) {
+    const env = { ...process.env }
+    if (token) env.GH_TOKEN = token
+    const result = await runCommand(
+      'gh',
+      ['pr', 'create', '--base', base, '--head', head, '--title', title, '--body', body],
+      { cwd: repoDir, env },
+    )
+    if (result.code !== 0) {
+      throw new Error(`gh pr create 失败（退出码 ${result.code}）：${commandTail(result)}`)
+    }
+    return { url: String(result.stdout || '').trim() }
+  }
+}
+
 function createStartedGate() {
   let resolveStarted
   let started = false
@@ -530,21 +569,47 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
       )
       const envFile = join(repoDir, '.sandcastle', '.env')
 
-      if (typeof runner !== 'function') throw new Error('没有注入 runner')
+      const runnerArgs = {
+        repoDir,
+        worktree,
+        branch: reqBranch,
+        ticketBranch,
+        prompt,
+        image: config.image,
+        envFile,
+        timeoutMs,
+      }
+      const execute = typeof runner === 'function' ? runner : runner?.run
+      if (typeof execute !== 'function') throw new Error('没有注入 runner')
+
+      // 装依赖、建镜像不算在两分钟回执里；这两步慢不该报点火超时。
+      let prepared = null
+      if (typeof runner?.prepare === 'function') {
+        log({
+          level: 'info',
+          msg: '点火准备开始',
+          owner,
+          repo,
+          ticket: ticket.number,
+          reqBranch,
+          ticketBranch,
+        })
+        prepared = await runner.prepare(runnerArgs)
+        log({
+          level: 'info',
+          msg: '点火准备完成',
+          owner,
+          repo,
+          ticket: ticket.number,
+          reqBranch,
+          ticketBranch,
+        })
+      }
+
       const gate = createStartedGate()
       const timer = delay(timeoutMs)
       const runPromise = Promise.resolve().then(() =>
-        runner({
-          repoDir,
-          worktree,
-          branch: reqBranch,
-          ticketBranch,
-          prompt,
-          image: config.image,
-          envFile,
-          started: gate.started,
-          timeoutMs,
-        }),
+        execute({ ...runnerArgs, started: gate.started, prepared }),
       )
 
       let outcome

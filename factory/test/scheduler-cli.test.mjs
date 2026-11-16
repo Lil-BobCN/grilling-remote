@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { run } from '../bin/scheduler.mjs'
+import { addRemote, commitAll, git, initBareRepo, initRepo, push } from '../lib/git.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { STATE_LABELS } from '../lib/scheduler.mjs'
@@ -85,4 +86,160 @@ test('--once 缺 --owner 时报错，不偷偷扫账号', async () => {
     run(['--once', '--customers', '/tmp/nope.json'], { gh: {}, notifier: {} }),
     /缺 --owner/,
   )
+})
+
+async function repoFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'afk-scheduler-cli-repo-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+
+  const bare = join(root, 'remote.git')
+  await initBareRepo(bare)
+
+  const seed = join(root, 'seed')
+  await initRepo(seed)
+  await writeFile(join(seed, 'AGENTS.md'), '# 规则\n\nAGENTS-CLI\n')
+  await mkdir(join(seed, 'docs', 'agents'), { recursive: true })
+  await writeFile(join(seed, 'docs', 'agents', 'feature-map.md'), '# 地图\n')
+  await mkdir(join(seed, 'src'), { recursive: true })
+  await writeFile(join(seed, 'src', 'app.mjs'), 'export const APP = 1\n')
+  await commitAll(seed, 'FACTORY: 初始提交')
+  await addRemote(seed, 'origin', bare)
+  await push(seed, { branch: 'main', setUpstream: true })
+
+  await git(seed, ['checkout', '-b', 'req/o-0001'])
+  await writeFile(join(seed, 'req.txt'), '需求分支\n')
+  await commitAll(seed, 'FACTORY: 需求分支')
+  await push(seed, { branch: 'req/o-0001' })
+
+  return { root, bare }
+}
+
+async function ignitionScenario(t) {
+  const fake = await startFakeGithub({ repos: [{ owner: OWNER, name: REPO }] })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  for (const [name, meta] of Object.entries(STATE_LABELS)) {
+    await ensureLabel(gh, { owner: OWNER, repo: REPO, name, ...meta })
+  }
+  for (const name of ['Sandcastle', 'needs-info', '大小:小需求', 'ready-for-agent', 'wayfinder:map', 'wayfinder:grilling']) {
+    await ensureLabel(gh, { owner: OWNER, repo: REPO, name })
+  }
+
+  const parent = await gh.createIssue({
+    owner: OWNER,
+    repo: REPO,
+    title: '要个预约取货',
+    body: body(),
+    labels: ['状态:排队中'],
+  })
+  await gh.createIssue({
+    owner: OWNER,
+    repo: REPO,
+    title: 'spec yuyue-quhuo',
+    body: '## Problem Statement\n\n预约取货。',
+    labels: ['ready-for-agent'],
+  })
+  const child = await gh.createIssue({
+    owner: OWNER,
+    repo: REPO,
+    title: '看到今天水果',
+    body: '## 垂直切片\n\n顾客看到水果。\n\n## 验收条件\n\n- [ ] 看到名单。\n',
+    labels: ['状态:排队中'],
+  })
+  await gh.addSubIssue({ owner: OWNER, repo: REPO, number: parent.number, subIssueId: child.id })
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：拆票' })
+
+  const dir = await mkdtemp(join(tmpdir(), 'afk-scheduler-cli-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const customersPath = join(dir, 'customers.json')
+  await writeFile(
+    customersPath,
+    JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } }]),
+  )
+
+  return { fake, gh, parent, child, customersPath }
+}
+
+function issueRow(fake, number) {
+  return fake.state.issues.get(`${OWNER}/${REPO}`).find((row) => row.number === number)
+}
+
+function quietNotifier() {
+  return {
+    delivered: new Map(),
+    async send(event) {
+      if (!this.delivered.has(event.key)) this.delivered.set(event.key, event)
+      return { code: 0, stdout: '{}' }
+    },
+  }
+}
+
+test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转开发中', async (t) => {
+  const { fake, gh, parent, child, customersPath } = await ignitionScenario(t)
+  const { root, bare } = await repoFixture(t)
+  const runnerCalls = []
+  async function runner(args) {
+    runnerCalls.push(args)
+    args.started()
+    return { commits: [{ sha: 'abc123' }], branch: args.ticketBranch }
+  }
+  const prCalls = []
+  async function openPr(args) {
+    prCalls.push(args)
+    return { url: 'https://github.com/acme/acme-demo/pull/9' }
+  }
+  const lines = []
+
+  await run(['--once', '--customers', customersPath, '--owner', OWNER], {
+    gh,
+    notifier: quietNotifier(),
+    runner,
+    openPr,
+    out: (line) => lines.push(JSON.parse(line)),
+    clock: () => new Date('2026-11-17T10:00:00+08:00'),
+    repoRoot: join(root, 'repos'),
+    lockDir: join(root, 'locks'),
+    config: { remoteUrlFor: () => bare, log: () => {} },
+  })
+
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].parent, parent.number)
+  assert.equal(lines[0].decision, 'develop')
+  assert.equal(runnerCalls.length, 1)
+  assert.equal(prCalls.length, 1)
+  assert.equal(prCalls[0].base, 'req/o-0001')
+  assert.equal(prCalls[0].head, `ticket/${child.number}`)
+
+  assert.ok(issueRow(fake, child.number).labels.includes('Sandcastle'))
+  assert.ok(issueRow(fake, child.number).labels.includes('状态:开发中'))
+  assert.ok(issueRow(fake, parent.number).labels.includes('状态:开发中'))
+})
+
+test('--dry-run 只读：打印 develop，不点火、不改标签', async (t) => {
+  const { fake, gh, parent, child, customersPath } = await ignitionScenario(t)
+  let fired = 0
+  const lines = []
+
+  await run(['--dry-run', '--customers', customersPath, '--owner', OWNER], {
+    gh,
+    notifier: quietNotifier(),
+    runner: async () => {
+      fired += 1
+      throw new Error('dry-run 不该点火')
+    },
+    openPr: async () => {
+      fired += 1
+      throw new Error('dry-run 不该开 PR')
+    },
+    out: (line) => lines.push(JSON.parse(line)),
+    clock: () => new Date('2026-11-17T10:00:00+08:00'),
+    config: { log: () => {} },
+  })
+
+  assert.equal(fired, 0)
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].parent, parent.number)
+  assert.equal(lines[0].decision, 'develop')
+  assert.deepEqual(issueRow(fake, child.number).labels, ['状态:排队中'])
+  assert.deepEqual(issueRow(fake, parent.number).labels, ['状态:排队中'])
 })

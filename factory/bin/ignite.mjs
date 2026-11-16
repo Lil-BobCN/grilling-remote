@@ -13,9 +13,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createGithub } from '../lib/github.mjs'
-import { buildPromptForTicket, createIgnite, parentOrder } from '../lib/ignition.mjs'
+import { buildPromptForTicket, createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
-import { createSandcastleRunner, defaultExec } from '../lib/sandcastle-runner.mjs'
+import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 
 function option(argv, name, fallback) {
   const index = argv.indexOf(name)
@@ -31,27 +31,6 @@ async function exists(path) {
     return true
   } catch {
     return false
-  }
-}
-
-function tail(result, limit = 2000) {
-  const text = String(result?.stderr || result?.stdout || '').trim()
-  return text.length > limit ? text.slice(-limit) : text
-}
-
-export function createGhOpenPr({ token = process.env.GITHUB_TOKEN || '', exec = defaultExec } = {}) {
-  return async function openPr({ repoDir, base, head, title, body }) {
-    const env = { ...process.env }
-    if (token) env.GH_TOKEN = token
-    const result = await exec(
-      'gh',
-      ['pr', 'create', '--base', base, '--head', head, '--title', title, '--body', body],
-      { cwd: repoDir, env },
-    )
-    if (result.code !== 0) {
-      throw new Error(`gh pr create 失败（退出码 ${result.code}）：${tail(result)}`)
-    }
-    return { url: String(result.stdout || '').trim() }
   }
 }
 

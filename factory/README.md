@@ -31,6 +31,8 @@
 
 镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。本机没有这个镜像时，用 `npx @ai-hero/sandcastle docker build-image --image-name <镜像名>` 建一次。
 
+装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
+
 容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。`GH_TOKEN` 也在这个文件里，只给当前客户仓的 issue、PR 和内容权限。
 
 手工点火一张票：

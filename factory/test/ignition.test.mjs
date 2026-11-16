@@ -518,6 +518,43 @@ async function seedInstalledSandcastle(home) {
   await writeFile(join(home, 'node_modules', '.bin', 'tsx'), '')
 }
 
+test('prepare 慢过两分钟不算超时，run 立即回执就点火成功', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const calls = []
+  const runner = {
+    async prepare(args) {
+      calls.push({ phase: 'prepare', args })
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      return { imageName: 'sandcastle:demo', scriptPath: join(fixture.root, 'run.mts') }
+    },
+    async run(args) {
+      calls.push({ phase: 'run', args })
+      args.started()
+      return { commits: [{ sha: 'abc123' }], branch: args.ticketBranch }
+    },
+  }
+  const notifier = fakeNotifier()
+  const pr = fakeOpenPr()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { timeoutMs: 30 }),
+    runner,
+    openPr: pr.openPr,
+    notifier,
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true)
+  assert.equal(calls[0].phase, 'prepare')
+  assert.equal(calls[1].phase, 'run')
+  assert.equal(calls[1].args.prepared.imageName, 'sandcastle:demo')
+  assert.equal(notifier.calls.length, 0)
+  assert.ok(!commentsOf(fake, ticket.number).some((body) => body.startsWith('点火超时')))
+  assert.ok(!labelsOf(fake, ticket.number).includes('点火超时'))
+  assert.equal(pr.calls.length, 1)
+})
+
 test('sandcastle runner：首次装依赖、镜像取 .env、脚本不带宿主 token', async (t) => {
   const fixture = await runnerFixture(t)
   const hook = fakeExec()
@@ -536,22 +573,20 @@ test('sandcastle runner：首次装依赖、镜像取 .env、脚本不带宿主 
     },
   })
   let started = 0
-
-  const result = await runner({
+  const prepared = await runner.prepare({
     repoDir: fixture.repoDir,
     worktree: join(fixture.repoDir, '.sandcastle', 'worktrees', 'ticket-5'),
     branch: REQ_BRANCH,
     ticketBranch: 'ticket/5',
     prompt: fixture.prompt,
     envFile: join(fixture.repoDir, '.sandcastle', '.env'),
-    started: () => {
-      started += 1
-    },
     timeoutMs: 120000,
   })
 
-  assert.deepEqual(result, { commits: [{ sha: 'abc123' }], branch: 'ticket/5' })
-  assert.equal(started, 1)
+  assert.equal(started, 0, 'prepare 不碰回执')
+  assert.equal(prepared.imageName, 'sandcastle:from-env')
+  const scriptPath = join(fixture.home, 'run-5.mts')
+  assert.equal(prepared.scriptPath, scriptPath)
   assert.deepEqual(builds, ['sandcastle:from-env'])
 
   const install = hook.calls[0]
@@ -559,7 +594,18 @@ test('sandcastle runner：首次装依赖、镜像取 .env、脚本不带宿主 
   assert.deepEqual(install.args, ['install', '@ai-hero/sandcastle@0.12.0', 'tsx'])
   assert.equal(install.options.cwd, fixture.home)
 
-  const scriptPath = join(fixture.home, 'run-5.mts')
+  const result = await runner.run({
+    repoDir: fixture.repoDir,
+    ticketBranch: 'ticket/5',
+    started: () => {
+      started += 1
+    },
+    prepared,
+  })
+
+  assert.deepEqual(result, { commits: [{ sha: 'abc123' }], branch: 'ticket/5' })
+  assert.equal(started, 1)
+
   const script = await readFile(scriptPath, 'utf8')
   assert.match(script, /branchStrategy.*type.*branch.*ticket\/5/)
   assert.match(script, /promptFile: "/)
@@ -593,17 +639,17 @@ test('sandcastle runner：依赖已装就不重装，镜像没配时用 sandcast
     },
   })
 
-  await runner({
+  const prepared = await runner.prepare({
     repoDir: fixture.repoDir,
     worktree: join(fixture.repoDir, '.sandcastle', 'worktrees', 'ticket-5'),
     branch: REQ_BRANCH,
     ticketBranch: 'ticket/5',
     prompt: fixture.prompt,
     envFile: join(fixture.repoDir, '.sandcastle', '.env'),
-    started: () => {},
     timeoutMs: 120000,
   })
 
+  assert.equal(prepared.imageName, `sandcastle:${REPO}`)
   assert.ok(!hook.calls.some((call) => call.command === 'npm'))
   assert.deepEqual(builds, [`sandcastle:${REPO}`])
 })
