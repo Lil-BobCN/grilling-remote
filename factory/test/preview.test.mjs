@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
   previewAddress,
@@ -431,7 +432,7 @@ async function fakeHelper(t) {
 test('CLI start 调 helper，并写 private/预览/<地址>.env', async (t) => {
   const fake = await fakeHelper(t)
   const localDir = join(fake.dir, 'private', '预览')
-  const cli = new URL('../bin/preview.mjs', import.meta.url).pathname
+  const cli = fileURLToPath(new URL('../bin/preview.mjs', import.meta.url))
 
   const { stdout } = await execFileAsync(
     process.execPath,
@@ -463,7 +464,7 @@ test('CLI start 调 helper，并写 private/预览/<地址>.env', async (t) => {
 test('CLI stop 调 helper 并删掉本机凭据', async (t) => {
   const fake = await fakeHelper(t)
   const localDir = join(fake.dir, 'private', '预览')
-  const cli = new URL('../bin/preview.mjs', import.meta.url).pathname
+  const cli = fileURLToPath(new URL('../bin/preview.mjs', import.meta.url))
   const { mkdir } = await import('node:fs/promises')
   await mkdir(localDir, { recursive: true })
   const credentials = join(localDir, 'acme-shop-pr42.afkfactory.space.env')
