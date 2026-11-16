@@ -94,3 +94,17 @@ Caddyfile 里的 `/app/api/*` 已经反代到 `127.0.0.1:8787`。服务没起时
 | `/usr/local/sbin/afk-product` | 部署、回滚和 `pg_dump` 的固定 helper；sudo 白名单只加这一条 |
 
 一次性安装、构建、密钥、回滚、备份和巡检按手册第十二节。`deploy/Caddyfile` 和 `deploy/ops-dates.json` 等签完新 Origin CA、装好 Docker 后再改，不在本票改。
+
+## 客户成品预览（2026-11-16 定，脚本未实现）
+
+有界面的成品在 D3 验证时起一套预览，地址 `https://<客户简称>-<软件简称>-pr<PR号>.afkfactory.space`，加 Basic Auth。完整定义见 `docs/服务器操作手册.md` 第十二节的「预览环境」。
+
+| 路径 | 放什么 |
+| --- | --- |
+| `/data/previews/<预览地址>/compose.yml` | 预览栈，600 root |
+| `/data/previews/<预览地址>/.env` | 镜像 tag、预览库密码、Basic Auth，600 root |
+| `/data/previews/<预览地址>/data/` | 预览的持久文件，销毁时删 |
+| `/data/previews/<预览地址>/releases/` | 最近版本的 tag 和 compose 记录 |
+| `/etc/caddy/previews/<预览地址>.caddy` | 预览的 Caddy 路由 |
+
+预览和成品共用 `/data/products/postgres/` 的 Postgres 实例，独立 database 和 role。全局同时最多 1 套，销毁时删容器、路由、库和镜像。
