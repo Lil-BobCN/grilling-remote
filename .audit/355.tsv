@@ -1,2 +1,3 @@
 ts	phase	decision	why	evidence	result
 2026-11-16T15:10:00+08:00	gate	问：gate 行没写推荐答案时，推送里写「未写推荐」还是省掉这一句？推荐：写「未写推荐」	「推荐：」是你决定时的依据；空着分不清是没写还是漏发，保留这一句能看出 gate 行缺内容	https://github.com/Lil-BobCN/grilling-remote/pull/402	open
+2026-11-16T15:22:00+08:00	gate	答：写「未写推荐」	运营者 2026-11-16 在会话里选「写「未写推荐」（推荐）」；推送里的 PR 链接能打开	https://github.com/Lil-BobCN/grilling-remote/pull/402	answered
