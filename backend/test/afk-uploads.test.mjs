@@ -73,24 +73,23 @@ test('helper 只列 upload-*、只读两种文件', async (t) => {
   assert.equal(badFile.code, 2)
 })
 
-test('helper 能读客户表、删已导入的上传目录', async (t) => {
-  const { uploads, env } = await setup(t, { status: 'imported' })
+test('cat-customers 去掉 password_hash 和 email，其他字段保留', async (t) => {
+  const { env } = await setup(t)
 
   const customers = await runHelper(['cat-customers'], env)
   assert.equal(customers.code, 0)
   const parsed = JSON.parse(customers.stdout)
-  assert.deepEqual(parsed.customers, [
-    { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'acme-demo' } },
-  ])
+  assert.equal(parsed.customers.length, 1)
+  const row = parsed.customers[0]
+  assert.equal(row.id, 'c-0001')
+  assert.equal(row.short_name, 'acme')
+  assert.equal(row.status, 'active')
+  assert.deepEqual(row.repos, { demo: 'acme-demo' })
+  assert.equal(row.display_name, 'Acme 老板')
+  assert.equal('password_hash' in row, false)
+  assert.equal('email' in row, false)
   assert.ok(!customers.stdout.includes('boss@example.com'))
   assert.ok(!customers.stdout.includes('argon2'))
-
-  const removed = await runHelper(['rm', 'upload-abc'], env)
-  assert.equal(removed.code, 0)
-  await assert.rejects(stat(join(uploads, 'upload-abc')))
-
-  const badRm = await runHelper(['rm', '../data'], env)
-  assert.equal(badRm.code, 2)
 })
 
 test('rm 只删已导入的包，ready 一律拒绝', async (t) => {
@@ -100,6 +99,9 @@ test('rm 只删已导入的包，ready 一律拒绝', async (t) => {
   assert.notEqual(refused.code, 0)
   assert.match(refused.stderr, /只删已导入的包/)
   await stat(join(uploads, 'upload-abc', 'package.zip'))
+
+  const badRm = await runHelper(['rm', '../data'], env)
+  assert.equal(badRm.code, 2)
 
   await writeFile(join(uploads, 'upload-abc', 'meta.json'), '{"status":"imported"}\n')
   const removed = await runHelper(['rm', 'upload-abc'], env)
