@@ -3,8 +3,8 @@
 #
 #   afk-uploads list                      列出 upload-* 目录名
 #   afk-uploads cat <上传 id> <文件名>     只读 meta.json 或 package.zip
-#   afk-uploads rm <上传 id>               删一个上传目录
-#   afk-uploads cat-customers             读 /data/customers/customers.json
+#   afk-uploads rm <上传 id>               只删已导入（meta.status=imported）的上传目录
+#   afk-uploads cat-customers             读客户表，只输出 id、short_name、status、repos
 #
 # 装到 /usr/local/sbin/afk-uploads，属主 root。sudoers 只加一条：
 #   dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *
@@ -54,12 +54,28 @@ case ${1:-} in
     [[ $# -eq 2 ]] || usage
     id=$2
     is_upload_id "$id" || { echo "上传 id 不对：$id" >&2; exit 2; }
+    meta=$UPLOAD_DIR/$id/meta.json
+    [[ -f $meta ]] || { echo "没这个文件：$id/meta.json" >&2; exit 1; }
+    status=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status", ""))' "$meta" 2>/dev/null || true)
+    if [[ $status != imported ]]; then
+      echo "只删已导入的包，$id 的状态是 ${status:-读不出}" >&2
+      exit 1
+    fi
     rm -rf -- "$UPLOAD_DIR/$id"
     ;;
   cat-customers)
     [[ $# -eq 1 ]] || usage
     [[ -f $CUSTOMERS_FILE ]] || { echo "没这个文件：$CUSTOMERS_FILE" >&2; exit 1; }
-    cat "$CUSTOMERS_FILE"
+    python3 - "$CUSTOMERS_FILE" <<'PY'
+import json
+import sys
+
+rows = json.load(open(sys.argv[1], encoding="utf-8"))
+if isinstance(rows, dict):
+    rows = rows.get("customers", [])
+keep = ("id", "short_name", "status", "repos")
+print(json.dumps({"customers": [{key: row.get(key) for key in keep} for row in rows]}, ensure_ascii=False, indent=2))
+PY
     ;;
   *)
     usage

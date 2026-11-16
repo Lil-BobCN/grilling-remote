@@ -21,16 +21,30 @@ async function runHelper(args, env) {
   }
 }
 
-async function setup(t) {
+async function setup(t, { status = 'ready' } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'afk-uploads-helper-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const uploads = join(root, 'uploads')
   const customers = join(root, 'customers.json')
   await mkdir(join(uploads, 'upload-abc'), { recursive: true })
-  await writeFile(join(uploads, 'upload-abc', 'meta.json'), '{"status":"ready"}\n')
+  await writeFile(join(uploads, 'upload-abc', 'meta.json'), `${JSON.stringify({ status })}\n`)
   await writeFile(join(uploads, 'upload-abc', 'package.zip'), 'zip-bytes')
   await mkdir(join(uploads, 'not-an-upload'), { recursive: true })
-  await writeFile(customers, '[{"id":"c-0001"}]\n')
+  await writeFile(
+    customers,
+    `${JSON.stringify([
+      {
+        id: 'c-0001',
+        short_name: 'acme',
+        display_name: 'Acme 老板',
+        email: 'boss@example.com',
+        status: 'active',
+        repos: { demo: 'acme-demo' },
+        password_hash: '$argon2id$secret',
+        note: '',
+      },
+    ])}\n`,
+  )
   return {
     uploads,
     customers,
@@ -59,12 +73,17 @@ test('helper 只列 upload-*、只读两种文件', async (t) => {
   assert.equal(badFile.code, 2)
 })
 
-test('helper 能读客户表、删上传目录', async (t) => {
-  const { uploads, env } = await setup(t)
+test('helper 能读客户表、删已导入的上传目录', async (t) => {
+  const { uploads, env } = await setup(t, { status: 'imported' })
 
   const customers = await runHelper(['cat-customers'], env)
   assert.equal(customers.code, 0)
-  assert.deepEqual(JSON.parse(customers.stdout), [{ id: 'c-0001' }])
+  const parsed = JSON.parse(customers.stdout)
+  assert.deepEqual(parsed.customers, [
+    { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'acme-demo' } },
+  ])
+  assert.ok(!customers.stdout.includes('boss@example.com'))
+  assert.ok(!customers.stdout.includes('argon2'))
 
   const removed = await runHelper(['rm', 'upload-abc'], env)
   assert.equal(removed.code, 0)
@@ -72,6 +91,20 @@ test('helper 能读客户表、删上传目录', async (t) => {
 
   const badRm = await runHelper(['rm', '../data'], env)
   assert.equal(badRm.code, 2)
+})
+
+test('rm 只删已导入的包，ready 一律拒绝', async (t) => {
+  const { uploads, env } = await setup(t, { status: 'ready' })
+
+  const refused = await runHelper(['rm', 'upload-abc'], env)
+  assert.notEqual(refused.code, 0)
+  assert.match(refused.stderr, /只删已导入的包/)
+  await stat(join(uploads, 'upload-abc', 'package.zip'))
+
+  await writeFile(join(uploads, 'upload-abc', 'meta.json'), '{"status":"imported"}\n')
+  const removed = await runHelper(['rm', 'upload-abc'], env)
+  assert.equal(removed.code, 0)
+  await assert.rejects(stat(join(uploads, 'upload-abc')))
 })
 
 test('helper 没有上传目录时 list 回空，不报错', async (t) => {

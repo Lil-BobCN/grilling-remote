@@ -198,21 +198,23 @@ test('validation_failed 的上传照常存档，不删远端', async (t) => {
   await stat(join(remoteRoot, 'upload-invalid', 'package.zip'))
 })
 
-test('每轮把 customers.json 同步到本机数据目录', async (t) => {
+test('每轮把 customers.json 同步到本机数据目录，数组和 customers 对象都认', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
   const customersFile = join(remoteRoot, 'customers.json')
   const rows = [{ id: 'c-0001', short_name: 'acme', repos: { demo: 'acme-demo' } }]
   await writeFile(customersFile, `${JSON.stringify(rows, null, 2)}\n`, 'utf8')
   const customersPath = join(inboxDir, 'data', 'customers.json')
+  const remote = createDirRemote(remoteRoot, { customersFile })
 
-  const result = await pullInbox({
-    remote: createDirRemote(remoteRoot, { customersFile }),
-    inboxDir,
-    customersPath,
-  })
-
+  const result = await pullInbox({ remote, inboxDir, customersPath })
   assert.equal(result.customers.path, customersPath)
   assert.deepEqual(JSON.parse(await readFile(customersPath, 'utf8')), rows)
+
+  const subset = { customers: rows }
+  await writeFile(customersFile, `${JSON.stringify(subset, null, 2)}\n`, 'utf8')
+  const second = await pullInbox({ remote, inboxDir, customersPath })
+  assert.equal(second.customers.error, undefined)
+  assert.deepEqual(JSON.parse(await readFile(customersPath, 'utf8')), subset)
 })
 
 test('customers.json 拉取失败时保留上一份并记 warning', async (t) => {
