@@ -8,6 +8,7 @@ import {
   appendMergeRow,
   appendTrail,
   evidenceReady,
+  missingEvidenceAxes,
   readTrail,
   riskLevel,
   verifyPlan,
@@ -644,4 +645,34 @@ test('appendMergeRow 写 phase=merge，同一个 mergedSha 不重复追加', asy
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('missingEvidenceAxes：验证和两条评审分开算，只有一条评审不算齐', () => {
+  const base = {
+    ts: '2026-11-17T02:00:00.000Z',
+    phase: 'review',
+    why: 'head abc1234',
+    evidence: '.audit/screenshots/after.png',
+    result: 'pass',
+  }
+  assert.deepEqual(missingEvidenceAxes([]), ['verify', 'review:标准', 'review:spec'])
+  assert.deepEqual(missingEvidenceAxes([{ ...base, phase: 'verify', decision: 'abc1234' }]), [
+    'review:标准',
+    'review:spec',
+  ])
+  assert.deepEqual(
+    missingEvidenceAxes([
+      { ...base, phase: 'verify', decision: 'abc1234' },
+      { ...base, decision: '标准' },
+    ]),
+    ['review:spec'],
+  )
+  assert.deepEqual(
+    missingEvidenceAxes([
+      { ...base, phase: 'verify', decision: 'abc1234' },
+      { ...base, decision: '标准' },
+      { ...base, decision: 'spec' },
+    ]),
+    [],
+  )
 })

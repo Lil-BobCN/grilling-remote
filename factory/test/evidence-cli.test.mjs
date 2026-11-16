@@ -208,6 +208,63 @@ test('没有预览行就不起预览；已有验证时只跑评审', async () =>
   }
 })
 
+test('只有一条 review 行时补另一边，不提前放行', async () => {
+  const dir = await makeRepo()
+  try {
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'verify',
+      decision: 'abc1234',
+      why: '按验收条件验证',
+      evidence: '.audit/screenshots/after.png',
+      result: 'pass',
+    })
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'test',
+      decision: 'npm test',
+      evidence: 'pass',
+      result: 'pass',
+    })
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'review',
+      decision: '标准',
+      why: 'head abc1234',
+      evidence: 'AFK_VERDICT pass',
+      result: 'pass',
+    })
+    const runner = fakeRunner(true)
+
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner,
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(runner.calls.length, 1, '只补评审，不再跑验证')
+    assert.equal(runner.calls[0].name, 'review-51-all')
+    const rows = await readTrail({ repoDir: dir, ticket: 51 })
+    const reviews = rows.filter((row) => row.phase === 'review' && row.result === 'pass')
+    assert.equal(reviews.filter((row) => row.decision === '标准').length, 2)
+    assert.equal(reviews.filter((row) => row.decision === 'spec').length, 1)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('证据已经齐了就不跑 agent', async () => {
   const dir = await makeRepo()
   try {

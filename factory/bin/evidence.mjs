@@ -20,7 +20,13 @@ import { fileURLToPath } from 'node:url'
 import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
 import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
-import { readTrail, evidenceReady, mergeTicket, serializeTrail } from '../lib/evidence.mjs'
+import {
+  readTrail,
+  evidenceReady,
+  mergeTicket,
+  missingEvidenceAxes,
+  serializeTrail,
+} from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
 import { runHelper } from '../lib/helper.mjs'
@@ -148,15 +154,10 @@ function defaultPreview({ customer, product, pr }) {
 }
 
 function auditGaps(rows = []) {
+  const axes = missingEvidenceAxes(rows)
   const gaps = []
-  if (!rows.some((row) => row.phase === 'verify' && row.result === 'pass')) gaps.push('verify')
-  const reviewed = rows.some(
-    (row) =>
-      row.phase === 'review' &&
-      row.result === 'pass' &&
-      (row.decision.includes('标准') || /spec/i.test(row.decision)),
-  )
-  if (!reviewed) gaps.push('review')
+  if (axes.includes('verify')) gaps.push('verify')
+  if (axes.some((axis) => axis.startsWith('review'))) gaps.push('review')
   return gaps
 }
 
