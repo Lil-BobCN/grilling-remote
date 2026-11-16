@@ -59,6 +59,8 @@
 
 任务和产品规格放在中台（`http://127.0.0.1:8788`，命令行 `中台/dt`），GitHub 是只读镜像。详见 `docs/agents/issue-tracker.md`。
 
+地图有容量：一张地图最多挂 100 张票，已关闭的也算。票数到 80 张时归档已关闭的历史票，拆法见 `docs/agents/issue-tracker.md` 的「地图容量与归档」。
+
 ### 分类标签
 
 处理状态用五个固定标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。详见 `docs/agents/triage-labels.md`。

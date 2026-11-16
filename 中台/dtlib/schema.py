@@ -65,7 +65,7 @@ _SCHEMAS = {
             {"impact_case", "impact_item", "impact_action", "impact_merged_into"},
         ),
         "issue.label": ({"add", "remove"}, set()),
-        "issue.parent": ({"parent"}, set()),
+        "issue.parent": ({"parent"}, {"covers"}),
         "issue.block": ({"add", "remove"}, set()),
         "comment.create": ({"issue", "body"}, set()),
         "comment.edit": ({"body"}, set()),

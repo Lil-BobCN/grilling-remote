@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 from dtlib.commands import Board
 from dtlib.store import EventStore
 from dtlib.sync import compute_plan, execute_plan
+from dtlib.util import DtError
 
 
 class FakeGitHub:
@@ -129,7 +130,8 @@ class TestSync(unittest.TestCase):
         event = self.board.issue_create(
             "agent:test", "map", title="本地地图", body="## Notes\n\n本地图。",
             split_rationale="测试本地图",
-            destination={"statement": "第一句。第二句。"},
+            destination={"statement": "第一句。第二句。",
+                         "fragments": ["第一句。", "第二句。"]},
         )
         self.store.append_event(event)
         return event["target"]
@@ -167,9 +169,13 @@ class TestSync(unittest.TestCase):
 
         def fake_edit(repo, number, *flags, gh_bin="gh"):
             edits.append((number, flags))
-            if "--add-sub-issue" in flags:
-                child = int(flags[flags.index("--add-sub-issue") + 1])
-                fake.subs.setdefault(int(number), []).append(child)
+            if "--parent" in flags:
+                parent = int(flags[flags.index("--parent") + 1])
+                child = int(number)
+                for kids in fake.subs.values():
+                    if child in kids:
+                        kids.remove(child)
+                fake.subs.setdefault(parent, []).append(child)
             if "--add-blocked-by" in flags:
                 blocker = int(flags[flags.index("--add-blocked-by") + 1])
                 fake.blocked.setdefault(int(number), []).append(blocker)
@@ -205,9 +211,13 @@ class TestSync(unittest.TestCase):
         self.assertEqual(plan["warnings"], [])
 
         def fake_edit(repo, number, *flags, gh_bin="gh"):
-            if "--add-sub-issue" in flags:
-                child = int(flags[flags.index("--add-sub-issue") + 1])
-                fake.subs.setdefault(int(number), []).append(child)
+            if "--parent" in flags:
+                parent = int(flags[flags.index("--parent") + 1])
+                child = int(number)
+                for kids in fake.subs.values():
+                    if child in kids:
+                        kids.remove(child)
+                fake.subs.setdefault(parent, []).append(child)
             if "--add-blocked-by" in flags:
                 blocker = int(flags[flags.index("--add-blocked-by") + 1])
                 fake.blocked.setdefault(int(number), []).append(blocker)
@@ -315,6 +325,154 @@ class TestSync(unittest.TestCase):
         with patch("dtlib.sync.GitHub", return_value=fake):
             plan = compute_plan(self.store, "Example/repo", self.map_id)
         self.assertIn("comment.delete", [a["kind"] for a in plan["actions"]])
+
+    def test_sub_issue_cap_skips_parent_add(self):
+        ticket = self._ticket()
+        remote = {
+            "map": {"number": 139, "title": "本机地图", "body": "", "state": "open",
+                    "labels": [{"name": "wayfinder:map"}], "comments": [],
+                    "blocked_by": set()},
+            "issues": {},
+            "sub_numbers": set(range(500, 600)),
+            "sub_issues": [],
+        }
+        fake = self._fake(selected=True)
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._fetch_remote", return_value=remote):
+            plan = compute_plan(self.store, "Example/repo", self.map_id)
+        kinds = [a["kind"] for a in plan["actions"]]
+        self.assertNotIn("parent.add", kinds)
+        skips = [a for a in plan["actions"] if a["kind"] == "parent.skip"]
+        self.assertEqual([a["ref"] for a in skips], [ticket])
+        self.assertTrue(any("子票已满" in w for w in plan["warnings"]))
+
+        edits = []
+
+        def fake_edit(repo, number, *flags, gh_bin="gh"):
+            edits.append((number, flags))
+
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._fetch_remote", return_value=remote), \
+                patch("dtlib.sync._gh_edit", side_effect=fake_edit):
+            result = execute_plan(self.store, "Example/repo", self.map_id, plan)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(edits, [])
+        skipped = [r for r in result["results"] if r["status"] == "skipped"]
+        self.assertEqual([r["ref"] for r in skipped], [ticket])
+        self.assertEqual(self.store.sync["issues"][ticket], 200)
+
+        # 跳过只记一次，下一次计划不再重复
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._fetch_remote", return_value=remote):
+            plan2 = compute_plan(self.store, "Example/repo", self.map_id)
+        self.assertEqual(
+            [a for a in plan2["actions"] if a["kind"] in ("parent.add", "parent.skip")], [])
+
+    def test_sub_issue_cap_error_marks_skipped(self):
+        ticket = self._ticket()
+        fake = self._fake(selected=True)
+        with patch("dtlib.sync.GitHub", return_value=fake):
+            plan = compute_plan(self.store, "Example/repo", self.map_id)
+        self.assertIn("parent.add", [a["kind"] for a in plan["actions"]])
+
+        def fake_edit(repo, number, *flags, gh_bin="gh"):
+            if "--parent" in flags:
+                raise DtError(
+                    "gh issue edit 139 失败：GraphQL: Failed to add sub-issue 200 to parent 139. "
+                    "Parent cannot have more than 100 sub-issues (addSubIssue)")
+
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._gh_edit", side_effect=fake_edit):
+            result = execute_plan(self.store, "Example/repo", self.map_id, plan)
+        self.assertTrue(result["ok"], result)
+        skipped = [r for r in result["results"] if r["action"] == "parent.skip"]
+        self.assertEqual([r["status"] for r in skipped], ["skipped"])
+        self.assertTrue(any("子票已满" in w for w in result["warnings"]))
+        parent_records = [r for r in self.store.sync["history"] if r.get("ref") == ticket]
+        self.assertEqual(parent_records[-1]["status"], "skipped")
+
+        from dtlib.views import board_view
+        view = board_view(self.store, self.map_id)
+        self.assertEqual(view["sync"]["state"], "已同步")
+
+    def test_map_first_sync_reads_mapped_tickets(self):
+        archive = self._make_local_map()
+        self.store.sync_record({"type": "mirror", "map": archive, "on": True})
+        ticket = self._ticket(parent=archive)
+        self.store.sync_record({"type": "mapping", "kind": "issue",
+                                "local": ticket, "github": 300})
+        comment = self.board.comment_add("agent:test", ticket, "已在 GitHub 上")
+        self.store.append_event(comment)
+        self.store.sync_record({"type": "mapping", "kind": "comment",
+                                "local": comment["target"], "github": 901})
+        fake = FakeGitHub("Example/repo")
+        fake.add_issue(300, "新票", "票正文", labels=["wayfinder:task"])
+        fake.comments[300] = [{"id": 901, "body": "已在 GitHub 上"}]
+
+        with patch("dtlib.sync.GitHub", return_value=fake):
+            plan = compute_plan(self.store, "Example/repo", archive)
+        kinds = [a["kind"] for a in plan["actions"]]
+        self.assertIn("map.create", kinds)
+        self.assertIn("parent.add", kinds)
+        self.assertNotIn("issue.create", kinds)
+        self.assertNotIn("comment.create", kinds)
+
+        def fake_edit(repo, number, *flags, gh_bin="gh"):
+            if "--parent" in flags:
+                parent = int(flags[flags.index("--parent") + 1])
+                fake.subs.setdefault(parent, []).append(int(number))
+
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._gh_edit", side_effect=fake_edit):
+            result = execute_plan(self.store, "Example/repo", archive, plan)
+        self.assertTrue(result["ok"], result)
+        map_number = self.store.sync["issues"][archive]
+        self.assertEqual(fake.subs[map_number], [300])
+        self.assertEqual(len(fake.comments[300]), 1)
+
+    def test_parent_remove_frees_sub_issue_slot(self):
+        moved = self._ticket()
+        self.store.sync_record({"type": "mapping", "kind": "issue",
+                                "local": moved, "github": 200})
+        archive = self._make_local_map()
+        self.store.append_event(self.board.issue_parent(
+            "agent:test", moved, archive, covers=[f"D-{archive}-ROOT#1"]))
+        new_ticket = self._ticket()
+
+        fake = self._fake(selected=True)
+        fake.add_issue(200, "新票", "票正文", labels=["wayfinder:task"])
+        for number in range(500, 599):
+            fake.add_issue(number, f"远端票 {number}", f"正文 {number}",
+                           labels=["wayfinder:task"])
+        fake.subs[139] = [200] + list(range(500, 599))
+        fake.next_number = 600
+
+        with patch("dtlib.sync.GitHub", return_value=fake):
+            plan = compute_plan(self.store, "Example/repo", self.map_id)
+        kinds = [a["kind"] for a in plan["actions"]]
+        self.assertIn("parent.remove", kinds)
+        adds = [a for a in plan["actions"] if a["kind"] == "parent.add"]
+        self.assertEqual([a["ref"] for a in adds], [new_ticket])
+
+        def fake_edit(repo, number, *flags, gh_bin="gh"):
+            if "--parent" in flags:
+                parent = int(flags[flags.index("--parent") + 1])
+                child = int(number)
+                for kids in fake.subs.values():
+                    if child in kids:
+                        kids.remove(child)
+                fake.subs.setdefault(parent, []).append(child)
+            if "--remove-sub-issue" in flags:
+                parent = int(number)
+                child = int(flags[flags.index("--remove-sub-issue") + 1])
+                fake.subs[parent] = [n for n in fake.subs.get(parent, []) if n != child]
+
+        with patch("dtlib.sync.GitHub", return_value=fake), \
+                patch("dtlib.sync._gh_edit", side_effect=fake_edit):
+            result = execute_plan(self.store, "Example/repo", self.map_id, plan)
+        self.assertTrue(result["ok"], result)
+        self.assertNotIn(200, fake.subs[139])
+        self.assertIn(self.store.sync["issues"][new_ticket], fake.subs[139])
 
     def test_mirror_off_refuses(self):
         self.store.sync_record({"type": "mirror", "map": self.map_id, "on": False})

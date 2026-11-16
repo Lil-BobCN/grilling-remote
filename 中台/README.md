@@ -27,6 +27,7 @@
 | --- | --- |
 | `dt import github <地图号>` | 从 GitHub 导入一张地图，只做一次 |
 | `dt issue create/edit/state/close/reopen/label/block` | 票和地图；`issue close` 遇到等合并的记录会拒绝，`--force` 只给运营者 |
+| `dt issue parent <票号> --set <地图号> --covers <拆句...>` | 把票换到另一张地图，`covers` 指向新图的拆句；别名 `dt issue move` |
 | `dt close prepare <票号> --pr <号> --sha <sha> --payload <文件>` | 开完 PR 后写待关票记录，合并后服务自动关票 |
 | `dt close revoke <票号>` | 撤回还没合并的待关票记录 |
 | `dt issue confirm-derived <票号> [--decision <决定号>]` | 确认推断来源，移进 `derived_from` |
@@ -82,6 +83,8 @@
 - 导入的票 `derived_from` 挂根决定。
 - 同步由运营者按地图触发。`--check` 只读，打印计划；不带 `--check` 才写 GitHub。
 - 同步写 issue、评论、标签、父子、阻塞，以及地图正文里的生成段。中台为准，GitHub 上的直接修改在下一次同步被覆盖。
+- 一张地图最多 100 张子票，已关闭的也算。到上限后新票照常镜像，只跳过父子关系，计划里给一条警告。拆图按 `docs/agents/issue-tracker.md` 的「地图容量与归档」。
+- 票换地图后，同步用 `gh issue edit <子票> --parent <新父票>` 移动；旧图同步会摘掉还挂在那里的旧子票。
 - 生成段到约 60KB 截断，末尾写「完整内容在中台」和本地地址。
 
 ## 工作状态
@@ -100,7 +103,7 @@ python3 -m unittest discover -s 中台/tests -v
 
 ## v1 边界
 
-- 只同步导入的图。中台新建的地图还没有 GitHub 号，`dt sync` 会拒绝。
+- 中台新建的地图默认镜像关。打开镜像后第一次同步会建 GitHub 父票，再把已有 GitHub 号的票挂过去。
 - 导入的老票缺拆票理由和票与票、决定与决定的派生；这些边要靠后续编辑补。
 - 屏幕不做对话、会话链接和登录；grilling 仍在 orca。屏幕动作和 CLI 写同一条事件日志。
 - assignees、milestones、projects、reactions、通知不搬。

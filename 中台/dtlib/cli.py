@@ -501,7 +501,9 @@ def cmd_issue_confirm_derived(args):
 
 
 def cmd_issue_parent(args):
-    raise DtError("v1 不开放改父票；建错地图就关掉重建", EXIT_BUSINESS)
+    _post(args, "issue.parent", {"id": args.id, "parent": args.set,
+                                 "covers": args.covers})
+    return 0
 
 
 def cmd_comment(args):
@@ -774,9 +776,10 @@ def build_parser():
     cd.add_argument("id")
     cd.add_argument("--decision", action="append")
     cd.set_defaults(func=cmd_issue_confirm_derived)
-    pp = isub.add_parser("parent")
+    pp = isub.add_parser("parent", aliases=["move"], help="把票换到另一张地图")
     pp.add_argument("id")
-    pp.add_argument("--set")
+    pp.add_argument("--set", required=True, help="目标地图编号")
+    pp.add_argument("--covers", nargs="*", help="新地图根决定的拆句，换图时必填")
     pp.set_defaults(func=cmd_issue_parent)
 
     p = sub.add_parser("label", help="标签快捷命令")
