@@ -8,7 +8,7 @@
 #   AFK_KEY        登录私钥，默认 ~/.ssh/id_ed25519_dev_hk
 #   AFK_REMOTE_DIR 服务器上的站点根，默认 /data/www。要和 Caddyfile 的 root 一致。
 #
-# 服务器端的一次性设置见 deploy/README.md。
+# 服务器端的一次性设置和发布步骤见 docs/运维手册.md 第十三节。
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
