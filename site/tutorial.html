@@ -28,6 +28,15 @@
     </script>
     <script>
       ;(function () {
+        try {
+          if (window.localStorage.getItem('afk-signed-in') === '1') {
+            document.documentElement.setAttribute('data-signed-in', '1')
+          }
+        } catch (error) {}
+      })()
+    </script>
+    <script>
+      ;(function () {
         var lang = null
         try {
           lang = window.localStorage.getItem('afk-lang')

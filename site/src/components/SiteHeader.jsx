@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { getSession, readSignedInHint } from '../api/account.js'
 import { useI18n } from '../i18n/index.jsx'
 import LanguageToggle from './LanguageToggle.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -10,6 +11,12 @@ export default function SiteHeader({ current }) {
   const { copy } = useI18n()
   const nav = copy.site.nav
   const headerRef = useRef(null)
+
+  // 本地标记说登录过，才花一次请求核对会话；401 时 request() 会把标记清掉。
+  useEffect(() => {
+    if (!readSignedInHint()) return
+    getSession().catch(() => {})
+  }, [])
 
   useEffect(() => {
     const header = headerRef.current
@@ -141,7 +148,7 @@ export default function SiteHeader({ current }) {
           <ThemeToggle />
           <LanguageToggle />
           <a
-            className="pill"
+            className="pill nav-login"
             href="/app"
             aria-current={current === 'login' ? 'page' : undefined}
           >
