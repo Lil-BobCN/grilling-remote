@@ -98,7 +98,7 @@ export async function upload(base, cookie, bytes, { filename = 'workspace.zip', 
   return fetch(`${base}/app/api/uploads`, { method: 'POST', headers, body: form })
 }
 
-export async function makeWorkspace({ small = true, complete = true, name = 'demo', nested = false } = {}) {
+export async function makeWorkspace({ small = true, complete = true, name = 'demo', nested = false, zipTool = 'python' } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'afkapp-ws-'))
   const workspace = join(root, '工作区')
   const requirement = join(workspace, '.scratch', name)
@@ -137,7 +137,28 @@ export async function makeWorkspace({ small = true, complete = true, name = 'dem
   }
 
   const zipPath = join(root, 'workspace.zip')
-  await execFileAsync('python3', [zipScript, nested ? root : workspace, zipPath])
+  if (zipTool === 'python') {
+    await execFileAsync('python3', [zipScript, nested ? root : workspace, zipPath])
+  } else if (zipTool === 'zip') {
+    await execFileAsync('zip', ['-r', '-q', zipPath, nested ? '工作区' : '.'], {
+      cwd: nested ? root : workspace,
+    })
+  } else if (zipTool === 'ditto') {
+    await execFileAsync(
+      'ditto',
+      [
+        '-c',
+        '-k',
+        '--sequesterRsrc',
+        ...(nested ? ['--keepParent'] : []),
+        nested ? '工作区' : workspace,
+        zipPath,
+      ],
+      { cwd: nested ? root : undefined },
+    )
+  } else {
+    throw new Error(`不认识的打包方式：${zipTool}`)
+  }
   return { zipPath, workspace, requirement }
 }
 
