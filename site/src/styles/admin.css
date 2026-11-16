@@ -8,6 +8,14 @@
   padding-top: var(--space-40);
 }
 
+/* 九列表格比订单列表宽，桌面端收窄左右留白，1160 宽也能整张放下。 */
+@media (min-width: 900px) {
+  .page.admin-page {
+    padding-right: var(--space-32);
+    padding-left: var(--space-32);
+  }
+}
+
 .admin-head {
   padding-bottom: var(--space-24);
 }
@@ -127,13 +135,13 @@
 
 .admin-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1040px;
   border-collapse: collapse;
   text-align: left;
 }
 
 .admin-table th {
-  padding: var(--space-12) var(--space-14);
+  padding: var(--space-12);
   border-bottom: var(--rule);
   background: var(--paper-press);
   color: var(--muted);
@@ -145,7 +153,7 @@
 }
 
 .admin-table td {
-  padding: var(--space-14);
+  padding: var(--space-12);
   border-bottom: var(--rule);
   color: var(--body);
   font-size: var(--text-ui);
@@ -189,6 +197,7 @@
   font-size: var(--text-ui);
   font-weight: var(--weight-semibold);
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .admin-customer small {
@@ -289,7 +298,7 @@
 
 .admin-delivery {
   display: block;
-  max-width: 190px;
+  max-width: 160px;
   overflow: hidden;
   color: var(--muted-strong);
   font-size: var(--text-micro);
