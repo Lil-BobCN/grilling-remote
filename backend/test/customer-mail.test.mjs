@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { renderValidationMail, sendValidationMail } from '../lib/customer-mail.mjs'
 
 function runWithInput(command, args, input) {
@@ -72,7 +73,7 @@ test('发送器可注入，发送内容就是渲染结果', async () => {
 })
 
 test('customer-mail.py --dry-run 打印收件人、主题和正文', async () => {
-  const script = new URL('../bin/customer-mail.py', import.meta.url).pathname
+  const script = fileURLToPath(new URL('../bin/customer-mail.py', import.meta.url))
   const stdout = await runWithInput(
     'python3',
     [script, '--dry-run', '--to', 'boss@example.com', '--subject', '测试主题', '--body-stdin'],
