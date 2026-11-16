@@ -45,6 +45,13 @@
       "note": "2040 年起再纳入提醒"
     },
     {
+      "id": "github-token",
+      "name": "私有仓 token（afkapp-server）",
+      "date": "2027-11-16",
+      "remind_days": [30, 7, 1],
+      "note": "fine-grained PAT，只授 grilling-customers，Contents 读写；换 token 后改 /etc/afkapp/app.env 和 /data/customers 的 remote，再重启 afkapp。日期按 2026-11-16 生成、1 年算，以 token 页显示为准"
+    },
+    {
       "id": "server-monthly",
       "name": "朝晞云服务器月付",
       "date": "2026-12-03",
