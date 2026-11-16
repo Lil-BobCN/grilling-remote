@@ -24,7 +24,7 @@ APP_INTERNAL_PORT=8080
 PG_IMAGE=${AFK_TEST_PG_IMAGE:-postgres:16}
 CADDY_IMAGE=${AFK_TEST_CADDY_IMAGE:-caddy:2.6.2}
 
-TMP=${AFK_TEST_TMP:-$REPO/.tmp-products-test}
+TMP=${AFK_TEST_TMP:-$REPO/.tmp-products-test-$$}
 PG_NAME="afk-test-pg-$$"
 CADDY_NAME="afk-test-caddy-$$"
 NET_PREFIX="afk-test-$$-"
