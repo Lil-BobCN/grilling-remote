@@ -19,7 +19,7 @@ __ADDRESS__ {
 	}
 
 	log {
-		output file __ACCESS_LOG__ {
+		output file "__ACCESS_LOG__" {
 			roll_size 10MiB
 			roll_keep 2
 		}
