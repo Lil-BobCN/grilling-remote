@@ -565,3 +565,44 @@ test('重跑同一张已合并票不重复合', async () => {
     await teardownFixture(fixture)
   }
 })
+
+test('evidenceReady 缺标准轴意见也拒绝', async () => {
+  const { dir, trail, headSha } = await readyFixture()
+  try {
+    const withoutStandard = trail.filter((item) => item.decision !== '标准：通过')
+    const result = await evidenceReady({ trail: withoutStandard, headSha, repoDir: dir })
+    assert.equal(result.ready, false)
+    assert.ok(result.missing.some((text) => text.includes('标准')))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('证据不齐时 mergeTicket 不合、不跑复验、不关票', async () => {
+  const fixture = await mergeFixture()
+  const { dir, rows, gh, ticket, preMergeSha } = fixture
+  let verified = false
+  try {
+    const withoutTest = rows.filter((row) => row.phase !== 'test')
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: withoutTest,
+      verifier: async () => {
+        verified = true
+        return { ok: true }
+      },
+      github: gh,
+    })
+    assert.equal(result.ok, false)
+    assert.ok(result.missing.some((text) => text.includes('测试')))
+    assert.equal(verified, false)
+    assert.equal(await git(dir, ['rev-parse', 'req/order-1']), preMergeSha)
+    const issue = await gh.getIssue({ owner: 'acme', repo: 'demo', number: 2 })
+    assert.equal(issue.state, 'open')
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
