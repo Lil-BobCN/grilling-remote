@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { readdir, rm, writeFile } from 'node:fs/promises'
+import { readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HttpError } from './errors.mjs'
 import { readBody } from './http.mjs'
@@ -148,11 +148,26 @@ function resolveProducts({ account, software, requirements, now }) {
   return { products: products.map(({ requirement, product }) => ({ requirement, product })) }
 }
 
+async function isFile(path) {
+  try {
+    return (await stat(path)).isFile()
+  } catch {
+    return false
+  }
+}
+
+/** 小需求只有需求草稿，没有地图。 */
+async function isSmallRequirement(uploadDir, requirement) {
+  const dir = join(uploadDir, 'work', 'scratch', requirement)
+  return (await isFile(join(dir, '需求草稿.md'))) && !(await isFile(join(dir, 'map.md')))
+}
+
 /**
  * to-spec 窗口的两条规则：当前单没交付时不收新的需求目录；已锁单的目录不能重传。
+ * 小需求建单即锁，没有重传窗口。
  * 返回 null 表示放行，否则返回拒绝结果。
  */
-async function checkUploadWindow({ config, account, products, now }) {
+async function checkUploadWindow({ config, account, products, uploadDir, now }) {
   const repos = knownRepos(account)
   const orders = (await readOrders(config)).filter((order) => order.customer_id === account.id)
   const productNames = [...new Set(products.map((item) => item.product))]
@@ -181,6 +196,18 @@ async function checkUploadWindow({ config, account, products, now }) {
       (order) => (order.product || '') === item.product && order.requirement === item.requirement,
     )
     if (!existing || existing.closed_at) continue
+    // 小需求校验通过、建单后锁住；校验未通过时还要允许补传。
+    const lockedSmall =
+      existing.validation?.passed === true && (await isSmallRequirement(uploadDir, item.requirement))
+    if (lockedSmall) {
+      return rejectSoftware({
+        account,
+        now,
+        reason: 'small_requirement_locked',
+        message: '小需求建单即锁，改主意请等这一版交付后开新单。',
+        extra: { product: item.product, requirement: item.requirement },
+      })
+    }
     const repoName = repos[item.product] || repoNameFor(account, item.product)
     let locked = false
     try {
@@ -308,6 +335,7 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
     config,
     account: session.account,
     products: resolved.products,
+    uploadDir: dir,
     now,
   })
   if (blocked) {
