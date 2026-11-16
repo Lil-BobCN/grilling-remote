@@ -73,7 +73,7 @@ echo "脚本放到了 /data/app/bin/"
 
 echo "== 回传件拉取 helper"
 install -m 755 -o root -g root "$UPLOAD_HELPER" /usr/local/sbin/afk-uploads
-echo "装好 /usr/local/sbin/afk-uploads（list、cat、rm、cat-customers）"
+echo "装好 /usr/local/sbin/afk-uploads（list、cat、rm、cat-customers、send-delivery-mail）"
 
 if [[ -f $UPLOAD_SUDO_FILE ]]; then
   echo "$UPLOAD_SUDO_FILE 已存在，不覆盖"
@@ -108,4 +108,6 @@ cat <<'EOF'
 2. 把第一版发布包传上去，用 deploy/backend/deploy.sh 发布。
 3. 发布成功后跑 deploy/backend/check.sh 复核，再 systemctl start afk-import.timer。
 4. Mac 上跑拉取桥时用 dev 账号，afk-uploads 已免密；客户表也走它同步。
+5. 部署脚本发「待客户验收」邮件也走 afk-uploads send-delivery-mail，不用另加 sudoers；
+   它读 /data/customers/orders/ 的订单、客户表和 /etc/afkapp/app.env 的 SMTP 配置。
 EOF

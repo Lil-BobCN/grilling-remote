@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
-# 回传件 helper：给运营者 Mac 的拉取桥用。只做四件事，别的都不做。
+# 回传件 helper：给运营者 Mac 的拉取桥和部署脚本用。只做这几件事，别的都不做。
 #
 #   afk-uploads list                      列出 upload-* 目录名
 #   afk-uploads cat <上传 id> <文件名>     只读 meta.json 或 package.zip
 #   afk-uploads rm <上传 id>               只删已导入（meta.status=imported）的上传目录
 #   afk-uploads cat-customers             读客户表，去掉 password_hash 和 email 再输出
+#   afk-uploads send-delivery-mail <订单号> <地址> [--tries "①…；②…"]
+#                                         给订单客户发「待客户验收」邮件
 #
 # 装到 /usr/local/sbin/afk-uploads，属主 root。sudoers 只加一条：
 #   dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-uploads *
-# 上传目录和客户表的路径写死；干跑演练时可以用环境变量临时改。
+# 上传目录、订单目录、客户表和 app.env 的路径写死；干跑演练时可以用环境变量临时改。
+# 发信脚本默认 /data/app/current/bin/customer-mail.py，SMTP 配置从 app.env 读。
 
 set -euo pipefail
 
 UPLOAD_DIR=${AFK_UPLOAD_DIR:-/data/uploads}
 CUSTOMERS_FILE=${AFK_CUSTOMERS_FILE:-/data/customers/customers.json}
+ORDERS_DIR=${AFK_ORDERS_DIR:-/data/customers/orders}
+APP_ENV=${AFK_APP_ENV:-/etc/afkapp/app.env}
+CUSTOMER_MAIL=${AFK_CUSTOMER_MAIL:-/data/app/current/bin/customer-mail.py}
 
 usage() {
-  echo "用法：afk-uploads list|cat <id> <file>|rm <id>|cat-customers" >&2
+  echo "用法：afk-uploads list|cat <id> <file>|rm <id>|cat-customers|send-delivery-mail <订单号> <地址> [--tries \"①…；②…\"]" >&2
   exit 2
 }
 
@@ -63,6 +69,127 @@ case ${1:-} in
       echo "只删已导入的包，$id 的状态是 ${status:-读不出}" >&2
       exit 1
     fi
+    ;;
+  send-delivery-mail)
+    [[ $# -ge 3 ]] || usage
+    order_id=$2
+    address=$3
+    shift 3
+    tries_arg=""
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        --tries)
+          [[ $# -ge 2 ]] || { echo "--tries 要跟内容" >&2; exit 2; }
+          tries_arg=$2
+          shift 2
+          ;;
+        *)
+          echo "不认识的参数：$1" >&2
+          exit 2
+          ;;
+      esac
+    done
+    [[ $order_id =~ ^o-[A-Za-z0-9._-]+$ ]] || { echo "订单号不对：$order_id" >&2; exit 2; }
+    [[ $address =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+      || { echo "交付地址不对：$address" >&2; exit 2; }
+    order_file=$ORDERS_DIR/$order_id.json
+    [[ -f $order_file ]] || { echo "没这个订单：$order_id" >&2; exit 1; }
+    [[ -f $CUSTOMERS_FILE ]] || { echo "没这个文件：$CUSTOMERS_FILE" >&2; exit 1; }
+    [[ -f $APP_ENV ]] || { echo "没这个文件：$APP_ENV" >&2; exit 1; }
+    [[ -f $CUSTOMER_MAIL ]] || { echo "找不到发信脚本：$CUSTOMER_MAIL" >&2; exit 1; }
+
+    if ! IFS=$'\x1f' read -r customer_id email short_name display_name product requirement < <(
+      python3 - "$order_file" "$CUSTOMERS_FILE" <<'PY'
+import json
+import sys
+
+order = json.load(open(sys.argv[1], encoding="utf-8"))
+rows = json.load(open(sys.argv[2], encoding="utf-8"))
+if isinstance(rows, dict):
+    rows = rows.get("customers", [])
+customer_id = order.get("customer_id", "")
+row = next(
+    (item for item in rows if isinstance(item, dict) and item.get("id") == customer_id),
+    {},
+)
+snapshot = order.get("customer_snapshot")
+if not isinstance(snapshot, dict):
+    snapshot = {}
+
+
+def clean(value):
+    return str(value or "").replace("\t", " ").replace("\n", " ").replace("\x1f", " ").strip()
+
+
+print("\x1f".join([
+    clean(customer_id),
+    clean(row.get("email", "")),
+    clean(snapshot.get("short_name") or row.get("short_name", "")),
+    clean(snapshot.get("display_name") or row.get("display_name", "")),
+    clean(order.get("product") or order.get("requirement") or ""),
+    clean(order.get("requirement") or ""),
+]))
+PY
+    ); then
+      echo "读不出订单 $order_id 或客户表" >&2
+      exit 1
+    fi
+    [[ -n $email ]] || { echo "订单 $order_id 的客户没有邮箱，发不了待客户验收邮件" >&2; exit 1; }
+    who=${display_name:-${short_name:-客户}}
+    what=${product:-${requirement:-这次需求}}
+
+    tries=()
+    if [[ -n $tries_arg ]]; then
+      split=${tries_arg//；/$'\n'}
+      split=${split//;/$'\n'}
+      while IFS= read -r item; do
+        item=${item#"${item%%[![:space:]]*}"}
+        item=${item%"${item##*[![:space:]]}"}
+        if [[ -n $item ]]; then tries+=("$item"); fi
+      done <<<"$split"
+    fi
+    if [[ ${#tries[@]} -eq 0 ]]; then
+      tries=(
+        '打开地址，看首页能不能出来'
+        '把这次要的功能走一遍，填一条真数据'
+        '刷新页面，确认刚才填的还在'
+      )
+    fi
+    if [[ ${#tries[@]} -lt 2 || ${#tries[@]} -gt 3 ]]; then
+      echo "--tries 要 2 到 3 件事，用「；」分开" >&2
+      exit 2
+    fi
+
+    marks=(① ② ③)
+    subject="${who} · ${what}：做好了，可以试了"
+    printf -v body '%s · %s：做好了，可以试了。\n\n地址：https://%s/\n\n麻烦试这几件事：\n' \
+      "$who" "$what" "$address"
+    index=0
+    for item in "${tries[@]}"; do
+      printf -v line '%s%s\n' "${marks[$index]}" "$item"
+      body+=$line
+      index=$((index + 1))
+    done
+    printf -v tail '\n哪里不对，直接微信说。\n'
+    body+=$tail
+
+    while IFS='=' read -r key value; do
+      case ${key:-} in
+        SMTP_HOST | SMTP_PORT | SMTP_USER | SMTP_PASSWORD | SMTP_FROM)
+          export "$key=$value"
+          ;;
+      esac
+    done <"$APP_ENV"
+
+    if ! output=$(printf '%s\n' "$body" | python3 "$CUSTOMER_MAIL" \
+      --to "$email" --subject "$subject" --body-stdin 2>&1); then
+      detail=$output
+      if [[ -n ${email:-} ]]; then detail=${detail//"$email"/<邮箱>}; fi
+      if [[ -n ${SMTP_PASSWORD:-} ]]; then detail=${detail//"$SMTP_PASSWORD"/<密码>}; fi
+      printf '客户邮件没发出去（订单 %s）：%s\n' "$order_id" "$detail" >&2
+      exit 1
+    fi
+    echo "已发待客户验收邮件（订单 ${order_id}，地址 ${address}）"
     ;;
   cat-customers)
     [[ $# -eq 1 ]] || usage

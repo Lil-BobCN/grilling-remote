@@ -3,16 +3,20 @@
  * 收尾合并的命令行入口。E1 用。
  *
  *   node factory/bin/finish.mjs finish --owner <owner> --repo <repo> \
- *     --parent <父工单号> --req-branch <分支> [--main main] [--dry-run]
+ *     --parent <父工单号> --req-branch <分支> [--main main] [--dry-run] [--no-deploy]
  *
  * 默认注入真实 git、gh、agent runner 和 notifier。
  * `--dry-run` 只读：打印四栏和检查结果，不建 PR、不合、不通知。
+ * 合主干成功后默认部署：客户简称和软件简称从父工单正文取，订单号从
+ * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
+ * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { notifyDeployFailure } from '../lib/deploy.mjs'
 import {
   collectRequirementState,
   finishRequirement,
@@ -20,25 +24,31 @@ import {
 } from '../lib/finish.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
+import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
+import { deployWithDefaults, publishZipWithDefaults } from './deploy.mjs'
 import { parseVerdict } from './evidence.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
 const USAGE = `用法：
-  node factory/bin/finish.mjs finish --owner <owner> --repo <repo> --parent <父工单号> --req-branch <分支> [--main main] [--dry-run]`
+  node factory/bin/finish.mjs finish --owner <owner> --repo <repo> --parent <父工单号> --req-branch <分支> [--main main] [--dry-run] [--no-deploy]`
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
 function parseArgs(argv) {
-  const options = { main: 'main', dryRun: false }
+  const options = { main: 'main', dryRun: false, noDeploy: false }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--dry-run') {
       options.dryRun = true
+      continue
+    }
+    if (arg === '--no-deploy') {
+      options.noDeploy = true
       continue
     }
     if (!arg.startsWith('--')) throw new Error(`不认识的参数：${arg}`)
@@ -243,6 +253,7 @@ export async function runFinish(options, deps = {}) {
     return gh.mergePull({ owner, repo, number, mergeMethod: method })
   }
 
+  const notifier = deps.notifier || createNotifier()
   const result = await finishRequirement({
     repoDir,
     owner,
@@ -255,11 +266,82 @@ export async function runFinish(options, deps = {}) {
     fixer,
     openPr,
     mergePr,
-    notifier: deps.notifier || createNotifier(),
+    notifier,
     cleanup: cleanupRequirement,
   })
 
-  return { output: result, exitCode: result.ok ? 0 : 1 }
+  if (!result.ok || !result.mergeSha || options.noDeploy) {
+    return { output: result, exitCode: result.ok ? 0 : 1 }
+  }
+
+  const parentIssue = state.parent
+  const customer = parentCustomer(parentIssue?.body)
+  const product = parentRequirement(parentIssue?.body)
+  const orderId = parentOrder(parentIssue?.body)
+  const missing = []
+  if (!customer) missing.push('- 客户简称：')
+  if (!product) missing.push('- 需求名：')
+  if (!orderId) missing.push('<!-- factory:order=... -->')
+
+  if (missing.length) {
+    const error = `父工单正文缺 ${missing.join('、')}，不猜，没部署`
+    await notifyDeployFailure({
+      notifier,
+      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      customer: customer || '未知客户',
+      requirement: product || parentIssue?.title || '',
+      tried: error,
+      link: parentIssue?.html_url || '',
+    })
+    result.deploy = { ok: false, reason: 'bad_parent', error, missing }
+    return { output: result, exitCode: 1 }
+  }
+
+  const version = String(result.mergeSha).slice(0, 7)
+  const deploy = deps.deploy || deployWithDefaults
+  let deployed
+  try {
+    deployed = await deploy({
+      repoDir,
+      customer,
+      product,
+      orderId,
+      version,
+      requirement: product,
+      link: parentIssue?.html_url || '',
+      pr: result.pr?.number,
+      notifier,
+    })
+  } catch (error) {
+    deployed = { ok: false, reason: '部署失败', error: errorText(error) }
+    await notifyDeployFailure({
+      notifier,
+      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      customer,
+      requirement: product,
+      tried: `部署脚本抛错：${errorText(error)}`,
+      link: parentIssue?.html_url || '',
+    })
+  }
+  if (deployed?.ok) {
+    const publishZip = deps.publishZip || publishZipWithDefaults
+    try {
+      const codeZipUrl = await publishZip({
+        repoDir,
+        ref: result.mergeSha,
+        fallbackRef: reqBranch,
+        address: deployed.address,
+        version,
+      })
+      if (codeZipUrl) deployed.codeZipUrl = codeZipUrl
+    } catch (error) {
+      deployed.warning = [deployed.warning, `代码 zip 没发出去：${errorText(error)}`]
+        .filter(Boolean)
+        .join('；')
+    }
+  }
+  result.deploy = deployed
+  return { output: result, exitCode: deployed?.ok ? 0 : 1 }
 }
 
 async function main() {

@@ -284,7 +284,7 @@ test_init() {
   else
     bad "重复 product-init 失败"
   fi
-  assert_eq "$before" "$(cat "$env")" "重复 product-init 不改密钥和端口"
+  assert_eq "$before" "$(cat "$env")" "重复 product-init 不改密钥、端口和镜像"
 }
 
 # ---------------------------------------------------------------- 1b. 两个软件互相隔离
@@ -382,6 +382,40 @@ test_deploy() {
   ids=$(docker ps -q --filter "label=com.docker.compose.project=$SLUG")
   assert_eq "$first_id" "$ids" "重复 deploy 没重建容器"
   assert_eq 1 "$(printf '%s\n' "$ids" | grep -c .)" "重复 deploy 后仍只有一套"
+
+  # 坏镜像：先像部署脚本那样跑 product-init 换镜像，再 deploy。健康检查失败要退回上一版，
+  # .env 和 product-status 都不能停在新镜像。
+  local bad_image="afk-test-bad-$$:latest"
+  local bad_dir
+  bad_dir=$(mktemp -d "$TMP/bad-image.XXXXXX")
+  cat >"$bad_dir/Dockerfile" <<EOF
+FROM $APP_IMAGE
+ENTRYPOINT ["/bin/sh", "-c", "exit 1"]
+EOF
+  if docker build -q -t "$bad_image" "$bad_dir" >/dev/null 2>&1; then
+    ok "坏镜像构建好"
+  else
+    bad "坏镜像构建失败"
+  fi
+  bash "$HELPER" product-init "$ADDR" --image "$bad_image" >/dev/null 2>&1 || true
+  assert_eq "$APP_IMAGE" "$(env_get "$env" IMAGE)" "product-init 换镜像不改已有 .env"
+  if bash "$HELPER" product-deploy "$ADDR" --image "$bad_image" >/dev/null 2>&1; then
+    bad "坏镜像 deploy 应该失败"
+  else
+    ok "坏镜像 deploy 退出非零"
+  fi
+  code=$(curl -s -o /dev/null --max-time 5 -w '%{http_code}' "http://127.0.0.1:$port/")
+  assert_eq 200 "$code" "坏镜像部署失败后原地址仍回 200"
+  assert_eq "$APP_IMAGE" "$(env_get "$env" IMAGE)" "坏镜像部署失败后 .env 还是上一版"
+  local status_after_bad
+  status_after_bad=$(bash "$HELPER" product-status "$ADDR")
+  if printf '%s' "$status_after_bad" | grep -qF "镜像 $APP_IMAGE"; then
+    ok "product-status 的镜像还是上一版"
+  else
+    bad "product-status 的镜像不是上一版（$status_after_bad）"
+  fi
+  docker rmi -f "$bad_image" >/dev/null 2>&1 || true
+  rm -rf "$bad_dir"
 
   local status
   if status=$(bash "$HELPER" product-status); then
