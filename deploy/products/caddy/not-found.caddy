@@ -1,0 +1,16 @@
+# 通配兜底：不认识的子域回 404。install.sh 把它装到
+# /etc/caddy/products/00-not-found.caddy，和每个成品的路由一起被 include。
+#
+# Caddy 先匹配具体主机，再匹配通配主机，所以已配好的成品地址不受影响；
+# 没有站点块的 Host 命中这一块，回 404。
+# Cloudflare 的 *.afkfactory.space 通配记录会把任意子域送到源站，靠这里兜底。
+*.afkfactory.space {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /etc/caddy/certs/aop-ca.pem
+		}
+	}
+
+	respond 404
+}
