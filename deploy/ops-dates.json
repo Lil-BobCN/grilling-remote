@@ -64,8 +64,15 @@
     },
     {
       "id": "edge-cert",
-      "name": "Cloudflare 边缘证书",
+      "name": "Cloudflare 边缘证书（afkfactory.dev）",
       "date": "2027-02-01",
+      "remind_days": [],
+      "note": "Universal SSL，Cloudflare 自动续；每月体检顺便看"
+    },
+    {
+      "id": "edge-cert-space",
+      "name": "Cloudflare 边缘证书（afkfactory.space）",
+      "date": "2027-02-13",
       "remind_days": [],
       "note": "Universal SSL，Cloudflare 自动续；每月体检顺便看"
     }

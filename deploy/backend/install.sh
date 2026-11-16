@@ -46,7 +46,7 @@ if [[ -f /etc/afkapp/app.env ]]; then
   echo "/etc/afkapp/app.env 已存在，没覆盖"
 else
   install -m 600 -o root -g root "$ENV_EXAMPLE" /etc/afkapp/app.env
-  echo "写入 /etc/afkapp/app.env，记得填 GITHUB_TOKEN、SMTP_PASSWORD、SESSION_SECRET"
+  echo "写入 /etc/afkapp/app.env，记得填 GITHUB_TOKEN、SESSION_SECRET；SMTP_PASSWORD 留空，通知模块的密码走钥匙串"
 fi
 
 echo "== systemd 单元"
