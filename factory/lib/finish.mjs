@@ -324,10 +324,16 @@ export function renderEvidence(evidence) {
     const after = []
     for (const row of item.verify || []) {
       const tokens = evidenceTokens(row.evidence)
-      const label = `${row.decision || ''} ${row.evidence || ''}`
-      const target = /改前|before/i.test(label) ? before : after
-      if (tokens.length) target.push(...tokens)
-      else if (row.decision) target.push(row.decision)
+      if (tokens.length === 0) {
+        if (row.decision) (/改前|before/i.test(row.decision) ? before : after).push(row.decision)
+        continue
+      }
+      for (const token of tokens) {
+        if (/改前|before/i.test(token)) before.push(token)
+        else if (/改后|after/i.test(token)) after.push(token)
+        else if (/改前|before/i.test(row.decision || '')) before.push(token)
+        else after.push(token)
+      }
     }
     lines.push(`  - 改前：${before.length ? before.join('、') : '未留'}`)
     lines.push(`  - 改后：${after.length ? after.join('、') : '未留'}`)

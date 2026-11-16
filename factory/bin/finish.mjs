@@ -7,6 +7,7 @@
  *
  * 默认注入真实 git、gh、agent runner 和 notifier。
  * `--dry-run` 只读：打印四栏和检查结果，不建 PR、不合、不通知。
+ * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
