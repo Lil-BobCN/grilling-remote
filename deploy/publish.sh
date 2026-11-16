@@ -42,5 +42,5 @@ echo
 echo "包名：$file"
 echo "大小：$size 字节"
 echo "SHA256：$sha"
-echo "下载：https://afkfactory.dev/downloads/$file"
+echo "下载：https://afkfactory.space/downloads/$file"
 echo "官网数据：customer-kit/release.json（记得提交）"
