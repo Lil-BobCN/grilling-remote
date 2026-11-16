@@ -55,7 +55,7 @@ systemctl daemon-reload
 echo "装好 afkapp.service，还没 enable，等第一版发布"
 
 echo "== 运维脚本"
-# 这里只在装机时跑。以后改这三个脚本，按 docs/后端服务部署.md 的「发布」一节换 /data/app/bin/ 里的旧版。
+# 这里只在装机时跑。以后改这三个脚本，按 docs/后端服务.md 的「发布」一节换 /data/app/bin/ 里的旧版。
 install -d -m 755 /data/app/bin
 for script in deploy.sh rollback.sh check.sh; do
   install -m 755 -o root -g root "$HERE/$script" "/data/app/bin/$script"

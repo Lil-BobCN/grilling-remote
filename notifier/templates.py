@@ -1,6 +1,6 @@
 """通知事件的标题和正文模板。
 
-措辞按 docs/通知与事件表.md 第二节；改措辞要另开票。
+措辞按 docs/通知.md 的「事件表」；改措辞要另开票。
 """
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ def render_event(event: str, data: Any, link: str | None) -> tuple[str, str]:
     spec = EVENTS.get(event)
     if spec is None:
         raise EventError(
-            f"未知事件「{event}」，按 docs/通知与事件表.md 第二节的 12 类")
+            f"未知事件「{event}」，按 docs/通知.md 的「事件表」的 12 类")
     if not isinstance(data, dict):
         raise EventError("data 必须是对象")
     _validate(event, spec, data, link)

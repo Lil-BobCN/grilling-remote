@@ -71,7 +71,7 @@ PR 操作只用 `gh`。令牌只限当前客户仓。PR 正文按 `/pr` 的四�
 1. 容器里能不能并行跑。
 2. 子 agent 能不能从 `.claude/skills/` 里的技能读到 `factory-skills/pstack/roles.md`。
 3. `/pr` 在容器里能不能找到。
-4. 调度器读 trail store 的实测归调度器实现票（to-spec），验收条件见 `docs/通知与事件表.md`。
+4. 调度器读 trail store 的实测归调度器实现票（to-spec），验收条件见 `docs/通知.md`。
 
 完整清单见 `CHANGES.md`。
 
