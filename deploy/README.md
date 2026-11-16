@@ -77,3 +77,20 @@ Cloudflare 两个 zone 的 Browser Cache TTL 都必须是 0（Respect Existing H
 `deploy/backend/` 是后端 Node 服务的部署路径：占位程序、systemd 单元、环境文件样例，加上安装、打包、发布、回滚、巡检五个脚本。真实服务源在本仓库 `backend/`，打包用 `bash deploy/backend/package.sh backend <版本>`。怎么装、怎么发布、怎么回滚、怎么看日志，写在 `docs/后端服务部署.md`；接口和上传判序在 `docs/后端服务实现.md`。
 
 Caddyfile 里的 `/app/api/*` 已经反代到 `127.0.0.1:8787`。服务没起时这部分回 502，静态页和下载不受影响。
+
+## 客户成品部署（2026-11-16 定，脚本未实现）
+
+客户成品也放这台服务器，一个软件一个 Docker Compose。完整定义见 `docs/服务器操作手册.md` 第十二节。这里只记部署路径，脚本归 to-spec。
+
+| 路径 | 放什么 |
+| --- | --- |
+| `/data/products/<交付地址>/compose.yml` | 一个软件的栈，600 root |
+| `/data/products/<交付地址>/.env` | 镜像 tag、数据库密码、应用密钥，600 root |
+| `/data/products/<交付地址>/data/` | 这个软件的上传文件和持久文件 |
+| `/data/products/<交付地址>/releases/` | 最近三个版本的 tag 和 compose 记录 |
+| `/data/products/postgres/` | 共享 Postgres 16 的数据卷和总钥匙 |
+| `/data/products/backups/` | `pg_dump` 暂存，同步到 Mac 后删 |
+| `/etc/caddy/products/<交付地址>.caddy` | 这个软件的 Caddy 路由 |
+| `/usr/local/sbin/afk-product` | 部署、回滚和 `pg_dump` 的固定 helper；sudo 白名单只加这一条 |
+
+一次性安装、构建、密钥、回滚、备份和巡检按手册第十二节。`deploy/Caddyfile` 和 `deploy/ops-dates.json` 等签完新 Origin CA、装好 Docker 后再改，不在本票改。
