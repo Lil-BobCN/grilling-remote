@@ -19,6 +19,32 @@ test('正常包认出 .scratch 和需求目录', async () => {
   assert.deepEqual(result.requirements, ['demo'])
 })
 
+test('macOS 命令行 zip 打的中文包，文件名能认出来', async () => {
+  const { config } = await makeConfig()
+  const workspace = await makeWorkspace({ zipTool: 'zip' })
+  const out = await outDir()
+  const result = await inspectZip(config, workspace.zipPath, out)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.requirements, ['demo'])
+  const acceptance = await readZip(join(out, 'scratch', 'demo', '验收场景.md'))
+  assert.match(acceptance.toString('utf8'), /客户确认/)
+})
+
+test('Finder 同款 ditto 打的中文包，文件名能认出来', async (t) => {
+  if (process.platform !== 'darwin') {
+    t.skip('ditto 只在 macOS 上有')
+    return
+  }
+  const { config } = await makeConfig()
+  const workspace = await makeWorkspace({ zipTool: 'ditto' })
+  const out = await outDir()
+  const result = await inspectZip(config, workspace.zipPath, out)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.requirements, ['demo'])
+  const acceptance = await readZip(join(out, 'scratch', 'demo', '验收场景.md'))
+  assert.match(acceptance.toString('utf8'), /客户确认/)
+})
+
 test('工作区在单独一层子目录时认出来', async () => {
   const { config } = await makeConfig()
   const workspace = await makeWorkspace({ nested: true })

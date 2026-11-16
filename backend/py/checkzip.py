@@ -60,6 +60,26 @@ def is_symlink(info):
     return mode == 0o120000
 
 
+def entry_name(info):
+    """取条目名。没有 UTF-8 标记时先按 UTF-8 解码，失败再保留 CP437。
+
+    macOS 的 zip 和 ditto 写中文名时用 UTF-8 字节，却不置 0x800 标记。
+    Python 按 CP437 解码，名字变乱码，校验就找不到验收场景.md。
+    """
+    name = info.filename
+    if not info.flag_bits & 0x800:
+        try:
+            raw = name.encode("cp437")
+        except UnicodeEncodeError:
+            raw = None
+        if raw is not None:
+            try:
+                name = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+    return name.replace("\\", "/")
+
+
 def main():
     if len(sys.argv) != 4 or sys.argv[1] != "inspect":
         print("用法：checkzip.py inspect <zip 文件> <输出目录>", file=sys.stderr)
@@ -84,7 +104,7 @@ def main():
         for info in infos:
             if info.flag_bits & 0x1:
                 emit({"ok": False, "code": "encrypted"})
-            name = info.filename.replace("\\", "/")
+            name = entry_name(info)
             if unsafe_name(name):
                 emit({"ok": False, "code": "unsafe", "detail": name})
             if is_symlink(info):
@@ -150,7 +170,7 @@ def main():
         written = 0
 
         for info in infos:
-            name = info.filename.replace("\\", "/")
+            name = entry_name(info)
             if not name.startswith(prefix) or name.endswith("/"):
                 continue
             rest = name[len(prefix):]
