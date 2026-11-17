@@ -241,7 +241,8 @@ async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
  *
  * 评审或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；最多两轮
  * （跨调度轮次按票分支上的修复提交累计）。每次修完 head 变了，验证、standard/spec
- * 和 interrogate 都重跑。每轮结果交给 `onReviewRound`，调度器用它写进度行。
+ * 和 interrogate 都重跑；复验也没过时，复验问题同样交给下一轮 fixer，不提前停。
+ * 每轮结果交给 `onReviewRound`，调度器用它写进度行。
  * 修不过或没注入 fixer 就销毁预览、发「出事」、返回 evidence_not_ready。
  * 轮次用完且同一 head 已经判过 interrogate fail 时不再重跑，直接返回。
  *
@@ -413,9 +414,10 @@ export async function ensureEvidenceBeforeMerge({
           round += 1
           const verifyProblems = await reverifyAfterFix()
           if (verifyProblems.length) {
+            // 复验问题和评审问题一样，继续交给下一轮 fixer，轮次用完才停。
             failed = verifyProblems
             await reportReviewRound({ onReviewRound, round, ok: false, problems: failed })
-            break
+            continue
           }
           failed = await runReviewRound({ standards: true })
           await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
