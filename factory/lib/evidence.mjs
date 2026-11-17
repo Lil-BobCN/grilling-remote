@@ -329,9 +329,9 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
   const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
 
   const missing = []
-  const axes = missingEvidenceAxes(rows)
+  const missingAxes = missingEvidenceAxes(rows)
   const verifyRows = rows.filter((row) => row.phase === 'verify' && row.result === 'pass')
-  if (axes.verify) {
+  if (missingAxes.verify) {
     missing.push('验证（phase=verify result=pass）')
   } else {
     const tokens = verifyRows.flatMap((row) => evidenceTokens(row.evidence))
@@ -350,10 +350,10 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
   if (!rows.some((row) => row.phase === 'test' && row.result === 'pass')) {
     missing.push('测试（phase=test result=pass）')
   }
-  if (axes.reviewStandard) {
+  if (missingAxes.reviewStandard) {
     missing.push('评审·标准（phase=review decision 含「标准」）')
   }
-  if (axes.reviewSpec) {
+  if (missingAxes.reviewSpec) {
     missing.push('评审·spec（phase=review decision 含 spec）')
   }
 

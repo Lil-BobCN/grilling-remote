@@ -154,10 +154,10 @@ function defaultPreview({ customer, product, pr }) {
 }
 
 function auditGaps(rows = []) {
-  const axes = missingEvidenceAxes(rows)
+  const missingAxes = missingEvidenceAxes(rows)
   const gaps = []
-  if (axes.verify) gaps.push('verify')
-  if (axes.reviewStandard || axes.reviewSpec) gaps.push('review')
+  if (missingAxes.verify) gaps.push('verify')
+  if (missingAxes.reviewStandard || missingAxes.reviewSpec) gaps.push('review')
   return gaps
 }
 
