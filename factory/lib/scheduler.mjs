@@ -348,7 +348,7 @@ export function routeParent({
   }
 
   if (state === '已提交') {
-    if (signal?.kind !== '点头：补缺口') return []
+    if (signal?.kind !== '点头：补缺口') return [{ type: 'runGapProposal' }]
     return [
       { type: 'setState', from: '已提交', to: '排队中' },
       { type: 'comment', body: progressFor({ parent, state: '排队中', comments }) },
@@ -780,10 +780,13 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
 
 // ---- 执行动作 ----
 
-function missingImplementation(actions, { ignite, decompose, createFixTicket }) {
+function missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket }) {
   for (const action of actions) {
     if (action.type === 'ignite' && typeof ignite !== 'function') return 'ignite'
     if (action.type === 'runDecompose' && typeof decompose !== 'function') return 'decompose'
+    if (action.type === 'runGapProposal' && typeof gapProposal !== 'function') {
+      return 'gapProposal'
+    }
     if (action.type === 'createFixTicket' && typeof createFixTicket !== 'function') {
       return 'createFixTicket'
     }
@@ -886,6 +889,7 @@ async function sendEvent({ notifier, event, config, now }) {
 }
 
 const EXECUTION_ORDER = [
+  'runGapProposal',
   'runDecompose',
   'ignite',
   'createFixTicket',
@@ -904,12 +908,13 @@ async function executeActions({
   actions,
   ignite,
   decompose,
+  gapProposal,
   createFixTicket,
   notifier,
   config,
   now,
 }) {
-  const missing = missingImplementation(actions, { ignite, decompose, createFixTicket })
+  const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket })
   if (missing) return { skipped: missing, results: [] }
 
   const ordered = [...actions].sort(
@@ -945,6 +950,20 @@ async function executeActions({
     } else if (action.type === 'runDecompose') {
       const result = await decompose({ owner, repo, parent, spec: parent.spec || null })
       results.push({ type: 'runDecompose', result })
+    } else if (action.type === 'runGapProposal') {
+      const result = await gapProposal({ owner, repo, parent })
+      results.push({ type: 'runGapProposal', result })
+      if (result?.ok === false) {
+        results.push(
+          await ensureIssueLabel({
+            gh,
+            owner,
+            repo,
+            number: parent.number,
+            name: NEEDS_INFO_LABEL,
+          }),
+        )
+      }
     } else if (action.type === 'ignite') {
       const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config })
       results.push(result)
@@ -961,6 +980,7 @@ async function executeActions({
 function decisionOf(actions) {
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
+  if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
   if (actions.some((action) => action.type === 'runDecompose')) return 'decompose'
   if (actions.some((action) => action.type === 'addLabel' && action.name === NEEDS_INFO_LABEL)) {
     return 'needs-info'
@@ -988,6 +1008,7 @@ function summarizeAction(action) {
   if (action.type === 'notify') return { type: 'notify', event: action.event, key: action.key }
   if (action.type === 'ignite') return { type: 'ignite', ticket: action.ticketNumber ?? action.ticket?.number }
   if (action.type === 'runDecompose') return { type: 'runDecompose' }
+  if (action.type === 'runGapProposal') return { type: 'runGapProposal' }
   if (action.type === 'addLabel') return { type: 'addLabel', name: action.name }
   if (action.type === 'createFixTicket') return { type: 'createFixTicket' }
   if (action.type === 'removeSandcastle') return { type: 'removeSandcastle', ticket: action.ticketNumber }
@@ -1053,6 +1074,7 @@ export async function runOnce({
   notifier,
   ignite,
   decompose,
+  gapProposal,
   createFixTicket,
   clock = () => new Date(),
   config = {},
@@ -1136,6 +1158,7 @@ export async function runOnce({
             actions,
             ignite,
             decompose,
+            gapProposal,
             createFixTicket,
             notifier,
             config,
@@ -1166,6 +1189,7 @@ export async function runOnce({
           actions,
           ignite,
           decompose,
+          gapProposal,
           createFixTicket,
           notifier,
           config,

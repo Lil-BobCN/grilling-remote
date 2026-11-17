@@ -21,11 +21,13 @@ import { pathToFileURL } from 'node:url'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
+import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 import {
   createDecompose,
   createFixTicket as createFixTicketJob,
+  createGapProposal,
   createListMergedYesterday,
   createNeedsAnswer,
   createPreviewSweep,
@@ -66,6 +68,7 @@ function parentLines(report) {
 function previewDecision(actions) {
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
+  if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
   if (actions.some((action) => action.type === 'runDecompose')) return 'decompose'
   if (actions.some((action) => action.type === 'addLabel' && action.name === 'needs-info')) {
     return 'needs-info'
@@ -132,6 +135,7 @@ export async function run(
     notifier,
     ignite,
     decompose,
+    gapProposal,
     createFixTicket,
     runner,
     openPr,
@@ -197,6 +201,13 @@ export async function run(
     })
   const createFixTicketFn =
     createFixTicket || createFixTicketJob({ gh: client })
+  const gapProposalFn =
+    gapProposal ||
+    createGapProposal({
+      repoRoot,
+      command: process.env.AFK_AGENT_COMMAND || 'claude',
+      log: configOverrides.log || logLine,
+    })
 
   const igniteFn =
     ignite ||
@@ -224,6 +235,7 @@ export async function run(
     notifier: notify,
     ignite: igniteFn,
     decompose: decomposeFn,
+    gapProposal: gapProposalFn,
     createFixTicket: createFixTicketFn,
     clock,
     config,

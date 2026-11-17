@@ -8,11 +8,12 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createAgentRunner, DECOMPOSE_TOOLS } from './agent-runner.mjs'
+import { createAgentRunner, DECOMPOSE_TOOLS, GAP_TOOLS } from './agent-runner.mjs'
 import { parseTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { runGh, runHelper } from './helper.mjs'
 import { ensureLabel, ensureSubIssue } from './issues.mjs'
+import { logLine } from './log.mjs'
 import { parseParentAcceptance } from './tickets.mjs'
 
 const DEFAULT_AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
@@ -278,6 +279,68 @@ export function createDecompose({
       brief: decomposeBrief({ instructions, parent, spec }),
     })
     return { ok: Boolean(run?.ok), code: run?.code, skipped: null }
+  }
+}
+
+function gapBrief({ instructions, owner, repo, parent, factoryDir }) {
+  const cli = join(factoryDir, 'bin', 'gap.mjs')
+  return [
+    String(instructions || '').trim(),
+    '',
+    '## 这次补缺口',
+    '',
+    `父工单：#${parent?.number || ''} ${parent?.title || ''}`.trim(),
+    `仓库：${owner}/${repo}`,
+    `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli}`,
+    '',
+    '依次跑这两条，两条的 stdout/stderr 都会随这一跑写进调度器日志：',
+    `1. node ${cli} apply-map --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --requirement <需求名> --parent <父工单链接>`,
+    `2. node ${cli} propose --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --number <地图编号>`,
+    '',
+    '失败时把错误原样留在 stderr，不要吞掉；也不要手改回传件。',
+  ].join('\n')
+}
+
+/**
+ * 叫补缺口 agent 跑一次：从回传件建图，写 `提案：补缺口`。
+ * `apply-map` 和 `propose` 的 stdout/stderr 原样进日志；失败返回 `ok:false`。
+ */
+export function createGapProposal({
+  runner,
+  command = process.env.AFK_AGENT_COMMAND || 'claude',
+  agentsDir,
+  repoRoot = '',
+  log = logLine,
+} = {}) {
+  const agentRunner = runner || createAgentRunner({ command })
+  const agents = agentsDir || DEFAULT_AGENTS_DIR
+  const factoryDir = fileURLToPath(new URL('..', import.meta.url))
+  return async function gapProposal({ owner, repo, parent } = {}) {
+    const instructions = await readFile(join(agents, '补缺口.md'), 'utf8')
+    const preferred = repoRoot ? join(repoRoot, repo || '') : ''
+    const cwd = preferred && (await dirExists(preferred)) ? preferred : process.cwd()
+    const run = await agentRunner.run({
+      name: `gap-${parent?.number || 'parent'}`,
+      cwd,
+      allowedTools: GAP_TOOLS,
+      brief: gapBrief({ instructions, owner, repo, parent, factoryDir }),
+    })
+    const result = {
+      ok: Boolean(run?.ok),
+      code: run?.code,
+      stdout: String(run?.stdout || ''),
+      stderr: String(run?.stderr || ''),
+    }
+    log({
+      level: result.ok ? 'info' : 'error',
+      msg: result.ok ? '补缺口提案跑完' : '补缺口提案失败',
+      owner,
+      repo,
+      parent: parent?.number,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    })
+    return result
   }
 }
 

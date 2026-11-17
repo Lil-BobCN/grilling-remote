@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import {
   createDecompose,
   createFixTicket,
+  createGapProposal,
   createListMergedYesterday,
   createNeedsAnswer,
   parseGateRows,
@@ -12,6 +14,7 @@ import { newTicketEvent } from '../lib/scheduler.mjs'
 
 const NOW = new Date('2026-11-17T10:00:00')
 const HEADER = 'ts\tphase\tdecision\twhy\tevidence\tresult'
+const AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
 
 function trail(lines) {
   return [HEADER, ...lines].join('\n')
@@ -160,6 +163,60 @@ test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 
   assert.match(calls[0].brief, /提案：拆票/)
   assert.match(calls[0].brief, /用户故事/)
   assert.match(calls[0].brief, /父工单：#42/)
+})
+
+test('createGapProposal 跑补缺口 agent：brief 带绝对路径和两条命令，stdout/stderr 进日志', async () => {
+  const calls = []
+  const logs = []
+  const runner = {
+    async run(options) {
+      calls.push(options)
+      return { ok: true, code: 0, stdout: 'MAP-OK', stderr: 'WARN-LINE' }
+    },
+  }
+  const parent = { number: 42, title: '要个预约取货', body: '' }
+  const gapProposal = createGapProposal({
+    runner,
+    agentsDir: AGENTS_DIR,
+    log: (row) => logs.push(row),
+  })
+
+  const result = await gapProposal({ owner: 'acme', repo: 'demo', parent })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.stdout, 'MAP-OK')
+  assert.equal(result.stderr, 'WARN-LINE')
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].brief, /父工单：#42/)
+  assert.match(calls[0].brief, /apply-map/)
+  assert.match(calls[0].brief, /propose/)
+  assert.match(calls[0].brief, /factory\/bin\/gap\.mjs/)
+  assert.equal(logs.length, 1)
+  assert.equal(logs[0].stdout, 'MAP-OK')
+  assert.equal(logs[0].stderr, 'WARN-LINE')
+})
+
+test('createGapProposal 失败返回 ok:false，并保留 stderr', async () => {
+  const runner = {
+    async run() {
+      return { ok: false, code: 1, stdout: '', stderr: '地图缺 Not yet specified' }
+    },
+  }
+  const gapProposal = createGapProposal({
+    runner,
+    agentsDir: AGENTS_DIR,
+    log: () => {},
+  })
+
+  const result = await gapProposal({
+    owner: 'acme',
+    repo: 'demo',
+    parent: { number: 42, title: '要个预约取货', body: '' },
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 1)
+  assert.match(result.stderr, /Not yet specified/)
 })
 
 test('createFixTicket 建修复子票：标题取第一句，只挂排队中，挂成 sub-issue，不写阻塞', async () => {
