@@ -26,6 +26,7 @@ export const NO_WRITE_TOOLS = 'Bash,Read'
 
 /** 各角色的工具白名单；`--allowedTools` 用逗号分隔。 */
 export const DECOMPOSE_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
+export const GAP_TOOLS = 'Read,Write,Edit,Bash(node:*),Bash(gh:*)'
 export const VERIFY_TOOLS = 'Read,Bash(bash:*),Bash(node:*),Bash(npm:*),Bash(curl:*)'
 export const REVIEW_TOOLS = 'Read,Bash(gh:*)'
 export const MERGER_TOOLS = 'Read,Write,Edit,Bash(git:*)'

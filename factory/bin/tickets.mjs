@@ -10,8 +10,15 @@
  */
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
+import { gateKind } from '../lib/gate.mjs'
 import { createGithub } from '../lib/github.mjs'
-import { createTickets, renderPoint, renderProposal } from '../lib/tickets.mjs'
+import { ensureCommentOnce } from '../lib/issues.mjs'
+import {
+  createTickets,
+  parseTicketsPayload,
+  renderPoint,
+  renderProposal,
+} from '../lib/tickets.mjs'
 
 function option(argv, name) {
   const index = argv.indexOf(name)
@@ -57,9 +64,27 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
     const owner = option(argv, '--owner')
     const repo = option(argv, '--repo')
     const parent = Number(option(argv, '--parent'))
-    const tickets = await readJson(option(argv, '--tickets'))
     const client = gh || createGithub({ token: process.env.GITHUB_TOKEN || '' })
+    let tickets
+    if (argv.includes('--from-proposal')) {
+      const comments = await client.listComments({ owner, repo, number: parent })
+      const proposal = [...comments]
+        .reverse()
+        .find((comment) => gateKind(comment.body) === '提案：拆票')
+      tickets = proposal ? parseTicketsPayload(proposal.body) : null
+      if (!tickets) throw new Error('父工单上没有可解析的提案：拆票票单')
+    } else {
+      tickets = await readJson(option(argv, '--tickets'))
+    }
     const result = await createTickets({ gh: client, owner, repo, parent, tickets })
+    if (argv.includes('--point')) {
+      await ensureCommentOnce(client, {
+        owner,
+        repo,
+        number: parent,
+        body: renderPoint({ count: result.tickets.length }),
+      })
+    }
     out(JSON.stringify(result, null, 2))
     return result
   }

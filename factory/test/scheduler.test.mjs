@@ -174,8 +174,8 @@ test('已提交+提案：补缺口 → 停，不猜', () => {
   assert.deepEqual(route({ comments: [gate('提案：补缺口')] }), [])
 })
 
-test('已提交+没有关口评论 → 停', () => {
-  assert.deepEqual(route({ comments: [] }), [])
+test('已提交+没有关口评论 → 叫补缺口提案', () => {
+  assert.deepEqual(types(route({ comments: [] })), ['runGapProposal'])
 })
 
 test('已提交+驳回：补缺口 → 停，等下一次点头', () => {
@@ -756,6 +756,38 @@ test('runOnce：已提交+点头：补缺口 → 排队中，写进度，推该�
   assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:排队中'])
   assert.equal(notifier.delivered.size, 1)
+})
+
+test('runOnce：已提交+没有关口评论 → 跑补缺口提案，写进提案后不再跑；失败打 needs-info', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  const calls = []
+  let fail = false
+  const gapProposal = async ({ owner, repo, parent: row }) => {
+    calls.push(row.number)
+    if (fail) return { ok: false, code: 1, stdout: '', stderr: '地图没建起来' }
+    await gh.createComment({
+      owner,
+      repo,
+      number: row.number,
+      body: '提案：补缺口\n\n## 技术题\n\n1. 题目：部署到哪',
+    })
+    return { ok: true, code: 0, stdout: 'MAP-OK', stderr: '' }
+  }
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), gapProposal, clock: () => NOW, config })
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), gapProposal, clock: () => NOW, config })
+
+  assert.deepEqual(calls, [parent.number])
+  assert.ok(!labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+
+  const failedParent = await createParent(gh, { title: '第二个单' })
+  fail = true
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), gapProposal, clock: () => NOW, config })
+
+  assert.deepEqual(calls, [parent.number, failedParent.number])
+  assert.ok(labelsOf(fake, OWNER, REPO, failedParent.number).includes('needs-info'))
 })
 
 test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火；重启不再点第二次', async (t) => {

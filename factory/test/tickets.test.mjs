@@ -8,6 +8,7 @@ import {
   createTickets,
   frontier,
   parseParentAcceptance,
+  parseTicketsPayload,
   renderPoint,
   renderProposal,
   validateTickets,
@@ -184,6 +185,16 @@ test('renderProposal 一行一张票，提案阶段不建子票', async (t) => {
   assert.match(ticketLines[2], /^- 3\. 下单成功看到订单号和取货地址/)
 
   assert.equal(fake.state.issues.get('acme/acme-shop').length, 1, '提案阶段只有父工单')
+})
+
+test('renderProposal 末尾带隐藏票单 JSON，parseTicketsPayload 能读回', () => {
+  const tickets = threeTickets()
+  const body = renderProposal({ seams: ['打开链接的页面'], tickets })
+
+  const lines = body.trimEnd().split('\n')
+  assert.match(lines.at(-1), /^<!-- factory:tickets [A-Za-z0-9_-]+ -->$/)
+  assert.deepEqual(parseTicketsPayload(body), tickets)
+  assert.equal(parseTicketsPayload('提案：拆票\n\n没有票单'), null)
 })
 
 test('renderPoint 第一行是点头：拆票，写明建了几张', () => {
@@ -369,4 +380,84 @@ test('CLI proposal、point、create 三个命令', async (t) => {
   )
   assert.equal(created.tickets.length, 3)
   assert.equal(store.length, 4)
+})
+
+test('CLI create --from-proposal 读提案票单，建票成功才写点头：拆票', async (t) => {
+  const { gh, store } = await startShop(t)
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shop',
+    number: 1,
+    body: renderProposal({ seams: ['打开链接的页面'], tickets: threeTickets() }),
+  })
+
+  const created = await run(
+    [
+      'create',
+      '--owner',
+      'acme',
+      '--repo',
+      'acme-shop',
+      '--parent',
+      '1',
+      '--from-proposal',
+      '--point',
+    ],
+    { gh, out: () => {} },
+  )
+
+  assert.equal(created.tickets.length, 3)
+  assert.equal(store.length, 4)
+  const comments = store[0].comments.map((comment) => comment.body)
+  assert.ok(comments.some((body) => body.startsWith('点头：拆票')))
+  assert.ok(comments.some((body) => body.includes('建了 3 张子票')))
+
+  // 重跑同一份提案：按标题复用，不建第二套，也不跳过点头。
+  const again = await run(
+    [
+      'create',
+      '--owner',
+      'acme',
+      '--repo',
+      'acme-shop',
+      '--parent',
+      '1',
+      '--from-proposal',
+      '--point',
+    ],
+    { gh, out: () => {} },
+  )
+  assert.equal(again.tickets.length, 3)
+  assert.equal(store.length, 4)
+})
+
+test('CLI create --from-proposal 建票失败时不写点头：拆票', async (t) => {
+  const { gh, store } = await startShop(t)
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shop',
+    number: 1,
+    body: '提案：拆票\n\n没有机器可读的票单。',
+  })
+
+  await assert.rejects(
+    run(
+      [
+        'create',
+        '--owner',
+        'acme',
+        '--repo',
+        'acme-shop',
+        '--parent',
+        '1',
+        '--from-proposal',
+        '--point',
+      ],
+      { gh, out: () => {} },
+    ),
+    /票单/,
+  )
+
+  assert.equal(store.length, 1)
+  assert.ok(!store[0].comments.some((comment) => comment.body.startsWith('点头：拆票')))
 })

@@ -114,7 +114,27 @@ function oneLine(text) {
   return String(text || '').replace(/\s*\r?\n\s*/g, ' ').trim()
 }
 
-/** `提案：拆票` 评论：接缝、票单一行一张。提案阶段不建票。 */
+const TICKETS_MARKER_RE = /<!--\s*factory:tickets\s+([A-Za-z0-9_-]+)\s*-->/g
+
+/** 把票单编码成隐藏 JSON 行，放在提案末尾，重跑和 console 都从这里读。 */
+export function encodeTicketsPayload(tickets) {
+  const json = JSON.stringify(Array.isArray(tickets) ? tickets : [])
+  return `<!-- factory:tickets ${Buffer.from(json, 'utf8').toString('base64url')} -->`
+}
+
+/** 从提案评论里读回隐藏票单；没有或解析失败返回 null。 */
+export function parseTicketsPayload(body) {
+  const matches = [...String(body || '').matchAll(TICKETS_MARKER_RE)]
+  if (!matches.length) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(matches.at(-1)[1], 'base64url').toString('utf8'))
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** `提案：拆票` 评论：接缝、票单一行一张，末尾带隐藏票单 JSON。提案阶段不建票。 */
 export function renderProposal({ seams = [], tickets = [] }) {
   const seamLines = seams.length ? seams.map((seam) => `- ${oneLine(seam)}`) : ['- 无']
   const ticketLines = tickets.map((ticket, index) => {
@@ -133,6 +153,8 @@ export function renderProposal({ seams = [], tickets = [] }) {
     `共 ${tickets.length} 张票。`,
     '',
     ...ticketLines,
+    '',
+    encodeTicketsPayload(tickets),
   ].join('\n')
 }
 
