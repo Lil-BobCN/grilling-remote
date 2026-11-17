@@ -164,6 +164,18 @@ function fakeOpenPr(url = 'https://github.com/acme/demo/pull/7') {
   }
 }
 
+function fakePush(error = null) {
+  const calls = []
+  return {
+    calls,
+    async push(args) {
+      calls.push(args)
+      if (error) throw error
+      return { branch: args.branch }
+    },
+  }
+}
+
 function fakeNotifier() {
   const calls = []
   return {
@@ -304,6 +316,7 @@ test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评�
     config: ignitionConfig(fixture, gh),
     runner: runner.run,
     openPr: pr.openPr,
+    push: fakePush().push,
     notifier,
   })
 
@@ -351,6 +364,96 @@ test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评�
   assert.match(comments[0], /2 个提交/)
   assert.match(comments[0], /pull\/7/)
   assert.equal(notifier.calls.length, 0)
+})
+
+test('点火成功先 push 票分支，PR head 用 push 的分支', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const branch = `ticket/${ticket.number}-fix`
+  const logs = []
+  const runner = fakeRunner(async () => {
+    return { commits: [{ sha: 'abc123' }, { sha: 'def456' }], branch }
+  })
+  const push = fakePush()
+  const pr = fakeOpenPr()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: pr.openPr,
+    push: push.push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.branch, branch)
+  assert.equal(push.calls.length, 1)
+  assert.equal(push.calls[0].branch, branch)
+  assert.equal(push.calls[0].repoDir, join(fixture.root, 'repos', REPO))
+  assert.equal(pr.calls.length, 1)
+  assert.equal(pr.calls[0].head, branch)
+  assert.match(commentsOf(fake, ticket.number)[0], new RegExp(branch))
+
+  const done = logs.find((row) => row.msg === '点火完成')
+  assert.equal(done.commits, 2)
+  assert.deepEqual(done.afkResult, { commits: [{ sha: 'abc123' }, { sha: 'def456' }], branch })
+})
+
+test('没有提交时不 push、不开 PR，仍写「没有产生提交」', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner(async () => ({ commits: [], branch: `ticket/${ticket.number}` }))
+  const push = fakePush()
+  const pr = fakeOpenPr()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: pr.openPr,
+    push: push.push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'no-commits')
+  assert.equal(push.calls.length, 0)
+  assert.equal(pr.calls.length, 0)
+  assert.match(commentsOf(fake, ticket.number)[0], /没有产生提交/)
+})
+
+test('push 失败：写评论带分支和提交数，不开 PR', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const branch = `ticket/${ticket.number}`
+  const logs = []
+  const runner = fakeRunner(async () => ({
+    commits: [{ sha: 'abc123' }, { sha: 'def456' }],
+    branch,
+  }))
+  const push = fakePush(new Error('远端拒绝'))
+  const pr = fakeOpenPr()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: pr.openPr,
+    push: push.push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, false)
+  assert.match(result.error, /远端拒绝/)
+  assert.equal(pr.calls.length, 0)
+  const comment = commentsOf(fake, ticket.number)[0]
+  assert.ok(comment.startsWith('点火失败'))
+  assert.match(comment, new RegExp(branch.replace('/', '\\/')))
+  assert.match(comment, /2 个提交/)
+  const failure = logs.find((row) => row.msg === '点火失败')
+  assert.equal(failure.branch, branch)
+  assert.equal(failure.commits, 2)
 })
 
 test('runner 抛错：写失败评论和 JSON 日志，不开 PR，不写待验收', async (t) => {
@@ -405,6 +508,7 @@ test('票里没点文件时，相关代码放 git ls-files 前 100 行', async (
     config: ignitionConfig(fixture, gh),
     runner: runner.run,
     openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
     notifier: fakeNotifier(),
   })
 
@@ -441,6 +545,7 @@ test('重启后同一票已有 Sandcastle，不重复点火', async (t) => {
     config: firstConfig,
     runner: runner.run,
     openPr: pr.openPr,
+    push: fakePush().push,
     notifier: fakeNotifier(),
   })
 
@@ -459,6 +564,7 @@ test('重启后同一票已有 Sandcastle，不重复点火', async (t) => {
     config: restartedConfig,
     runner: runner.run,
     openPr: pr.openPr,
+    push: fakePush().push,
     notifier: fakeNotifier(),
   })
   await runOnce({
@@ -540,6 +646,7 @@ test('prepare 慢过两分钟不算超时，run 立即回执就点火成功', as
     config: ignitionConfig(fixture, gh, { timeoutMs: 30 }),
     runner,
     openPr: pr.openPr,
+    push: fakePush().push,
     notifier,
   })
 

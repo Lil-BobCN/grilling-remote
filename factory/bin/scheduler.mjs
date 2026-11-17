@@ -135,6 +135,7 @@ export async function run(
     createFixTicket,
     runner,
     openPr,
+    push,
     out = console.log,
     clock,
     signal,
@@ -212,6 +213,7 @@ export async function run(
         runner ||
         createSandcastleRunner({ home: process.env.AFK_SANDCASTLE_HOME, env: process.env }),
       openPr: openPr || createGhOpenPr({ token }),
+      push,
       notifier: notify,
       clock,
     })
