@@ -671,6 +671,40 @@ export function verifierIdOf(row) {
   return match ? match[1].toLowerCase() : ''
 }
 
+/** 是不是高风险 interrogate 的评审行。 */
+export function isInterrogateRow(row) {
+  return (
+    row?.phase === 'review' && /interrogate|攻击/i.test(`${row?.decision ?? ''} ${row?.why ?? ''}`)
+  )
+}
+
+/**
+ * 当前 head 上（含最后一个代码提交）的 interrogate 结论。
+ * 旧 head 的评审不算数，和 freshVerifyRows 用同一套新鲜度判据。
+ *
+ * @returns {Promise<{pass: boolean, passRow: object|null, fail: object|null}>}
+ */
+export async function interrogateStatus({ trail, headSha = '', repoDir = '' } = {}) {
+  const rows = normalizeTrail(trail)
+  let head = headSha
+  if (!head && repoDir) head = await revParse(repoDir, 'HEAD')
+  const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
+  const shas = [head, codeHead].filter(Boolean)
+  let pass = false
+  let passRow = null
+  let fail = null
+  for (const row of rows) {
+    if (!isInterrogateRow(row) || !freshFor(row, shas)) continue
+    if (row.result === 'pass') {
+      pass = true
+      passRow = row
+    } else if (row.result === 'fail' && !fail) {
+      fail = row
+    }
+  }
+  return { pass, passRow, fail }
+}
+
 /**
  * 新鲜的验证者 id，按 id 去重。同一 id 写几行都算一个。
  * 旧行没有 id 时一行算一个，避免旧 trail 突然凑不够验证队。
@@ -717,7 +751,7 @@ function issueLink(ticket) {
   return ''
 }
 
-function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview }) {
+function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview, interrogateRow }) {
   const verify = rows.find((row) => row.phase === 'verify' && row.result === 'pass')
   const test = rows.find((row) => row.phase === 'test' && row.result === 'pass')
   const standard = rows.find(
@@ -736,10 +770,7 @@ function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, p
     `- head：\`${headSha}\``,
   ]
   if (risk === 'high') {
-    const interrogate = rows.find(
-      (row) => row.phase === 'review' && row.result === 'pass' && /interrogate|攻击/i.test(`${row.decision} ${row.why}`),
-    )
-    lines.push(`- 高风险：已过 interrogate${interrogate?.decision ? `（${interrogate.decision}）` : ''}`)
+    lines.push(`- 高风险：已过 interrogate${interrogateRow?.decision ? `（${interrogateRow.decision}）` : ''}`)
   }
   if (preview?.url || preview?.address) {
     lines.push(`- 预览：${preview.url || `https://${preview.address}/`}（已销毁）`)
@@ -792,12 +823,7 @@ export async function assessMerge({ repoDir, ticketBranch, reqBranch, ticket, tr
   const plan = verifyPlan({ risk, changedLines: diffStat.additions + diffStat.deletions })
   const fresh = await freshVerifiers({ trail: rows, headSha: ticketHead, repoDir })
   const preview = { required: previewNeeded({ trail: serializeTrail(rows) }) }
-  const interrogate = rows.some(
-    (row) =>
-      row.phase === 'review' &&
-      row.result === 'pass' &&
-      /interrogate|攻击/i.test(`${row.decision} ${row.why}`),
-  )
+  const interrogate = (await interrogateStatus({ trail: rows, headSha: ticketHead, repoDir })).pass
 
   const missing = [...evidence.missing]
   if (risk === 'high' && fresh.length < plan.verifiers) {
@@ -882,6 +908,7 @@ export async function mergeTicket({
   const reqHeadBefore = assessment.reqHead
   const rows = assessment.rows
   const { risk, plan } = assessment
+  let interrogateRow = null
 
   if (risk === 'high' && !assessment.interrogate) {
     if (typeof review !== 'function') {
@@ -917,6 +944,7 @@ export async function mergeTicket({
       result: 'pass',
     })
     rows.push(appended)
+    interrogateRow = appended
     await git(repoDir, ['add', '--', `.audit/${ticket.number}.tsv`]).catch(() => {})
     await git(repoDir, ['commit', '-m', `FACTORY: 补 interrogate 评审 #${ticket.number}`]).catch(() => {})
     ticketHead = (await revParse(repoDir, ticketBranch)) || ticketHead
@@ -924,6 +952,10 @@ export async function mergeTicket({
 
   const evidenceCommit = await commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket })
   if (evidenceCommit.headSha) ticketHead = evidenceCommit.headSha
+
+  if (risk === 'high' && !interrogateRow) {
+    interrogateRow = (await interrogateStatus({ trail: rows, headSha: ticketHead, repoDir })).passRow
+  }
 
   const previewRequired = Boolean(preview?.needed) || assessment.preview.required
   let previewInfo = null
@@ -1071,6 +1103,7 @@ export async function mergeTicket({
             headSha: finalHead,
             risk,
             preview: previewInfo,
+            interrogateRow,
           }),
         })
         await ensureLabel(gh, {

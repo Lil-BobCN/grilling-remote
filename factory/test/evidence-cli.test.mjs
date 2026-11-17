@@ -430,7 +430,7 @@ async function appendReadyExceptVerifiers({ dir, headSha, verifyRows }) {
   }
 }
 
-test('高风险票只有一个验证者时自动补第二个，按 plan.verifiers 补差额', async () => {
+test('高风险票只有一个验证者时自动补第二个，再补 interrogate', async () => {
   const { dir, headSha } = await highRiskRepo()
   try {
     await appendReadyExceptVerifiers({
@@ -452,8 +452,14 @@ test('高风险票只有一个验证者时自动补第二个，按 plan.verifier
     })
 
     assert.equal(result.ok, true, JSON.stringify(result))
-    assert.equal(runner.calls.length, 1, '只补第二个验证者，评审不重跑')
-    assert.ok(runner.calls[0].name.startsWith('verify-51-'))
+    assert.equal(runner.calls.length, 2, '补第二个验证者，再补 interrogate')
+    const verifyCalls = runner.calls.filter((call) => call.name.startsWith('verify-51-'))
+    assert.equal(verifyCalls.length, 1, '补一个验证者就够')
+    assert.deepEqual(
+      runner.calls.filter((call) => call.name.startsWith('review-')).map((call) => call.name),
+      ['review-51-interrogate'],
+      'standard/spec 已齐，不重跑',
+    )
     const rows = await readTrail({ repoDir: dir, ticket: 51 })
     const verifyRows = rows.filter((row) => row.phase === 'verify' && row.result === 'pass')
     assert.equal(verifyRows.length, 2)
@@ -490,7 +496,10 @@ test('同一验证者 id 写两行只算一个，仍补一个不同 id 的验证
     })
 
     assert.equal(result.ok, true, JSON.stringify(result))
-    assert.equal(runner.calls.length, 1, '两行同 id 只算一个验证者')
+    assert.equal(runner.calls.length, 2, '两行同 id 只算一个验证者，另加一次 interrogate')
+    const verifyCalls = runner.calls.filter((call) => call.name.startsWith('verify-51-'))
+    assert.equal(verifyCalls.length, 1)
+    assert.ok(verifyCalls[0].name.endsWith('-v2'))
     const rows = await readTrail({ repoDir: dir, ticket: 51 })
     const ids = await freshVerifiers({ trail: rows, repoDir: dir })
     assert.deepEqual(ids, ['v1', 'v2'])

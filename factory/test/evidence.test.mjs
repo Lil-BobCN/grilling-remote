@@ -730,6 +730,60 @@ test('高风险票两个验证者 id 不同才能合；同一个 id 写两行只
   }
 })
 
+test('旧 head 的 interrogate pass 不算数：门禁按当前 head 重跑', async () => {
+  const fixture = await mergeFixture({ migration: true })
+  const { dir, rows, codeSha, gh, ticket } = fixture
+  try {
+    // 旧 head 上判过 interrogate pass，之后票分支又推了一个代码提交。
+    await writeFile(join(dir, 'app.txt'), 'v2\n')
+    const newerSha = await commitAll(dir, 'FACTORY: 后来改的代码')
+    const trail = [
+      ...rows,
+      trailRow('verify', newerSha, `验证 head ${newerSha} · verifier=v1`, `.audit/screenshots/after.png sha=${newerSha}`),
+      trailRow('verify', newerSha, `验证 head ${newerSha} · verifier=v2`, `.audit/screenshots/after.png sha=${newerSha}`),
+      trailRow('review', '标准：通过', `标准轴 head ${newerSha}`, ''),
+      trailRow('review', 'spec：符合验收条件', `spec 轴 head ${newerSha}`, ''),
+      trailRow(
+        'review',
+        'interrogate：旧 head 通过',
+        `head ${codeSha}`,
+        'https://github.com/acme/demo/pull/7#discussion_r1',
+      ),
+    ]
+
+    const assessment = await assessMerge({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail,
+    })
+    assert.equal(assessment.ok, true, JSON.stringify(assessment))
+    assert.equal(assessment.risk, 'high')
+    assert.equal(assessment.interrogate, false, '旧 head 的 interrogate pass 不算数')
+
+    const reviewCalls = []
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail,
+      review: async (ctx) => {
+        reviewCalls.push(ctx)
+        return { ok: true, decision: 'interrogate：当前 head 通过' }
+      },
+      verifier: async () => ({ ok: true }),
+      github: gh,
+    })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(reviewCalls.length, 1, '旧 pass 不算数，要按当前 head 重跑 interrogate')
+    assert.equal(reviewCalls[0].mode, 'interrogate')
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
 test('dry-run 复用合并的只读判定：阻塞项、risk、plan、fresh 与真合并一致', async () => {
   const fixture = await mergeFixture({ migration: true })
   const { dir, rows, gh, ticket, preMergeSha } = fixture
