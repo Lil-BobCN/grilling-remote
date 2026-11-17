@@ -8,6 +8,7 @@ import {
   appendMergeRow,
   appendTrail,
   evidenceReady,
+  freshVerifiers,
   missingEvidenceAxes,
   readTrail,
   riskLevel,
@@ -233,6 +234,24 @@ test('verifyPlan 按风险派验证队，只改文字不派', () => {
 
   const laterFix = verifyPlan({ risk: 'high', changedLines: 8, fullTeamDone: true })
   assert.equal(laterFix.verifiers, 1)
+})
+
+test('freshVerifiers 按验证者 id 去重，旧行没有 id 时一行算一个', async () => {
+  const dir = await makeRepo()
+  try {
+    await writeFile(join(dir, 'app.txt'), 'v1\n')
+    const codeSha = await commitAll(dir, 'code')
+    const rows = [
+      row({ decision: codeSha, why: `验证 head ${codeSha} · verifier=v1` }),
+      row({ decision: codeSha, why: `复验 head ${codeSha} · verifier=v1` }),
+      row({ decision: codeSha, why: `验证 head ${codeSha} · verifier=v2` }),
+      row({ decision: codeSha, why: `验证 head ${codeSha}` }),
+    ]
+    const ids = await freshVerifiers({ trail: rows, headSha: codeSha, repoDir: dir })
+    assert.deepEqual(ids, ['v1', 'v2', 'legacy-4'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 import { createGithub } from '../lib/github.mjs'
@@ -594,6 +613,54 @@ test('高风险票只有一个验证者时不合', async () => {
     assert.equal(result.ok, false)
     assert.ok(result.missing.some((text) => text.includes('高风险验证队')))
     assert.equal(await git(dir, ['rev-parse', 'req/order-1']), preMergeSha)
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('高风险票两个验证者 id 不同才能合；同一个 id 写两行只算一个', async () => {
+  const fixture = await mergeFixture({ migration: true })
+  const { dir, rows, codeSha, gh, ticket, preMergeSha } = fixture
+  const withIds = (ids) => {
+    let index = 0
+    return rows.map((row) => {
+      if (row.phase !== 'verify') return row
+      const id = ids[index] || ''
+      index += 1
+      return {
+        ...row,
+        decision: codeSha,
+        why: `验证 head ${codeSha} · verifier=${id}`,
+        evidence: `.audit/screenshots/after.png sha=${codeSha}`,
+      }
+    })
+  }
+  try {
+    const same = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: withIds(['v1', 'v1']),
+      verifier: async () => ({ ok: true }),
+      github: gh,
+    })
+    assert.equal(same.ok, false, JSON.stringify(same))
+    assert.ok(same.missing.some((text) => text.includes('高风险验证队')))
+    assert.equal(await git(dir, ['rev-parse', 'req/order-1']), preMergeSha)
+
+    const distinct = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: withIds(['v1', 'v2']),
+      review: async () => ({ ok: true, decision: 'interrogate：通过' }),
+      verifier: async () => ({ ok: true }),
+      github: gh,
+    })
+    assert.equal(distinct.ok, true, JSON.stringify(distinct))
+    assert.equal(distinct.plan.verifiers, 2)
   } finally {
     await teardownFixture(fixture)
   }
