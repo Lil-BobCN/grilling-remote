@@ -7,7 +7,7 @@ import { createGithub } from '../lib/github.mjs'
 import { commitAll, git, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
-import { readTrail } from '../lib/evidence.mjs'
+import { freshVerifiers, mergeTicket, readTrail } from '../lib/evidence.mjs'
 import { FIXER_TOOLS } from '../lib/agent-runner.mjs'
 import { stallHits } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
@@ -52,6 +52,32 @@ async function makeRepoFixture(t, ticketNumber) {
   await commitAll(repoDir, 'FACTORY: 票实现')
   await git(repoDir, ['checkout', REQ_BRANCH])
   return { root, repoDir }
+}
+
+/** 票分支加一个迁移文件，把 diff 抬成高风险：合并门禁要 2 个验证者。 */
+async function addMigrationCommit(repoDir, ticketNumber) {
+  await git(repoDir, ['checkout', `ticket/${ticketNumber}`])
+  await mkdir(join(repoDir, 'db', 'migrations'), { recursive: true })
+  await writeFile(join(repoDir, 'db', 'migrations', '001.sql'), 'CREATE TABLE fruit (id INTEGER);\n')
+  await commitAll(repoDir, 'FACTORY: 加迁移')
+  const head = await git(repoDir, ['rev-parse', 'HEAD'])
+  await git(repoDir, ['checkout', REQ_BRANCH])
+  return head
+}
+
+/** 写一套指向当前 head 的完整证据：验证、测试、两轴评审都 pass。 */
+async function seedCompleteTrail({ repoDir, ticketNumber, head, verifiers = ['v1'] }) {
+  const rows = ['ts\tphase\tdecision\twhy\tevidence\tresult']
+  verifiers.forEach((id, index) => {
+    rows.push(
+      `2026-11-17T02:00:0${index}.000Z\tverify\t${head}\t按验收条件验证 · verifier=${id}\t.audit/verify/after.png\tpass`,
+    )
+  })
+  rows.push('2026-11-17T02:00:09.000Z\ttest\tnpm test\t验证 agent 跑的测试\tpass\tpass')
+  rows.push(`2026-11-17T02:00:10.000Z\treview\t标准\thead ${head}\tAFK_VERDICT pass\tpass`)
+  rows.push(`2026-11-17T02:00:11.000Z\treview\tspec\thead ${head}\tAFK_VERDICT pass\tpass`)
+  await mkdir(join(repoDir, '.audit'), { recursive: true })
+  await writeFile(join(repoDir, '.audit', `${ticketNumber}.tsv`), `${rows.join('\n')}\n`)
 }
 
 async function setupGithub(t) {
@@ -236,7 +262,87 @@ test('D3/D4/D5：点火完成后自动补验证评审并合需求分支，第二
   assert.equal((await readTrail({ repoDir, ticket: ticket.number })).length, before, '同一 head 不重复写 trail')
 })
 
-test('没有 fresh verify 才触发；已有 fresh verify 不跑', async (t) => {
+test('已有 fresh verify 但高风险缺第二个验证者：补人后合需求分支，不再返回 fresh-verify', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const head = await addMigrationCommit(repoDir, ticket.number)
+  await seedCompleteTrail({ repoDir, ticketNumber: ticket.number, head })
+  const runner = fakeRunner()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  const run = result.runs[0]
+  assert.notEqual(run.skipped, 'fresh-verify', JSON.stringify(run))
+  assert.equal(run.ok, true, JSON.stringify(run))
+  assert.ok(run.mergedSha)
+
+  const verifyCalls = runner.calls.filter((call) => call.name.startsWith(`verify-${ticket.number}-`))
+  assert.ok(
+    verifyCalls.some((call) => call.name.endsWith('-v2')),
+    `没有补第二个验证者：${verifyCalls.map((call) => call.name).join('、')}`,
+  )
+
+  const ticketHead = await git(repoDir, ['rev-parse', `ticket/${ticket.number}`])
+  const fresh = await freshVerifiers({
+    trail: await readTrail({ repoDir, ticket: ticket.number }),
+    headSha: ticketHead,
+    repoDir,
+  })
+  assert.deepEqual([...fresh].sort(), ['v1', 'v2'])
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+})
+
+test('合并失败后下一轮继续试合并，不会因 fresh verify 永久跳过', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const runner = fakeRunner()
+  let merges = 0
+  const merge = async (args) => {
+    merges += 1
+    if (merges === 1) return { ok: false, reason: 'merge_failed' }
+    return mergeTicket(args)
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+    merge,
+  })
+  const context = {
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  }
+
+  const first = await pipeline(context)
+  assert.equal(first.runs[0].ok, false)
+  assert.equal(first.runs[0].reason, 'merge_failed')
+  assert.equal(issueOf(fake, ticket.number).state, 'open')
+
+  const second = await pipeline(context)
+  assert.notEqual(second.runs[0].skipped, 'fresh-verify', JSON.stringify(second.runs[0]))
+  assert.equal(second.runs[0].ok, true, JSON.stringify(second.runs[0]))
+  assert.ok(second.runs[0].mergedSha)
+  assert.equal(merges, 2, '第二轮要再调一次合并')
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+})
+
+test('已有 fresh verify 但评审没齐：不再整段跳过，接着补评审', async (t) => {
   const { gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)
   await git(repoDir, ['checkout', `ticket/${ticket.number}`])
@@ -267,8 +373,16 @@ test('没有 fresh verify 才触发；已有 fresh verify 不跑', async (t) => 
   })
 
   assert.equal(result.runs.length, 1)
-  assert.equal(result.runs[0].skipped, 'fresh-verify')
-  assert.equal(runner.calls.length, 0)
+  assert.notEqual(result.runs[0].skipped, 'fresh-verify')
+  assert.equal(result.runs[0].ok, false)
+  assert.equal(result.runs[0].reason, 'evidence_not_ready')
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('verify-')).length, 0, 'fresh verify 不重跑')
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('review-')).length, 1, '缺评审要补')
+  assert.equal(
+    (await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length,
+    1,
+    '不重复写 verify 行',
+  )
 })
 
 test('有界面的票没有预览注入：判 preview_required，不跑验证、不合并', async (t) => {
@@ -449,6 +563,8 @@ test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify
     parents: [parentSnapshot({ parent, ticket })],
     repoDir,
   })
-  assert.equal(second.runs[0].skipped, 'fresh-verify')
+  assert.notEqual(second.runs[0].skipped, 'fresh-verify')
+  assert.equal(second.runs[0].ok, false)
+  assert.equal(second.runs[0].reason, 'evidence_not_ready')
   assert.equal((await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length, verifyRows)
 })

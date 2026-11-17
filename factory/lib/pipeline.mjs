@@ -1,10 +1,8 @@
 /**
- * D3/D4/D5 一条流水线：票点完火、没有 fresh verify 时，补验证和评审，
- * 再合进需求分支。
+ * D3/D4/D5 一条流水线：票点完火，补齐验证和评审，再合进需求分支。
  *
- * 触发事实只看两样：票上最新评论是 `点火完成`，且 `.audit/<票号>.tsv`
- * 里没有指向当前 head 的 pass verify。失败不在这里修，只返回原因，
- * 下一轮继续看同一事实。
+ * 证据已经齐了也要继续走合并：合并没成，下一轮接着试，并按 verifyPlan
+ * 补足验证者。失败不在这里修，只返回原因，下一轮继续看同一事实。
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -13,7 +11,6 @@ import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
 import { MERGER_TOOLS } from './agent-runner.mjs'
 import { runFixerAudit, runReviewAudit, runVerifyAudit } from './audit-agents.mjs'
 import {
-  freshVerifyRows,
   mergeTicket,
   readTrail,
   serializeTrail,
@@ -118,7 +115,6 @@ export function createTicketPipeline({
   fixer: fixerOverride,
   merge = mergeTicket,
   readTrailImpl = readTrail,
-  freshVerifyRowsImpl = freshVerifyRows,
   gitImpl = git,
 } = {}) {
   async function merger({ repoDir, files }) {
@@ -149,9 +145,6 @@ export function createTicketPipeline({
     if (!headSha) return { ticket: ticket.number, skipped: 'branch-missing' }
 
     const trail = await readTrailImpl({ repoDir, ticket: ticket.number })
-    if ((await freshVerifyRowsImpl({ trail, headSha, repoDir })).length) {
-      return { ticket: ticket.number, skipped: 'fresh-verify' }
-    }
 
     const order = parentOrder(parent?.body)
     if (!order) return { ticket: ticket.number, skipped: 'no-order' }
@@ -235,6 +228,7 @@ export function createTicketPipeline({
         ticket: ticketInfo,
         ticketNumber: ticket.number,
         branch: ticketBranch,
+        baseBranch: reqBranch,
         runner,
         preview: previewImpl,
         notifier,
