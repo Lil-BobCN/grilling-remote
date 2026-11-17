@@ -1249,6 +1249,24 @@ test('runLoop 单轮出错记日志，不退出；收到停止信号才结束', 
   assert.equal(logs[0].level, 'error')
 })
 
+test('runLoop 收到停止信号才结束，每轮把 report 交给 onReport', async () => {
+  const controller = new AbortController()
+  const reports = []
+  let runs = 0
+  await runLoop({
+    intervalMs: 1,
+    signal: controller.signal,
+    log: () => {},
+    run: async () => {
+      runs += 1
+      if (runs === 2) controller.abort()
+      return { round: runs }
+    },
+    onReport: async (report) => reports.push(report),
+  })
+  assert.deepEqual(reports, [{ round: 1 }, { round: 2 }])
+})
+
 test('需要你答由注入的数据源提供，带问题和推荐，重启后不重复', async (t) => {
   const { gh } = await setupRepo(t)
   const parent = await createParent(gh, { state: '开发中' })

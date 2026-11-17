@@ -11,12 +11,13 @@
  * `--dry-run` 只读 GitHub，打印每张父工单会做什么，不点火、不改标签、不写评论。
  *
  * `--once` 跑一轮并把每张父工单的结论打印成一行 JSON：
- * `{repo, parent, decision, actions, reason}`。`--loop` 每 30 秒跑一轮。
+ * `{repo, parent, decision, actions, reason, executed, errors}`。`--loop` 每 30 秒跑一轮，
+ * 每轮把 `{ts, executed, errors}` 追加到 `AFK_SCHEDULER_LOG`（默认 `~/.afkfactory/scheduler/runs.jsonl`）。
  * 测试可以注入 `gh`、`notifier`、`ignite`、`runner`、`openPr` 和 `config`。
  */
-import { readFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
 import { createGithub } from '../lib/github.mjs'
@@ -55,16 +56,38 @@ function parentLines(report) {
   const lines = []
   for (const row of report.repos) {
     for (const parent of row.parents) {
+      const errors = (report.errors || []).filter(
+        (error) => error.repo === row.repo && (!error.parent || error.parent === parent.parent),
+      )
       lines.push({
         repo: row.fullName || row.repo,
         parent: parent.parent,
         decision: parent.decision,
         actions: parent.actions,
         reason: parent.reason,
+        executed: parent.executed,
+        errors,
       })
     }
   }
   return lines
+}
+
+/** 每轮写进 JSONL 的一行：每张父工单的 executed，加这一轮的全部错误。 */
+export function runSummary(report) {
+  const executed = []
+  for (const repo of report.repos || []) {
+    for (const parent of repo.parents || []) {
+      executed.push({
+        repo: repo.fullName || repo.repo,
+        parent: parent.parent,
+        decision: parent.decision,
+        executed: parent.executed,
+      })
+    }
+    if (repo.pipeline) executed.push({ repo: repo.fullName || repo.repo, pipeline: repo.pipeline })
+  }
+  return { ts: report.now, executed, errors: report.errors || [] }
 }
 
 function previewDecision(actions) {
@@ -149,6 +172,7 @@ export async function run(
     runOnceImpl = runOnce,
     repoRoot: injectedRepoRoot,
     lockDir: injectedLockDir,
+    runLog: injectedRunLog,
     ghRun: injectedGhRun,
     config: configOverrides = {},
   } = {},
@@ -174,6 +198,10 @@ export async function run(
     injectedLockDir ||
     process.env.AFK_LOCK_DIR ||
     join(homedir(), '.grilling', 'factory', 'locks')
+  const runLogPath =
+    injectedRunLog ||
+    process.env.AFK_SCHEDULER_LOG ||
+    join(homedir(), '.afkfactory', 'scheduler', 'runs.jsonl')
   const maxActive = Number(process.env.MAX_ACTIVE) || 5
   const timeoutMs = Number(process.env.AFK_IGNITE_TIMEOUT_MS) || 120000
 
@@ -264,6 +292,10 @@ export async function run(
     intervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 30000,
     signal,
     run: runOnceImpl,
+    onReport: async (report) => {
+      await mkdir(dirname(runLogPath), { recursive: true })
+      await appendFile(runLogPath, `${JSON.stringify(runSummary(report))}\n`, 'utf8')
+    },
     ...options,
   })
   return null

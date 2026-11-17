@@ -1360,11 +1360,13 @@ export async function runLoop({
   signal,
   log = logLine,
   run = runOnce,
+  onReport,
   ...options
 }) {
   while (!signal?.aborted) {
     try {
-      await run(options)
+      const report = await run(options)
+      if (typeof onReport === 'function') await onReport(report)
     } catch (error) {
       log({ level: 'error', msg: '调度器这一轮失败', error: error.message })
     }
