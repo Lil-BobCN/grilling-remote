@@ -7,6 +7,8 @@ import { git } from '../lib/git.mjs'
 import {
   appendMergeRow,
   appendTrail,
+  assessMerge,
+  diffInfo,
   evidenceReady,
   freshVerifiers,
   missingEvidenceAxes,
@@ -219,6 +221,63 @@ test('riskLevel 碰迁移、删除、凭证、大版本依赖和大 diff 判高�
   )
 })
 
+test('只有 .audit/ 改动不算高风险，文件数和行数都排除 .audit/', async () => {
+  const dir = await makeRepo()
+  try {
+    await git(dir, ['checkout', '-b', 'ticket/9'])
+    await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
+    for (let index = 0; index < 12; index += 1) {
+      await writeFile(join(dir, '.audit', 'screenshots', `shot-${index}.txt`), 'png\n')
+    }
+    const rows = [HEADER]
+    for (let index = 0; index < 450; index += 1) {
+      rows.push(`2026-11-17T02:00:00.000Z\tverify\t第 ${index} 次\t证据\t.audit/a.png\tpass`)
+    }
+    await writeFile(join(dir, '.audit', '9.tsv'), `${rows.join('\n')}\n`, 'utf8')
+    await commitAll(dir, 'audit only')
+
+    const { files, diffStat } = await diffInfo(dir, 'main', 'ticket/9')
+    assert.ok(files.length > 10, JSON.stringify(files))
+    assert.equal(diffStat.additions + diffStat.deletions, 0, '审计文件的增删行不该算进 diff')
+    assert.equal(riskLevel({ files, diffStat }), 'normal', JSON.stringify({ files, diffStat }))
+
+    const withStats = [
+      { path: 'src/a.mjs', additions: 2, deletions: 0 },
+      { path: '.audit/9.tsv', additions: 900, deletions: 0 },
+    ]
+    assert.equal(
+      riskLevel({ files: withStats, diffStat: { additions: 902, deletions: 0 } }),
+      'normal',
+      JSON.stringify(withStats),
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('diffInfo 返回 manifest patch，大版本规则能读到数据', async () => {
+  const dir = await makeRepo()
+  try {
+    await writeFile(
+      join(dir, 'package.json'),
+      '{\n  "dependencies": {\n    "left-pad": "^1.3.0"\n  }\n}\n',
+    )
+    await commitAll(dir, 'deps base')
+    await git(dir, ['checkout', '-b', 'ticket/3'])
+    await writeFile(
+      join(dir, 'package.json'),
+      '{\n  "dependencies": {\n    "left-pad": "^2.0.0"\n  }\n}\n',
+    )
+    await commitAll(dir, 'major bump')
+
+    const { files, diffStat } = await diffInfo(dir, 'main', 'ticket/3')
+    assert.ok(String(diffStat.patch).includes('left-pad'), JSON.stringify(diffStat))
+    assert.equal(riskLevel({ files, diffStat }), 'high')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('verifyPlan 按风险派验证队，只改文字不派', () => {
   const high = verifyPlan({ risk: 'high', changedLines: 120 })
   assert.ok(high.verifiers >= 2)
@@ -365,6 +424,11 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     const names = issue.labels.map((label) => label.name)
     assert.ok(names.includes('状态:待验收'))
     assert.ok(!names.includes('Sandcastle'))
+    assert.deepEqual(
+      names.filter((name) => name.startsWith('状态:')),
+      ['状态:待验收'],
+      '合并后只留一个状态标签',
+    )
 
     const comments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 2 })
     assert.ok(
@@ -661,6 +725,69 @@ test('高风险票两个验证者 id 不同才能合；同一个 id 写两行只
     })
     assert.equal(distinct.ok, true, JSON.stringify(distinct))
     assert.equal(distinct.plan.verifiers, 2)
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('dry-run 复用合并的只读判定：阻塞项、risk、plan、fresh 与真合并一致', async () => {
+  const fixture = await mergeFixture({ migration: true })
+  const { dir, rows, gh, ticket, preMergeSha } = fixture
+  try {
+    const single = rows.filter((row) => !(row.phase === 'verify' && row.decision === '迁移也能跑'))
+    const blocked = await assessMerge({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: single,
+    })
+    assert.equal(blocked.ok, false, JSON.stringify(blocked))
+    assert.equal(blocked.risk, 'high')
+    assert.equal(blocked.plan.verifiers, 2)
+    assert.equal(blocked.fresh.length, 1)
+    assert.deepEqual(blocked.preview, { required: false })
+
+    const merged = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: single,
+      verifier: async () => ({ ok: true }),
+      github: gh,
+    })
+    assert.equal(merged.ok, false)
+    assert.deepEqual(blocked.missing, merged.missing)
+    assert.deepEqual(blocked.stale, merged.stale)
+    assert.equal(await git(dir, ['rev-parse', 'req/order-1']), preMergeSha)
+
+    const ready = await assessMerge({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+    })
+    assert.equal(ready.ok, true, JSON.stringify(ready))
+    assert.deepEqual(ready.missing, [])
+    assert.equal(ready.risk, 'high')
+    assert.equal(ready.fresh.length, 2)
+    assert.equal(ready.preview.required, false)
+
+    const mergedReady = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      review: async () => ({ ok: true, decision: 'interrogate：通过' }),
+      verifier: async () => ({ ok: true }),
+      github: gh,
+    })
+    assert.equal(mergedReady.ok, true, JSON.stringify(mergedReady))
+    assert.equal(mergedReady.risk, ready.risk)
+    assert.equal(mergedReady.plan.verifiers, ready.plan.verifiers)
   } finally {
     await teardownFixture(fixture)
   }

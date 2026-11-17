@@ -21,10 +21,10 @@ import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
 import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
 import {
+  assessMerge,
   diffInfo,
   freshVerifiers,
   readTrail,
-  evidenceReady,
   mergeTicket,
   missingEvidenceAxes,
   riskLevel,
@@ -329,11 +329,31 @@ async function runMerge(options, deps = {}) {
   const reqBranch = options['req-branch']
 
   if (options.dryRun) {
-    const trail = await readTrail({ repoDir, ticket: ticketNumber })
     const headSha = await git(repoDir, ['rev-parse', ticketBranch]).catch(() => '')
     if (!headSha) throw new Error(`分支不存在：${ticketBranch}`)
-    const check = await evidenceReady({ trail, headSha, repoDir })
-    return { output: { ok: check.ready, headSha, ...check }, exitCode: check.ready ? 0 : 1 }
+    const assessment = await assessMerge({
+      repoDir,
+      ticketBranch,
+      reqBranch,
+      ticket: { number: ticketNumber },
+    })
+    return {
+      output: {
+        dryRun: true,
+        ok: assessment.ok,
+        ready: assessment.ok,
+        reason: assessment.reason,
+        headSha: assessment.headSha || headSha,
+        missing: assessment.missing,
+        stale: assessment.stale,
+        risk: assessment.risk,
+        plan: assessment.plan,
+        fresh: assessment.fresh,
+        preview: assessment.preview,
+        alreadyMerged: assessment.alreadyMerged,
+      },
+      exitCode: assessment.ok ? 0 : 1,
+    }
   }
 
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''
