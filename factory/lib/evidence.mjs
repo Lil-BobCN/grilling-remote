@@ -682,7 +682,7 @@ export function isInterrogateRow(row) {
  * 当前 head 上（含最后一个代码提交）的 interrogate 结论。
  * 旧 head 的评审不算数，和 freshVerifyRows 用同一套新鲜度判据。
  *
- * @returns {Promise<{pass: boolean, fail: object|null}>}
+ * @returns {Promise<{pass: boolean, passRow: object|null, fail: object|null}>}
  */
 export async function interrogateStatus({ trail, headSha = '', repoDir = '' } = {}) {
   const rows = normalizeTrail(trail)
@@ -691,13 +691,18 @@ export async function interrogateStatus({ trail, headSha = '', repoDir = '' } = 
   const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
   const shas = [head, codeHead].filter(Boolean)
   let pass = false
+  let passRow = null
   let fail = null
   for (const row of rows) {
     if (!isInterrogateRow(row) || !freshFor(row, shas)) continue
-    if (row.result === 'pass') pass = true
-    else if (row.result === 'fail' && !fail) fail = row
+    if (row.result === 'pass') {
+      pass = true
+      passRow = row
+    } else if (row.result === 'fail' && !fail) {
+      fail = row
+    }
   }
-  return { pass, fail }
+  return { pass, passRow, fail }
 }
 
 /**
@@ -746,7 +751,7 @@ function issueLink(ticket) {
   return ''
 }
 
-function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview }) {
+function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview, interrogateRow }) {
   const verify = rows.find((row) => row.phase === 'verify' && row.result === 'pass')
   const test = rows.find((row) => row.phase === 'test' && row.result === 'pass')
   const standard = rows.find(
@@ -765,8 +770,7 @@ function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, p
     `- head：\`${headSha}\``,
   ]
   if (risk === 'high') {
-    const interrogate = rows.find((row) => row.result === 'pass' && isInterrogateRow(row))
-    lines.push(`- 高风险：已过 interrogate${interrogate?.decision ? `（${interrogate.decision}）` : ''}`)
+    lines.push(`- 高风险：已过 interrogate${interrogateRow?.decision ? `（${interrogateRow.decision}）` : ''}`)
   }
   if (preview?.url || preview?.address) {
     lines.push(`- 预览：${preview.url || `https://${preview.address}/`}（已销毁）`)
@@ -819,7 +823,7 @@ export async function assessMerge({ repoDir, ticketBranch, reqBranch, ticket, tr
   const plan = verifyPlan({ risk, changedLines: diffStat.additions + diffStat.deletions })
   const fresh = await freshVerifiers({ trail: rows, headSha: ticketHead, repoDir })
   const preview = { required: previewNeeded({ trail: serializeTrail(rows) }) }
-  const interrogate = rows.some((row) => row.result === 'pass' && isInterrogateRow(row))
+  const interrogate = (await interrogateStatus({ trail: rows, headSha: ticketHead, repoDir })).pass
 
   const missing = [...evidence.missing]
   if (risk === 'high' && fresh.length < plan.verifiers) {
@@ -904,6 +908,7 @@ export async function mergeTicket({
   const reqHeadBefore = assessment.reqHead
   const rows = assessment.rows
   const { risk, plan } = assessment
+  let interrogateRow = null
 
   if (risk === 'high' && !assessment.interrogate) {
     if (typeof review !== 'function') {
@@ -939,6 +944,7 @@ export async function mergeTicket({
       result: 'pass',
     })
     rows.push(appended)
+    interrogateRow = appended
     await git(repoDir, ['add', '--', `.audit/${ticket.number}.tsv`]).catch(() => {})
     await git(repoDir, ['commit', '-m', `FACTORY: 补 interrogate 评审 #${ticket.number}`]).catch(() => {})
     ticketHead = (await revParse(repoDir, ticketBranch)) || ticketHead
@@ -946,6 +952,10 @@ export async function mergeTicket({
 
   const evidenceCommit = await commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket })
   if (evidenceCommit.headSha) ticketHead = evidenceCommit.headSha
+
+  if (risk === 'high' && !interrogateRow) {
+    interrogateRow = (await interrogateStatus({ trail: rows, headSha: ticketHead, repoDir })).passRow
+  }
 
   const previewRequired = Boolean(preview?.needed) || assessment.preview.required
   let previewInfo = null
@@ -1093,6 +1103,7 @@ export async function mergeTicket({
             headSha: finalHead,
             risk,
             preview: previewInfo,
+            interrogateRow,
           }),
         })
         await ensureLabel(gh, {
