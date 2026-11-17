@@ -19,6 +19,7 @@
 | `lib/sandcastle-runner.mjs` | 默认 runner：装依赖、起容器、收回提交 | #464 |
 | `bin/ignite.mjs` | 手工点火一张票，`--dry-run` 打印 prompt 和命令 | #464 |
 | `lib/evidence.mjs` | 验证、评审、四样证据、合需求分支 | #465 |
+| `lib/pipeline.mjs` | D3/D4/D5 一条流水线：点火完成后补验证评审，再合需求分支 | #478 |
 | `lib/audit-agents.mjs` | 验证和评审 agent 的 `AFK_VERDICT` 解析、写 `.audit` trail | #457 |
 | `lib/helper.mjs` | `gh` 和 `afk-product` 的公共命令入口 | #457 |
 | `bin/audit-cli.mjs` | verify/review 两个 CLI 共用的参数解析和输出 | #457 |

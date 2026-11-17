@@ -1075,6 +1075,7 @@ export async function runOnce({
   ignite,
   decompose,
   gapProposal,
+  ticketPipeline,
   createFixTicket,
   clock = () => new Date(),
   config = {},
@@ -1135,6 +1136,21 @@ export async function runOnce({
         report.errors.push({ repo: row.repo, trails: true, message: error.message })
       }
     }
+    let pipeline = null
+    if (typeof ticketPipeline === 'function') {
+      try {
+        pipeline = await ticketPipeline({
+          gh,
+          owner: row.owner,
+          repo: row.repo,
+          parents: snapshot.parents,
+          repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
+        })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
+      }
+    }
+
     const routed = routeRepo({
       snapshot,
       now: nowDate,
@@ -1206,7 +1222,7 @@ export async function runOnce({
         executed,
       })
     }
-    report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps })
+    report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps, pipeline })
 
     for (const parent of snapshot.parents) {
       const newTicket = newTicketEvent({

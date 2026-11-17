@@ -790,6 +790,37 @@ test('runOnce：已提交+没有关口评论 → 跑补缺口提案，写进提�
   assert.ok(labelsOf(fake, OWNER, REPO, failedParent.number).includes('needs-info'))
 })
 
+test('runOnce：把仓库快照交给 D3/D4/D5 流水线', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  await createChild(gh, parent, { labels: ['状态:排队中', 'Sandcastle'] })
+  const calls = []
+  const ticketPipeline = async (args) => {
+    calls.push(args)
+    return { runs: [] }
+  }
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+  }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].repo, REPO)
+  assert.equal(calls[0].parents.length, 1)
+  assert.equal(calls[0].repoDir, join(config.repoRoot, REPO))
+})
+
 test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火；重启不再点第二次', async (t) => {
   const { fake, gh } = await setupRepo(t)
   const parent = await createParent(gh, { small: true })
