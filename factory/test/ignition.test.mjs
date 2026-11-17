@@ -8,8 +8,9 @@ import { createGithub } from '../lib/github.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { addRemote, commitAll, git, initBareRepo, initRepo, push } from '../lib/git.mjs'
 import { buildPrompt, createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
+import { progressLine } from '../lib/progress.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
-import { runOnce } from '../lib/scheduler.mjs'
+import { runOnce, stallHits } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
 
 const OWNER = 'acme'
@@ -268,7 +269,7 @@ test('同仓锁被别的进程拿着时跳过', async (t) => {
   assert.deepEqual(labelsOf(fake, ticket.number), ['状态:排队中'])
 })
 
-test('两分钟没回执：写点火超时评论、打标签、发邮件，不写待验收', async (t) => {
+test('两分钟没回执：写点火超时评论、打标签、发通知，摘 Sandcastle，写出事和进度', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const runner = fakeRunner(() => new Promise(() => {}))
@@ -286,18 +287,28 @@ test('两分钟没回执：写点火超时评论、打标签、发邮件，不�
   assert.equal(result.ok, false)
   assert.equal(result.timeout, true)
   assert.equal(runner.calls.length, 1)
-  assert.equal(notifier.calls.length, 1)
-  assert.equal(notifier.calls[0].event, '点火超时')
-  assert.deepEqual(notifier.calls[0].data, { customer: OWNER, requirement: 'yuyue-quhuo' })
-  assert.match(notifier.calls[0].link, new RegExp(`/issues/${ticket.number}$`))
+
+  const timeout = notifier.calls.find((event) => event.event === '点火超时')
+  assert.ok(timeout, '没有发点火超时通知')
+  assert.deepEqual(timeout.data, { customer: OWNER, requirement: 'yuyue-quhuo' })
+  assert.match(timeout.link, new RegExp(`/issues/${ticket.number}$`))
+
+  const incident = notifier.calls.find((event) => event.event === '出事')
+  assert.ok(incident, '没有发出事通知')
+  assert.match(incident.data.reason, /点火失败/)
+  assert.match(incident.data.reason, /两分钟没收到回执/)
 
   const comments = commentsOf(fake, ticket.number)
   assert.equal(comments.length, 1)
   assert.ok(comments[0].startsWith('点火超时'))
-  assert.ok(labelsOf(fake, ticket.number).includes('Sandcastle'))
+  assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
   assert.ok(labelsOf(fake, ticket.number).includes('状态:开发中'))
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:排队中'))
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:待验收'))
+
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  assert.equal(progress.length, 1)
+  assert.match(progress[0], /细阶段：点火失败/)
 })
 
 test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评论', async (t) => {
@@ -472,18 +483,19 @@ test('注入的 openPr 返回非零退出码且没有 PR 地址：点火失败',
   assert.match(commentsOf(fake, ticket.number)[0], /点火失败/)
 })
 
-test('没有提交时不 push、不开 PR，仍写「没有产生提交」', async (t) => {
+test('没有提交时不 push、不开 PR，写「没有产生提交」，摘标签发通知写进度', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const runner = fakeRunner(async () => ({ commits: [], branch: `ticket/${ticket.number}` }))
   const push = fakePush()
   const pr = fakeOpenPr()
+  const notifier = fakeNotifier()
   const ignite = createIgnite({
     config: ignitionConfig(fixture, gh),
     runner: runner.run,
     openPr: pr.openPr,
     push: push.push,
-    notifier: fakeNotifier(),
+    notifier,
   })
 
   const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
@@ -493,6 +505,17 @@ test('没有提交时不 push、不开 PR，仍写「没有产生提交」', asy
   assert.equal(push.calls.length, 0)
   assert.equal(pr.calls.length, 0)
   assert.match(commentsOf(fake, ticket.number)[0], /没有产生提交/)
+  assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
+
+  const incident = notifier.calls.find((event) => event.event === '出事')
+  assert.ok(incident, '没有发出事通知')
+  assert.match(incident.data.reason, /点火失败/)
+  assert.match(incident.data.reason, /没有产生提交/)
+
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  assert.equal(progress.length, 1)
+  assert.match(progress[0], /细阶段：点火失败/)
+  assert.match(progress[0], /没有产生提交/)
 })
 
 test('push 失败：写评论带分支和提交数，不开 PR', async (t) => {
@@ -528,19 +551,26 @@ test('push 失败：写评论带分支和提交数，不开 PR', async (t) => {
   assert.equal(failure.commits, 2)
 })
 
-test('runner 抛错：写失败评论和 JSON 日志，不开 PR，不写待验收', async (t) => {
+test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 PR，不写待验收', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parent.number,
+    body: progressLine({ path: '其余', tier: '开发中', step: '开工', round: 1, stuck: false }),
+  })
   const logs = []
   const runner = fakeRunner(async () => {
     throw new Error('容器起不来')
   })
   const pr = fakeOpenPr()
+  const notifier = fakeNotifier()
   const ignite = createIgnite({
     config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
     runner: runner.run,
     openPr: pr.openPr,
-    notifier: fakeNotifier(),
+    notifier,
   })
 
   const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
@@ -556,8 +586,51 @@ test('runner 抛错：写失败评论和 JSON 日志，不开 PR，不写待验�
   assert.equal(logs[0].level, 'error')
   assert.equal(logs[0].msg, '点火失败')
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:待验收'))
-  assert.ok(labelsOf(fake, ticket.number).includes('Sandcastle'))
+  assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
   assert.ok(labelsOf(fake, ticket.number).includes('状态:开发中'))
+
+  const incident = notifier.calls.find((event) => event.event === '出事')
+  assert.ok(incident, '没有发出事通知')
+  assert.match(incident.data.reason, /点火失败/)
+  assert.match(incident.data.reason, /容器起不来/)
+
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const failureLine = progress.at(-1)
+  assert.equal(progress.length, 2)
+  assert.match(failureLine, /细阶段：点火失败/)
+  assert.match(failureLine, /轮次：2/)
+  assert.match(failureLine, /容器起不来/)
+})
+
+test('连续三次点火失败：父工单三圈进度，stallHits 读到三圈没进展', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner(async () => {
+    throw new Error('容器起不来')
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier: fakeNotifier(),
+  })
+
+  for (let index = 0; index < 3; index += 1) {
+    await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+  }
+
+  const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
+  const progress = comments.map((comment) => comment.body).filter((body) => body.startsWith('进度 v1｜'))
+  assert.equal(progress.length, 3)
+  assert.match(progress[0], /细阶段：点火失败/)
+  assert.match(progress[1], /细阶段：点火失败/)
+  assert.match(progress[2], /细阶段：点火失败/)
+
+  const hits = stallHits({ comments })
+  assert.ok(
+    hits.some((hit) => hit.reason === '三圈没进展'),
+    `没有读到三圈没进展：${JSON.stringify(hits)}`,
+  )
 })
 
 test('票里没点文件时，相关代码放 git ls-files 前 100 行', async (t) => {
