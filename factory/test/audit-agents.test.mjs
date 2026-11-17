@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { runReviewAudit, runVerifyAudit, parseAuditVerdict } from '../lib/audit-agents.mjs'
-import { READ_ONLY_TOOLS, REVIEW_TOOLS, VERIFY_TOOLS } from '../lib/agent-runner.mjs'
+import { NO_WRITE_TOOLS, REVIEW_TOOLS, VERIFY_TOOLS } from '../lib/agent-runner.mjs'
 import { readTrail } from '../lib/evidence.mjs'
 import { git } from '../lib/git.mjs'
 import { run as runReview } from '../bin/review.mjs'
@@ -63,7 +63,7 @@ test('验证通过：写 verify 行和 test 行，decision 是 head', async () =
     assert.equal(result.ok, true)
     assert.equal(result.headSha, head)
     assert.match(runner.calls[0].brief, /AFK_VERDICT/)
-    assert.equal(runner.calls[0].tools, READ_ONLY_TOOLS)
+    assert.equal(runner.calls[0].tools, NO_WRITE_TOOLS)
     assert.equal(runner.calls[0].allowedTools, VERIFY_TOOLS)
     assert.ok(!runner.calls[0].allowedTools.includes('Write'))
     assert.ok(!runner.calls[0].allowedTools.includes('Edit'))
@@ -130,7 +130,7 @@ test('评审默认写标准和 spec 两行，模式可以只写一轴', async ()
     )
     const all = await runReviewAudit({ repoDir: dir, ticket: 54, branch: 'HEAD', runner, now: NOW })
     assert.equal(all.ok, true)
-    assert.equal(runner.calls.at(-1).tools, READ_ONLY_TOOLS)
+    assert.equal(runner.calls.at(-1).tools, NO_WRITE_TOOLS)
     assert.equal(runner.calls.at(-1).allowedTools, REVIEW_TOOLS)
     assert.ok(!runner.calls.at(-1).allowedTools.includes('Write'))
     let rows = await readTrail({ repoDir: dir, ticket: 54 }).then((list) =>

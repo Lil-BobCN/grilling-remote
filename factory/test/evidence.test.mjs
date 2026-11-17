@@ -655,17 +655,22 @@ test('missingEvidenceAxes：验证和两条评审分开算，只有一条评审�
     evidence: '.audit/screenshots/after.png',
     result: 'pass',
   }
-  assert.deepEqual(missingEvidenceAxes([]), ['verify', 'review:标准', 'review:spec'])
-  assert.deepEqual(missingEvidenceAxes([{ ...base, phase: 'verify', decision: 'abc1234' }]), [
-    'review:标准',
-    'review:spec',
-  ])
+  assert.deepEqual(missingEvidenceAxes([]), {
+    verify: true,
+    reviewStandard: true,
+    reviewSpec: true,
+  })
+  assert.deepEqual(missingEvidenceAxes([{ ...base, phase: 'verify', decision: 'abc1234' }]), {
+    verify: false,
+    reviewStandard: true,
+    reviewSpec: true,
+  })
   assert.deepEqual(
     missingEvidenceAxes([
       { ...base, phase: 'verify', decision: 'abc1234' },
       { ...base, decision: '标准' },
     ]),
-    ['review:spec'],
+    { verify: false, reviewStandard: false, reviewSpec: true },
   )
   assert.deepEqual(
     missingEvidenceAxes([
@@ -673,6 +678,6 @@ test('missingEvidenceAxes：验证和两条评审分开算，只有一条评审�
       { ...base, decision: '标准' },
       { ...base, decision: 'spec' },
     ]),
-    [],
+    { verify: false, reviewStandard: false, reviewSpec: false },
   )
 })

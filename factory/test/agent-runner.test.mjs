@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   AGENT_TOOLS,
-  READ_ONLY_TOOLS,
+  NO_WRITE_TOOLS,
   REVIEW_TOOLS,
   VERIFY_TOOLS,
   createAgentRunner,
@@ -116,16 +116,16 @@ test('验证和评审的 args 里没有 Write/Edit，--tools 也只给 Bash,Read
   })
   await runner.run({
     brief: '验证这张票',
-    tools: READ_ONLY_TOOLS,
+    tools: NO_WRITE_TOOLS,
     allowedTools: VERIFY_TOOLS,
   })
   await runner.run({
     brief: '评审这次改动',
-    tools: READ_ONLY_TOOLS,
+    tools: NO_WRITE_TOOLS,
     allowedTools: REVIEW_TOOLS,
   })
 
-  assert.equal(READ_ONLY_TOOLS, 'Bash,Read')
+  assert.equal(NO_WRITE_TOOLS, 'Bash,Read')
   assert.equal(calls.length, 2)
   for (const args of calls) {
     assert.doesNotMatch(args, /Write|Edit/, args)

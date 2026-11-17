@@ -239,6 +239,20 @@ function selectTicket({ subIssues, closedNumbers }) {
 }
 
 /**
+ * 开发中点下一张票：驳回建的修复子票、以及子票跑完后接上的下一张，都走这里。
+ * 有 open 子票、没有正在跑的、并发额度够，才点火。
+ */
+function igniteNext({ subIssues, closedNumbers, repoBusy, activeCount, maxActive }) {
+  const open = subIssues.filter(isOpen)
+  if (open.length === 0) return []
+  if (open.some(isSandcastle)) return []
+  const ticket = selectTicket({ subIssues, closedNumbers })
+  if (!ticket) return []
+  if (repoBusy || activeCount >= maxActive) return []
+  return [{ type: 'ignite', ticket, ticketNumber: ticket.number }]
+}
+
+/**
  * 一张父工单该做什么。纯函数，不碰 GitHub。
  * @returns {Array<object>} 动作数组；空数组表示停，等下一次状态变化。
  */
@@ -283,7 +297,7 @@ export function routeParent({
     return []
   }
 
-  // 开发中读到驳回、并且驳回后面已经写过进度行，说明修复票已建，接着点火；
+  // 开发中读到驳回、并且驳回后面已经写过进度行，说明修复子票已建，接着点火；
   // 其余等待信号（新的提案、没处理过的驳回、改口）仍然停。
   const handledRejection =
     state === '开发中' &&
@@ -325,6 +339,7 @@ export function routeParent({
     if (state === '开发中') {
       const hits = stallHits({ comments, trails })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
+      return igniteNext({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
     }
     return []
   }
@@ -351,14 +366,7 @@ export function routeParent({
   }
 
   if (state === '开发中') {
-    // 驳回建的修复票、以及子票跑完后接上的下一张，都在开发中点火。
-    const open = subIssues.filter(isOpen)
-    if (open.length === 0) return []
-    if (open.some(isSandcastle)) return []
-    const ticket = selectTicket({ subIssues, closedNumbers })
-    if (!ticket) return []
-    if (repoBusy || activeCount >= maxActive) return []
-    return [{ type: 'ignite', ticket, ticketNumber: ticket.number }]
+    return igniteNext({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
   }
 
   if (state === '排队中') {

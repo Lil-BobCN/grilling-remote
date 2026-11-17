@@ -293,6 +293,25 @@ async function lastCodeCommit(repoDir, headSha) {
 }
 
 /**
+ * 四样证据里靠 trail 行就能判断的三条轴：验证、评审标准、评审 spec。
+ * 测试行和截图路径另外查；合并前补齐证据也用它，避免两处判据不一致。
+ *
+ * @returns {{verify: boolean, reviewStandard: boolean, reviewSpec: boolean}}
+ *   每条轴 true 表示缺
+ */
+export function missingEvidenceAxes(rows = []) {
+  return {
+    verify: !rows.some((row) => row.phase === 'verify' && row.result === 'pass'),
+    reviewStandard: !rows.some(
+      (row) => row.phase === 'review' && row.result === 'pass' && row.decision.includes('标准'),
+    ),
+    reviewSpec: !rows.some(
+      (row) => row.phase === 'review' && row.result === 'pass' && /spec/i.test(row.decision),
+    ),
+  }
+}
+
+/**
  * 四样证据逐项检查。
  *
  * @param {object} options
@@ -301,31 +320,6 @@ async function lastCodeCommit(repoDir, headSha) {
  * @param {string} options.repoDir
  * @returns {Promise<{ready: boolean, missing: string[], stale: string[]}>}
  */
-/**
- * 四样证据里靠 trail 行就能判断的三条轴：验证、评审标准、评审 spec。
- * 测试行和截图路径另外查；合并前补齐证据也用它，避免两处判据不一致。
- *
- * @returns {string[]} `verify`、`review:标准`、`review:spec` 中缺的那些
- */
-export function missingEvidenceAxes(rows = []) {
-  const list = Array.isArray(rows) ? rows : []
-  const missing = []
-  if (!list.some((row) => row.phase === 'verify' && row.result === 'pass')) {
-    missing.push('verify')
-  }
-  if (
-    !list.some(
-      (row) => row.phase === 'review' && row.result === 'pass' && row.decision.includes('标准'),
-    )
-  ) {
-    missing.push('review:标准')
-  }
-  if (!list.some((row) => row.phase === 'review' && row.result === 'pass' && /spec/i.test(row.decision))) {
-    missing.push('review:spec')
-  }
-  return missing
-}
-
 export async function evidenceReady({ trail, headSha, repoDir }) {
   const rows = normalizeTrail(trail)
   let head = headSha
@@ -337,7 +331,7 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
   const missing = []
   const axes = missingEvidenceAxes(rows)
   const verifyRows = rows.filter((row) => row.phase === 'verify' && row.result === 'pass')
-  if (axes.includes('verify')) {
+  if (axes.verify) {
     missing.push('验证（phase=verify result=pass）')
   } else {
     const tokens = verifyRows.flatMap((row) => evidenceTokens(row.evidence))
@@ -356,10 +350,10 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
   if (!rows.some((row) => row.phase === 'test' && row.result === 'pass')) {
     missing.push('测试（phase=test result=pass）')
   }
-  if (axes.includes('review:标准')) {
+  if (axes.reviewStandard) {
     missing.push('评审·标准（phase=review decision 含「标准」）')
   }
-  if (axes.includes('review:spec')) {
+  if (axes.reviewSpec) {
     missing.push('评审·spec（phase=review decision 含 spec）')
   }
 

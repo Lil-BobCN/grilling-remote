@@ -208,7 +208,7 @@ test('没有预览行就不起预览；已有验证时只跑评审', async () =>
   }
 })
 
-test('只有一条 review 行时补另一边，不提前放行', async () => {
+test('只有一条 review 行时跑一次评审补齐两条轴，不提前放行', async () => {
   const dir = await makeRepo()
   try {
     await appendTrail({

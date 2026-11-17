@@ -18,8 +18,11 @@ function safeName(name) {
 
 /** `--restricted` 会去掉跑命令的工具，必须用 `--tools` 点名它们。 */
 export const AGENT_TOOLS = 'Bash,Read,Write,Edit'
-/** 验证和评审只读：不给 Write/Edit，和作业说明里的「不改代码」一致。 */
-export const READ_ONLY_TOOLS = 'Bash,Read'
+/**
+ * 验证和评审不给 Write/Edit，和作业说明里的「不改代码」一致。
+ * 注意：Bash 仍能写文件，这组工具只挡住直接编辑。
+ */
+export const NO_WRITE_TOOLS = 'Bash,Read'
 
 /** 各角色的工具白名单；`--allowedTools` 用逗号分隔。 */
 export const DECOMPOSE_TOOLS = 'Read,Write,Edit,Bash(gh:*)'
