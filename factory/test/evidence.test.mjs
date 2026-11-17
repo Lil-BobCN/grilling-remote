@@ -243,7 +243,12 @@ function trailRow(phase, decision, why, evidence = '', result = 'pass') {
   return { ts: '2026-11-17T02:00:00.000Z', phase, decision, why, evidence, result }
 }
 
-async function mergeFixture({ conflict = false, migration = false, previewRequired = false } = {}) {
+async function mergeFixture({
+  conflict = false,
+  migration = false,
+  previewRequired = false,
+  untrackedEvidence = false,
+} = {}) {
   const dir = await makeRepo()
   await git(dir, ['checkout', '-b', 'req/order-1'])
   await writeFile(join(dir, 'req.txt'), 'req\n')
@@ -257,8 +262,10 @@ async function mergeFixture({ conflict = false, migration = false, previewRequir
     await mkdir(join(dir, 'db', 'migrations'), { recursive: true })
     await writeFile(join(dir, 'db', 'migrations', '001_init.sql'), 'create table t;\n')
   }
-  await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
-  await writeFile(join(dir, '.audit', 'screenshots', 'after.png'), 'png')
+  if (!untrackedEvidence) {
+    await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
+    await writeFile(join(dir, '.audit', 'screenshots', 'after.png'), 'png')
+  }
   const codeSha = await commitAll(dir, 'ticket work')
 
   const rows = [
@@ -277,6 +284,11 @@ async function mergeFixture({ conflict = false, migration = false, previewRequir
     await appendTrail({ repoDir: dir, ticket: 2, ...item })
   }
   const ticketHead = await commitAll(dir, 'trail')
+  if (untrackedEvidence) {
+    // 验证者只写了 trail 行，截图留在工作树里没提交。
+    await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
+    await writeFile(join(dir, '.audit', 'screenshots', 'after.png'), 'png')
+  }
 
   const fake = await startFakeGithub({
     repos: [{ owner: 'acme', name: 'demo' }],
@@ -362,6 +374,55 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     assert.equal(mergeRow.evidence, result.mergedSha)
     assert.equal(mergeRow.result, 'pass')
   } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('截图未跟踪时合并把它带进票分支，req 分支和干净检出都能找到；仓库外路径不收', async () => {
+  const fixture = await mergeFixture({ untrackedEvidence: true })
+  const { dir, rows, gh, ticket, codeSha } = fixture
+  const outsideDir = await mkdtemp(join(tmpdir(), 'afk-evidence-outside-'))
+  const escapeName = `afk-evidence-escape-${process.pid}.png`
+  const escapeFile = join(dir, '..', escapeName)
+  const absoluteFile = join(outsideDir, 'abs.png')
+  await writeFile(escapeFile, 'png')
+  await writeFile(absoluteFile, 'png')
+  rows.push(
+    trailRow('verify', '越界证据', `验证 head ${codeSha}`, `${absoluteFile},../${escapeName}`),
+  )
+  let cleanRoot = ''
+  try {
+    const before = await git(dir, ['rev-parse', 'ticket/2'])
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      verifier: async () => ({ ok: true, evidence: '关键路径通过' }),
+      github: gh,
+    })
+    assert.equal(result.ok, true, JSON.stringify(result))
+
+    const ticketHead = await git(dir, ['rev-parse', 'ticket/2'])
+    assert.notEqual(ticketHead, before, '票分支应多一个证据提交')
+    for (const ref of ['ticket/2', 'req/order-1']) {
+      await git(dir, ['cat-file', '-e', `${ref}:.audit/screenshots/after.png`])
+    }
+    const names = (await git(dir, ['ls-tree', '-r', '--name-only', 'ticket/2'])).split(/\r?\n/)
+    assert.ok(names.includes('.audit/screenshots/after.png'))
+    assert.ok(!names.some((name) => name.includes('escape') || name.endsWith('abs.png')))
+
+    cleanRoot = await mkdtemp(join(tmpdir(), 'afk-evidence-clean-'))
+    const cleanDir = join(cleanRoot, 'repo')
+    await git(dir, ['worktree', 'add', '--detach', cleanDir, 'ticket/2'])
+    const cleanTrail = await readTrail({ repoDir: cleanDir, ticket: 2 })
+    const check = await evidenceReady({ trail: cleanTrail, repoDir: cleanDir })
+    assert.equal(check.ready, true, JSON.stringify(check))
+  } finally {
+    if (cleanRoot) await rm(cleanRoot, { recursive: true, force: true })
+    await rm(outsideDir, { recursive: true, force: true })
+    await rm(escapeFile, { force: true })
     await teardownFixture(fixture)
   }
 })
