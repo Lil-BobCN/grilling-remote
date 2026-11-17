@@ -12,7 +12,7 @@
  * 证据不齐或过期，不合并。合并后必须在合并提交上重跑验证，失败就回滚。
  */
 import { appendFile, mkdir, readFile, stat } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { GitError, git, mergeNoFf } from './git.mjs'
 import { ensureLabel } from './issues.mjs'
 import { previewNeeded } from './preview.mjs'
@@ -252,6 +252,50 @@ async function existsInRepo(repoDir, token, headShas = []) {
   } catch {
     return false
   }
+}
+
+/** 媒体 token 归一化成仓库内相对路径；绝对路径、`..` 逃逸和 `.git/` 都拒。 */
+function repoRelativeEvidencePath(repoDir, token) {
+  const clean = token.replace(/^\.\//, '')
+  if (!clean || isAbsolute(clean)) return ''
+  const root = resolve(repoDir)
+  const path = relative(root, resolve(root, clean))
+  if (!path || path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) return ''
+  if (path === '.git' || path.startsWith(`.git${sep}`)) return ''
+  return path
+}
+
+/** trail 引用、工作树里存在的媒体证据，按出现顺序去重。 */
+async function evidenceFilesInWorktree(repoDir, rows) {
+  const tokens = rows.flatMap((row) => evidenceTokens(row.evidence))
+  const files = []
+  for (const token of mediaTokens(tokens)) {
+    const path = repoRelativeEvidencePath(repoDir, token)
+    if (!path || files.includes(path)) continue
+    try {
+      if (!(await stat(join(repoDir, path))).isFile()) continue
+    } catch {
+      continue
+    }
+    files.push(path)
+  }
+  return files
+}
+
+/**
+ * 把 trail 引用的媒体证据提交到票分支，干净检出也能找到。
+ * 只收仓库内相对路径；工作树里没有的不带。
+ */
+async function commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket }) {
+  const files = await evidenceFilesInWorktree(repoDir, rows)
+  if (files.length === 0) return { headSha: '', files: [] }
+  await git(repoDir, ['checkout', ticketBranch])
+  await git(repoDir, ['add', '--', ...files])
+  const staged = await git(repoDir, ['diff', '--cached', '--name-only', '--', ...files])
+  const changed = staged ? staged.split(/\r?\n/).filter(Boolean) : []
+  if (changed.length === 0) return { headSha: '', files: [] }
+  await git(repoDir, ['commit', '-m', `FACTORY: 证据进 git #${ticket.number}`, '--', ...changed])
+  return { headSha: await revParse(repoDir, 'HEAD'), files: changed }
 }
 
 /**
@@ -769,6 +813,9 @@ export async function mergeTicket({
       ticketHead = (await revParse(repoDir, ticketBranch)) || ticketHead
     }
   }
+
+  const evidenceCommit = await commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket })
+  if (evidenceCommit.headSha) ticketHead = evidenceCommit.headSha
 
   const previewText = serializeTrail(rows)
   const previewRequired = Boolean(preview?.needed) || previewNeeded({ trail: previewText })
