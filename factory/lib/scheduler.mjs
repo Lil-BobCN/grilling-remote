@@ -10,7 +10,7 @@ import { readTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
-import { tryWithFileLock } from './lock.mjs'
+import { acquireFileLock } from './lock.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
@@ -838,33 +838,75 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }
     return { type: 'ignite', ticket: ticketNumber, skipped: 'already-sandcastle' }
   }
   const lockPath = join(config.lockDir || defaultLockDir(), `${owner}__${repo}.lock`)
-  const locked = await tryWithFileLock(
-    lockPath,
-    async () => {
-      const again = await gh.getIssue({ owner, repo, number: ticketNumber })
-      if (labelNames(again).includes(SANDBOX_LABEL)) {
-        return { type: 'ignite', ticket: ticketNumber, skipped: 'already-sandcastle' }
-      }
-      await ensureIssueLabel({ gh, owner, repo, number: ticketNumber, name: SANDBOX_LABEL })
-      try {
-        const result = await ignite({
-          owner,
-          repo,
-          parent: { number: parent.number, title: parent.title, body: parent.body },
-          ticket: action.ticket,
-        })
-        return { type: 'ignite', ticket: ticketNumber, ignited: true, result }
-      } catch (error) {
-        await gh
-          .removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL })
-          .catch(() => {})
-        throw error
-      }
-    },
-    { timeoutMs: 0, staleMs: config.lockStaleMs ?? 10 * 60 * 1000 },
-  )
-  if (locked.skipped) return { type: 'ignite', ticket: ticketNumber, skipped: 'locked' }
-  return locked.value
+  const lock = await acquireFileLock(lockPath, {
+    timeoutMs: 0,
+    staleMs: config.lockStaleMs ?? 10 * 60 * 1000,
+  })
+  if (lock.skipped) return { type: 'ignite', ticket: ticketNumber, skipped: 'locked' }
+
+  let claimed = false
+  try {
+    const again = await gh.getIssue({ owner, repo, number: ticketNumber })
+    if (labelNames(again).includes(SANDBOX_LABEL)) {
+      return { type: 'ignite', ticket: ticketNumber, skipped: 'already-sandcastle' }
+    }
+    await ensureIssueLabel({ gh, owner, repo, number: ticketNumber, name: SANDBOX_LABEL })
+    claimed = true
+  } finally {
+    if (!claimed) await lock.release()
+  }
+
+  // 认领完成：实现跑在后台，这一轮不等它。锁跟到后台任务结束才放；
+  // 进程重启后由已经贴上的 Sandcastle 标签挡住重复点火。
+  config.pendingIgnitions ??= new Set()
+  const task = runIgnitionInBackground({
+    gh,
+    owner,
+    repo,
+    parent,
+    ticket: action.ticket,
+    ticketNumber,
+    ignite,
+    lock,
+    log: config.log,
+  })
+  config.pendingIgnitions.add(task)
+  const forget = () => config.pendingIgnitions.delete(task)
+  task.then(forget, forget)
+  return { type: 'ignite', ticket: ticketNumber, started: true }
+}
+
+async function runIgnitionInBackground({
+  gh,
+  owner,
+  repo,
+  parent,
+  ticket,
+  ticketNumber,
+  ignite,
+  lock,
+  log,
+}) {
+  try {
+    await ignite({
+      owner,
+      repo,
+      parent: { number: parent.number, title: parent.title, body: parent.body },
+      ticket,
+    })
+  } catch (error) {
+    await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
+    ;(log || logLine)({
+      level: 'error',
+      msg: '后台点火失败',
+      owner,
+      repo,
+      ticket: ticketNumber,
+      error: String(error?.message || error),
+    })
+  } finally {
+    await lock.release()
+  }
 }
 
 function notificationPayload(event, now) {

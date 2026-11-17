@@ -617,6 +617,15 @@ function fakeIgnite() {
   }
 }
 
+/** 跑一轮但给个上限：点火阻塞轮次时测试失败，而不是一直挂着。 */
+function withTimeout(promise, ms = 2000, message = '调度轮次被点火阻塞') {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 async function lockDir(t) {
   const dir = await mkdtemp(join(tmpdir(), 'afk-scheduler-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -845,6 +854,134 @@ test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火�
   assert.equal(ignite.calls.length, 1, '重启后不重复点火')
   assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
   assert.equal(labelsOf(fake, OWNER, REPO, child.number).filter((name) => name === 'Sandcastle').length, 1)
+})
+
+test('两个仓同时点火：第二个仓不被第一个仓跑着的实现阻塞', async (t) => {
+  const other = 'acme-two'
+  const fake = await startFakeGithub({
+    repos: [
+      { owner: OWNER, name: REPO },
+      { owner: OWNER, name: other },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  await repoLabels(gh, OWNER, REPO)
+  await repoLabels(gh, OWNER, other)
+
+  async function ready(repo, title) {
+    const parent = await gh.createIssue({
+      owner: OWNER,
+      repo,
+      title,
+      body: parentBody(),
+      labels: ['状态:已提交', '大小:小需求'],
+    })
+    const child = await gh.createIssue({
+      owner: OWNER,
+      repo,
+      title: `${title}子票`,
+      body: '',
+      labels: ['状态:排队中'],
+    })
+    await gh.addSubIssue({ owner: OWNER, repo, number: parent.number, subIssueId: child.id })
+    await gh.createComment({ owner: OWNER, repo, number: parent.number, body: '点头：补缺口' })
+    return { parent, child }
+  }
+
+  const first = await ready(REPO, '仓一')
+  const second = await ready(other, '仓二')
+
+  const calls = []
+  let firstFinished = false
+  let releaseFirst
+  const firstRunning = new Promise((resolve) => {
+    releaseFirst = resolve
+  })
+  async function ignite(args) {
+    calls.push(args)
+    if (args.repo === REPO) await firstRunning
+    if (args.repo === REPO) firstFinished = true
+    return { started: true }
+  }
+
+  const rows = [
+    { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } },
+    { id: 'c-0002', short_name: 'acme', status: 'active', repos: { demo: other } },
+  ]
+
+  await withTimeout(
+    runOnce({
+      gh,
+      customers: rows,
+      notifier: fakeNotifier(),
+      ignite,
+      clock: () => NOW,
+      config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+    }),
+  )
+
+  assert.equal(calls.length, 2, '两个仓都点了火')
+  assert.deepEqual(calls.map((row) => row.repo).sort(), [REPO, other].sort())
+  assert.ok(calls.some((row) => row.ticket.number === first.child.number))
+  assert.ok(calls.some((row) => row.ticket.number === second.child.number))
+  assert.equal(firstFinished, false, '第一张还在跑时这一轮已经结束')
+
+  releaseFirst()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+})
+
+test('同一仓第一张在后台跑时，第二张仍等待；新实例不重复点火', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const firstParent = await createParent(gh, { state: '开发中', title: '第一张' })
+  const firstChild = await createChild(gh, firstParent, { title: '子票一' })
+  const secondParent = await createParent(gh, { state: '开发中', title: '第二张' })
+  const secondChild = await createChild(gh, secondParent, { title: '子票二' })
+
+  const calls = []
+  let release
+  const running = new Promise((resolve) => {
+    release = resolve
+  })
+  async function ignite(args) {
+    calls.push(args)
+    await running
+    return { started: true }
+  }
+
+  await withTimeout(
+    runOnce({
+      gh,
+      customers: customers(),
+      notifier: fakeNotifier(),
+      ignite,
+      clock: () => NOW,
+      config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+    }),
+  )
+
+  assert.equal(calls.length, 1)
+  const runningTicket = calls[0].ticket.number
+  const otherChild = runningTicket === firstChild.number ? secondChild : firstChild
+  assert.ok(labelsOf(fake, OWNER, REPO, runningTicket).includes('Sandcastle'))
+
+  // 新实例（新锁目录、新内存状态），第一张还在后台跑：不重复点火，也不点同仓第二张。
+  await withTimeout(
+    runOnce({
+      gh,
+      customers: customers(),
+      notifier: fakeNotifier(),
+      ignite,
+      clock: () => NOW,
+      config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+    }),
+  )
+
+  assert.equal(calls.length, 1, '重启后不重复点火')
+  assert.ok(!labelsOf(fake, OWNER, REPO, otherChild.number).includes('Sandcastle'), '同一仓第二张仍等待')
+
+  release()
+  await new Promise((resolve) => setTimeout(resolve, 0))
 })
 
 test('其余单：只点 frontier，贴 Sandcastle；子票进待验收后摘掉', async (t) => {

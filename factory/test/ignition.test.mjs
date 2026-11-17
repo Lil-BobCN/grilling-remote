@@ -550,6 +550,8 @@ test('重启后同一票已有 Sandcastle，不重复点火', async (t) => {
   })
 
   await runOnce({ gh, customers, notifier: fakeNotifier(), ignite: first, clock, config: firstConfig })
+  // 点火在后台跑：等这次跑完再断言，轮次本身不等它。
+  await Promise.allSettled([...(firstConfig.pendingIgnitions || [])])
 
   assert.equal(runner.calls.length, 1)
   assert.ok(labelsOf(fake, parent.number).includes('状态:开发中'))

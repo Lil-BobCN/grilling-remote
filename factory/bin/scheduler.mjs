@@ -8,6 +8,7 @@
  *
  * 默认接生产点火：调度器选中一张票后贴 `Sandcastle`、把父工单转 `开发中`，再跑
  * `createIgnite`（默认 runner 是 `createSandcastleRunner`，默认 PR 走 `gh pr create`）。
+ * 点火贴上 `Sandcastle` 后在后台跑，不占住调度轮次；`--once` 等它跑完再退出。
  * `--dry-run` 只读 GitHub，打印每张父工单会做什么，不点火、不改标签、不写评论。
  *
  * `--once` 跑一轮并把每张父工单的结论打印成一行 JSON：
@@ -285,6 +286,8 @@ export async function run(
   if (once) {
     const report = await runOnceImpl(options)
     for (const line of parentLines(report)) out(JSON.stringify(line))
+    // 点火在后台跑；--once 是手工跑一次，等它跑完再退出，进程结束不丢活。
+    await Promise.allSettled([...(config.pendingIgnitions || [])])
     return report
   }
 
