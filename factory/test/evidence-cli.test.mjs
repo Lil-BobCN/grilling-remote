@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
+import { ensureEvidenceBeforeMerge, runMerge } from '../bin/evidence.mjs'
 import { appendTrail, freshVerifiers, readTrail } from '../lib/evidence.mjs'
 import { git } from '../lib/git.mjs'
 
@@ -20,6 +20,12 @@ async function makeRepo() {
   await git(dir, ['add', '-A'])
   await git(dir, ['commit', '-m', 'base'])
   return dir
+}
+
+async function commitAll(dir, message) {
+  await git(dir, ['add', '-A'])
+  await git(dir, ['commit', '-m', message])
+  return git(dir, ['rev-parse', 'HEAD'])
 }
 
 function verdict(ok = true, problems = []) {
@@ -77,6 +83,80 @@ function ticket() {
     htmlUrl: 'https://github.com/acme/demo/issues/51',
   }
 }
+
+test('--dry-run 报告 risk/plan/fresh/preview，和真合并用同一套判定', async () => {
+  const dir = await makeRepo()
+  try {
+    await git(dir, ['checkout', '-b', 'req/51'])
+    await writeFile(join(dir, 'req.txt'), 'req\n')
+    const reqSha = await commitAll(dir, 'req work')
+
+    await git(dir, ['checkout', '-b', 'ticket/51', 'main'])
+    await mkdir(join(dir, 'db', 'migrations'), { recursive: true })
+    await writeFile(join(dir, 'db', 'migrations', '001_init.sql'), 'create table t;\n')
+    const codeSha = await commitAll(dir, 'ticket work')
+
+    for (const item of [
+      {
+        phase: 'verify',
+        decision: codeSha,
+        why: `验证 head ${codeSha}`,
+        evidence: `.audit/screenshots/after.png sha=${codeSha}`,
+      },
+      { phase: 'test', decision: 'npm test', why: `测试 head ${codeSha}`, evidence: 'pass' },
+      { phase: 'review', decision: '标准', why: `head ${codeSha}`, evidence: 'AFK_VERDICT pass' },
+      { phase: 'review', decision: 'spec', why: `head ${codeSha}`, evidence: 'AFK_VERDICT pass' },
+    ]) {
+      await appendTrail({ repoDir: dir, ticket: 51, ts: NOW, result: 'pass', ...item })
+    }
+
+    const blocked = await runMerge({
+      'repo-dir': dir,
+      ticket: '51',
+      'ticket-branch': 'ticket/51',
+      'req-branch': 'req/51',
+      dryRun: true,
+    })
+    assert.equal(blocked.output.dryRun, true)
+    assert.equal(blocked.output.ok, false, JSON.stringify(blocked.output))
+    assert.equal(blocked.output.risk, 'high')
+    assert.deepEqual(blocked.output.plan, {
+      run: true,
+      verifiers: 2,
+      mode: 'full',
+      reviewMode: 'interrogate',
+    })
+    assert.equal(blocked.output.fresh.length, 1)
+    assert.deepEqual(blocked.output.preview, { required: false })
+    assert.ok(blocked.output.missing.some((text) => text.includes('高风险验证队')))
+    assert.equal(blocked.exitCode, 1)
+    assert.equal(await git(dir, ['rev-parse', 'req/51']), reqSha, 'dry-run 不该动需求分支')
+
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'verify',
+      decision: codeSha,
+      why: `验证 head ${codeSha} · verifier=v2`,
+      evidence: `.audit/screenshots/after.png sha=${codeSha}`,
+      result: 'pass',
+    })
+    const ready = await runMerge({
+      'repo-dir': dir,
+      ticket: '51',
+      'ticket-branch': 'ticket/51',
+      'req-branch': 'req/51',
+      dryRun: true,
+    })
+    assert.equal(ready.output.ok, true, JSON.stringify(ready.output))
+    assert.equal(ready.output.fresh.length, 2)
+    assert.deepEqual(ready.output.missing, [])
+    assert.equal(ready.exitCode, 0)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
 
 test('证据不齐：先起预览，跑验证和评审写 trail，预览留给合并阶段复用', async () => {
   const dir = await makeRepo()

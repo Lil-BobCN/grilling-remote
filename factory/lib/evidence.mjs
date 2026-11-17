@@ -435,12 +435,21 @@ export { MANIFEST_RE }
 function normalizeFiles(files) {
   return (Array.isArray(files) ? files : []).map((file) => {
     if (typeof file === 'string') return { path: file, status: '' }
-    return {
+    const normalized = {
       path: String(file?.path || file?.filename || file?.file || ''),
       status: String(file?.status || '').toUpperCase(),
-      deletions: Number(file?.deletions) || 0,
     }
+    if (file?.additions !== undefined || file?.deletions !== undefined) {
+      normalized.additions = Number(file.additions) || 0
+      normalized.deletions = Number(file.deletions) || 0
+    }
+    return normalized
   })
+}
+
+/** 证据目录里的文件不算风险：它们只增不删代码，行数也随 trail 变长。 */
+function isAuditFile(path) {
+  return /(^|\/)\.audit\//.test(String(path ?? ''))
 }
 
 function changedLineCount(diffStat) {
@@ -481,28 +490,36 @@ function versionPairs(text) {
 /**
  * 风险两栏：单向门和影响范围。碰迁移、删除、凭证、大版本依赖，
  * 或 diff 超过阈值（默认 400 行或 10 个文件）判高风险。
+ * `.audit/` 是证据目录，文件数和行数都不算进影响范围。
  *
  * @returns {string[]} 触发原因；没有触发时给一句「没碰…」的说明。
  */
 export function riskReasons({ files = [], diffStat = {}, maxLines = 400, maxFiles = 10 } = {}) {
   const list = normalizeFiles(files)
+  const codeFiles = list.filter((file) => !isAuditFile(file.path))
   const text = typeof diffStat === 'object' && diffStat ? String(diffStat.text || diffStat.patch || '') : ''
   const reasons = []
 
-  const migrations = list.filter((file) => MIGRATION_RE.test(file.path))
+  const migrations = codeFiles.filter((file) => MIGRATION_RE.test(file.path))
   if (migrations.length) reasons.push(`碰迁移：${migrations.map((file) => file.path).join('、')}`)
-  const deleted = list.filter(
+  const deleted = codeFiles.filter(
     (file) => file.status === 'D' || file.status === 'DELETED' || /\(deleted\)/.test(file.path),
   )
   if (deleted.length) reasons.push(`删文件：${deleted.map((file) => file.path).join('、')}`)
-  const credentials = list.filter((file) => CREDENTIAL_RE.test(file.path))
+  const credentials = codeFiles.filter((file) => CREDENTIAL_RE.test(file.path))
   if (credentials.length) reasons.push(`碰凭证：${credentials.map((file) => file.path).join('、')}`)
-  const manifests = list.filter((file) => MANIFEST_RE.test(file.path))
+  const manifests = codeFiles.filter((file) => MANIFEST_RE.test(file.path))
   if (Boolean(diffStat?.dependencyMajor) || (manifests.length && versionPairs(text))) {
     reasons.push(`依赖大版本变化：${manifests.map((file) => file.path).join('、')}`)
   }
-  const lines = changedLineCount(diffStat)
-  const fileCount = Number(diffStat && typeof diffStat === 'object' ? diffStat.files : 0) || list.length
+  const measured =
+    list.length > 0 && list.every((file) => file.additions !== undefined && file.deletions !== undefined)
+  const lines = measured
+    ? codeFiles.reduce((sum, file) => sum + file.additions + file.deletions, 0)
+    : changedLineCount(diffStat)
+  const fileCount = list.length
+    ? codeFiles.length
+    : Number(diffStat && typeof diffStat === 'object' ? diffStat.files : 0) || 0
   if (lines > maxLines) reasons.push(`改动 ${lines} 行，超过 ${maxLines} 行`)
   if (fileCount > maxFiles) reasons.push(`改动 ${fileCount} 个文件，超过 ${maxFiles} 个`)
   if (reasons.length === 0) reasons.push('没碰迁移、删除、凭证、大版本依赖，改动范围不大')
@@ -602,15 +619,26 @@ export async function diffInfo(repoDir, base, head) {
     files.push({ path: rest[rest.length - 1] || '', status })
   }
   const numstat = await git(repoDir, ['diff', '--numstat', `${base}...${head}`]).catch(() => '')
+  const stats = new Map()
   let additions = 0
   let deletions = 0
   for (const line of numstat.split(/\r?\n/)) {
-    const match = /^(\d+|-)\t(\d+|-)\t/.exec(line)
+    const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line)
     if (!match) continue
-    additions += Number(match[1]) || 0
-    deletions += Number(match[2]) || 0
+    const stat = { additions: Number(match[1]) || 0, deletions: Number(match[2]) || 0 }
+    stats.set(match[3], stat)
+    if (isAuditFile(match[3])) continue
+    additions += stat.additions
+    deletions += stat.deletions
   }
-  return { files, diffStat: { additions, deletions, files: files.length } }
+  const manifests = files.filter((file) => MANIFEST_RE.test(file.path)).map((file) => file.path)
+  const patch = manifests.length
+    ? await git(repoDir, ['diff', `${base}...${head}`, '--', ...manifests]).catch(() => '')
+    : ''
+  return {
+    files: files.map((file) => ({ ...file, ...(stats.get(file.path) || {}) })),
+    diffStat: { additions, deletions, files: files.length, patch },
+  }
 }
 
 function freshFor(row, shas) {
@@ -720,6 +748,79 @@ function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, p
 }
 
 /**
+ * 合并前的只读判定：分支、四样证据、风险、验证队、预览需求。
+ * `mergeTicket` 和 `--dry-run` 共用这一份，避免两边判据不一致。
+ * 只读仓库和 trail，不跑 agent、不起预览、不写 GitHub。
+ *
+ * @returns {Promise<object>} ok、reason、missing、stale，以及
+ *   risk（high|normal）、plan（verifyPlan 结果）、fresh（新验证者 id）、
+ *   preview.required、rows、interrogate（trail 里有没有 interrogate 行）
+ */
+export async function assessMerge({ repoDir, ticketBranch, reqBranch, ticket, trail } = {}) {
+  if (!repoDir || !ticketBranch || !reqBranch || !ticket?.number) {
+    return {
+      ok: false,
+      reason: 'bad_input',
+      missing: ['repoDir、ticketBranch、reqBranch、ticket.number 都要有'],
+      stale: [],
+    }
+  }
+
+  const ticketHead = await revParse(repoDir, ticketBranch)
+  if (!ticketHead) {
+    return { ok: false, reason: 'branch_not_found', missing: [`分支不存在：${ticketBranch}`], stale: [] }
+  }
+  const reqHead = await revParse(repoDir, reqBranch)
+  if (!reqHead) {
+    return { ok: false, reason: 'branch_not_found', missing: [`分支不存在：${reqBranch}`], stale: [] }
+  }
+  if (await isAncestor(repoDir, ticketBranch, reqBranch)) {
+    return {
+      ok: true,
+      alreadyMerged: true,
+      headSha: reqHead,
+      mergedSha: reqHead,
+      missing: [],
+      stale: [],
+    }
+  }
+
+  const rows = trail ? normalizeTrail(trail) : await readTrail({ repoDir, ticket: ticket.number })
+  const evidence = await evidenceReady({ trail: rows, headSha: ticketHead, repoDir })
+  const { files, diffStat } = await diffInfo(repoDir, reqBranch, ticketBranch)
+  const risk = riskLevel({ files, diffStat })
+  const plan = verifyPlan({ risk, changedLines: diffStat.additions + diffStat.deletions })
+  const fresh = await freshVerifiers({ trail: rows, headSha: ticketHead, repoDir })
+  const preview = { required: previewNeeded({ trail: serializeTrail(rows) }) }
+  const interrogate = rows.some(
+    (row) =>
+      row.phase === 'review' &&
+      row.result === 'pass' &&
+      /interrogate|攻击/i.test(`${row.decision} ${row.why}`),
+  )
+
+  const missing = [...evidence.missing]
+  if (risk === 'high' && fresh.length < plan.verifiers) {
+    missing.push(`高风险验证队（至少 ${plan.verifiers} 个验证者，当前 ${fresh.length} 个）`)
+  }
+
+  return {
+    ok: missing.length === 0 && evidence.stale.length === 0,
+    ...(missing.length || evidence.stale.length ? { reason: 'evidence_not_ready' } : {}),
+    headSha: ticketHead,
+    reqHead,
+    missing,
+    stale: evidence.stale,
+    risk,
+    plan,
+    fresh,
+    preview,
+    rows,
+    interrogate,
+  }
+}
+
+/**
  * 合进需求分支。四样证据不齐不合；合完在合并提交上重跑验证，
  * 失败就回滚到合并前的需求分支。
  *
@@ -757,88 +858,74 @@ export async function mergeTicket({
   const repo = ticket.repo || ''
   const link = issueLink(ticket)
 
-  let ticketHead = await revParse(repoDir, ticketBranch)
-  if (!ticketHead) return { ok: false, reason: 'branch_not_found', missing: [`分支不存在：${ticketBranch}`] }
-  const reqHeadBefore = await revParse(repoDir, reqBranch)
-  if (!reqHeadBefore) return { ok: false, reason: 'branch_not_found', missing: [`分支不存在：${reqBranch}`] }
-
-  if (await isAncestor(repoDir, ticketBranch, reqBranch)) {
-    const current = await revParse(repoDir, reqBranch)
-    return { ok: true, alreadyMerged: true, headSha: current, mergedSha: current, missing: [], stale: [] }
+  const assessment = await assessMerge({ repoDir, ticketBranch, reqBranch, ticket, trail })
+  if (!assessment.ok) {
+    return {
+      ok: false,
+      reason: assessment.reason || 'evidence_not_ready',
+      missing: assessment.missing,
+      stale: assessment.stale,
+    }
+  }
+  if (assessment.alreadyMerged) {
+    return {
+      ok: true,
+      alreadyMerged: true,
+      headSha: assessment.headSha,
+      mergedSha: assessment.mergedSha,
+      missing: [],
+      stale: [],
+    }
   }
 
-  const rows = trail ? normalizeTrail(trail) : await readTrail({ repoDir, ticket: ticket.number })
-  const evidence = await evidenceReady({ trail: rows, headSha: ticketHead, repoDir })
-  if (!evidence.ready) {
-    return { ok: false, reason: 'evidence_not_ready', missing: evidence.missing, stale: evidence.stale }
-  }
+  let ticketHead = assessment.headSha
+  const reqHeadBefore = assessment.reqHead
+  const rows = assessment.rows
+  const { risk, plan } = assessment
 
-  const { files, diffStat } = await diffInfo(repoDir, reqBranch, ticketBranch)
-  const risk = riskLevel({ files, diffStat })
-  const changedLines = diffStat.additions + diffStat.deletions
-  const plan = verifyPlan({ risk, changedLines })
-
-  if (risk === 'high') {
-    const fresh = await freshVerifiers({ trail: rows, headSha: ticketHead, repoDir })
-    if (fresh.length < plan.verifiers) {
+  if (risk === 'high' && !assessment.interrogate) {
+    if (typeof review !== 'function') {
       return {
         ok: false,
         reason: 'evidence_not_ready',
-        missing: [`高风险验证队（至少 ${plan.verifiers} 个验证者，当前 ${fresh.length} 个）`],
+        missing: ['高风险评审（interrogate）'],
         stale: [],
       }
     }
-    const hasInterrogate = rows.some(
-      (row) =>
-        row.phase === 'review' &&
-        row.result === 'pass' &&
-        /interrogate|攻击/i.test(`${row.decision} ${row.why}`),
-    )
-    if (!hasInterrogate) {
-      if (typeof review !== 'function') {
-        return {
-          ok: false,
-          reason: 'evidence_not_ready',
-          missing: ['高风险评审（interrogate）'],
-          stale: [],
-        }
-      }
-      let outcome
-      try {
-        outcome = await review({ repoDir, headSha: ticketHead, ticket, mode: 'interrogate' })
-      } catch (error) {
-        outcome = { ok: false, error: errorText(error) }
-      }
-      if (!passed(outcome)) {
-        return {
-          ok: false,
-          reason: 'evidence_not_ready',
-          missing: ['高风险评审（interrogate）'],
-          stale: [],
-          problems: problemsOf(outcome),
-        }
-      }
-      const appended = await appendTrail({
-        repoDir,
-        ticket: ticket.number,
-        phase: 'review',
-        decision: outcome.decision || 'interrogate：攻击性评审通过',
-        why: `高风险 head ${ticketHead}`,
-        evidence: outcome.evidence || '',
-        result: 'pass',
-      })
-      rows.push(appended)
-      await git(repoDir, ['add', '--', `.audit/${ticket.number}.tsv`]).catch(() => {})
-      await git(repoDir, ['commit', '-m', `FACTORY: 补 interrogate 评审 #${ticket.number}`]).catch(() => {})
-      ticketHead = (await revParse(repoDir, ticketBranch)) || ticketHead
+    let outcome
+    try {
+      outcome = await review({ repoDir, headSha: ticketHead, ticket, mode: 'interrogate' })
+    } catch (error) {
+      outcome = { ok: false, error: errorText(error) }
     }
+    if (!passed(outcome)) {
+      return {
+        ok: false,
+        reason: 'evidence_not_ready',
+        missing: ['高风险评审（interrogate）'],
+        stale: [],
+        problems: problemsOf(outcome),
+      }
+    }
+    const appended = await appendTrail({
+      repoDir,
+      ticket: ticket.number,
+      phase: 'review',
+      decision: outcome.decision || 'interrogate：攻击性评审通过',
+      why: `高风险 head ${ticketHead}`,
+      evidence: outcome.evidence || '',
+      result: 'pass',
+    })
+    rows.push(appended)
+    await git(repoDir, ['add', '--', `.audit/${ticket.number}.tsv`]).catch(() => {})
+    await git(repoDir, ['commit', '-m', `FACTORY: 补 interrogate 评审 #${ticket.number}`]).catch(() => {})
+    ticketHead = (await revParse(repoDir, ticketBranch)) || ticketHead
   }
 
   const evidenceCommit = await commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket })
   if (evidenceCommit.headSha) ticketHead = evidenceCommit.headSha
 
-  const previewText = serializeTrail(rows)
-  const previewRequired = Boolean(preview?.needed) || previewNeeded({ trail: previewText })
+  const previewRequired = Boolean(preview?.needed) || assessment.preview.required
   let previewInfo = null
   if (previewRequired) {
     if (typeof preview?.start !== 'function') {
@@ -995,6 +1082,9 @@ export async function mergeTicket({
         })
         const current = await gh.getIssue({ owner, repo, number: ticket.number })
         const names = issueLabelNames(current)
+        for (const name of names.filter((row) => row.startsWith('状态:') && row !== STATE_PENDING)) {
+          await gh.removeLabel({ owner, repo, number: ticket.number, name })
+        }
         if (!names.includes(STATE_PENDING)) {
           await gh.addLabels({ owner, repo, number: ticket.number, labels: [STATE_PENDING] })
         }
