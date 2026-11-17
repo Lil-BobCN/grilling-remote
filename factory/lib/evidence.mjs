@@ -577,6 +577,21 @@ function freshFor(row, shas) {
   })
 }
 
+/**
+ * 指向当前 head 或最后一个代码提交的 pass verify 行。
+ * D3 用它判断「已经有人验过这个 head 了」，同一 head 不再重跑。
+ */
+export async function freshVerifyRows({ trail, headSha = '', repoDir = '' } = {}) {
+  const rows = normalizeTrail(trail)
+  let head = headSha
+  if (!head && repoDir) head = await git(repoDir, ['rev-parse', 'HEAD']).catch(() => '')
+  const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
+  const shas = [head, codeHead].filter(Boolean)
+  return rows.filter(
+    (row) => row.phase === 'verify' && row.result === 'pass' && freshFor(row, shas),
+  )
+}
+
 async function notifyIncident({ notifier, ticket, reason, tried, link }) {
   if (typeof notifier?.send !== 'function') return
   const at = new Date()

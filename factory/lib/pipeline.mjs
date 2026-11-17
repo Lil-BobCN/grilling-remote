@@ -1,0 +1,301 @@
+/**
+ * D3/D4/D5 一条流水线：票点完火、没有 fresh verify 时，补验证和评审，
+ * 再合进需求分支。
+ *
+ * 触发事实只看两样：票上最新评论是 `点火完成`，且 `.audit/<票号>.tsv`
+ * 里没有指向当前 head 的 pass verify。失败不在这里修，只返回原因，
+ * 下一轮继续看同一事实。
+ */
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
+import { MERGER_TOOLS } from './agent-runner.mjs'
+import { runReviewAudit, runVerifyAudit } from './audit-agents.mjs'
+import {
+  freshVerifyRows,
+  mergeTicket,
+  readTrail,
+  serializeTrail,
+} from './evidence.mjs'
+import { git } from './git.mjs'
+import { parentCustomer, parentOrder, parentRequirement } from './ignition.mjs'
+import { logLine } from './log.mjs'
+import { previewNeeded } from './preview.mjs'
+import { parseProgress } from './progress.mjs'
+import { hasLabel } from './scheduler.mjs'
+
+export const SANDBOX_LABEL = 'Sandcastle'
+export const PENDING_LABEL = '状态:待验收'
+
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function firstLine(body) {
+  return String(body || '')
+    .replace(/^﻿/, '')
+    .trimStart()
+    .split(/\r?\n/)[0]
+    .trim()
+}
+
+function progressRound(comments = []) {
+  let round = 1
+  for (const comment of comments) {
+    for (const line of String(comment?.body || '').split(/\r?\n/)) {
+      const parsed = parseProgress(line)
+      if (parsed) round = parsed.round
+    }
+  }
+  return round + 1
+}
+
+/** 预览只起一次：补证据用掉以后，合并阶段复用同一套，合完再销毁。 */
+function cachedPreview(preview) {
+  let started = null
+  return {
+    needed: preview?.needed,
+    async start(args) {
+      if (!started) started = await preview.start(args)
+      return started
+    },
+    async stop(args) {
+      try {
+        return await preview.stop(args)
+      } finally {
+        started = null
+      }
+    },
+    startedAddress() {
+      return started?.ok ? started.address || '' : ''
+    },
+  }
+}
+
+function mergerBrief({ files, instructions }) {
+  return [
+    String(instructions || '').trim(),
+    '',
+    '冲突文件：',
+    ...(files || []).map((file) => `- ${file}`),
+    '',
+    '解完把文件改好，不要提交。最后一行写 `AFK_VERDICT: merged` 或 `AFK_VERDICT: blocked 原因`。',
+  ].join('\n')
+}
+
+function parseMergerVerdict(result) {
+  if (!result?.ok) {
+    return { ok: false, problems: [`合并者 agent 退出码 ${result?.code ?? 1}：${String(result?.stderr || '').slice(-400)}`] }
+  }
+  const line = String(result.stdout || '')
+    .split(/\r?\n/)
+    .reverse()
+    .find((row) => row.startsWith('AFK_VERDICT:'))
+  if (!line) return { ok: false, problems: ['合并者 agent 没写 AFK_VERDICT'] }
+  const text = line.slice('AFK_VERDICT:'.length).trim()
+  if (/^merged\b/i.test(text)) return { ok: true, decision: text }
+  return { ok: false, problems: [text || '合并者判不过'] }
+}
+
+/**
+ * @param {object} options
+ * @param {object} options.runner 验证、评审和默认解冲突用的 agent runner
+ * @param {Function} [options.previewFor] 按票返回预览实现；返回 null 表示没有预览
+ * @param {Function} [options.ensureEvidence] 默认 `ensureEvidenceBeforeMerge`
+ * @param {Function} [options.merge] 默认 `mergeTicket`
+ * @returns {(context: {gh: object, owner: string, repo: string, parents: Array, repoDir: string}) => Promise<object>}
+ */
+export function createTicketPipeline({
+  runner,
+  previewFor = () => null,
+  notifier,
+  clock = () => new Date(),
+  log = logLine,
+  agentsDir,
+  ensureEvidence = ensureEvidenceBeforeMerge,
+  merge = mergeTicket,
+  readTrailImpl = readTrail,
+  freshVerifyRowsImpl = freshVerifyRows,
+  gitImpl = git,
+} = {}) {
+  async function merger({ repoDir, files }) {
+    if (typeof runner?.run !== 'function') {
+      return { ok: false, problems: ['没有注入 runner，解不了冲突'] }
+    }
+    const dir = agentsDir || fileURLToPath(new URL('../agents/', import.meta.url))
+    const instructions = await readFile(join(dir, 'merger.md'), 'utf8').catch(() => '')
+    const run = await runner.run({
+      name: `merge-${Date.now()}`,
+      cwd: repoDir,
+      allowedTools: MERGER_TOOLS,
+      brief: mergerBrief({ files, instructions }),
+    })
+    return parseMergerVerdict(run)
+  }
+
+  async function runOne({ gh, owner, repo, parent, ticket, repoDir }) {
+    if (ticket.state === 'closed') return null
+    if (hasLabel(ticket, PENDING_LABEL)) return null
+    if (!hasLabel(ticket, SANDBOX_LABEL)) return null
+
+    const comments = await gh.listComments({ owner, repo, number: ticket.number })
+    if (!firstLine(comments.at(-1)?.body).startsWith('点火完成')) return null
+
+    const ticketBranch = `ticket/${ticket.number}`
+    const headSha = await gitImpl(repoDir, ['rev-parse', '--verify', '--quiet', ticketBranch]).catch(() => '')
+    if (!headSha) return { ticket: ticket.number, skipped: 'branch-missing' }
+
+    const trail = await readTrailImpl({ repoDir, ticket: ticket.number })
+    if ((await freshVerifyRowsImpl({ trail, headSha, repoDir })).length) {
+      return { ticket: ticket.number, skipped: 'fresh-verify' }
+    }
+
+    const order = parentOrder(parent?.body)
+    if (!order) return { ticket: ticket.number, skipped: 'no-order' }
+    const reqBranch = `req/${order}`
+
+    const ticketInfo = {
+      number: ticket.number,
+      title: ticket.title,
+      body: ticket.body,
+      owner,
+      repo,
+      parentNumber: parent.number,
+      customer: parentCustomer(parent?.body) || parent?.title || '',
+      requirement: parentRequirement(parent?.body) || parent?.title || '',
+      path: hasLabel(parent, '大小:小需求') ? '小需求' : '其余',
+      round: progressRound(parent?.comments || []),
+      htmlUrl: ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`,
+    }
+
+    const preview = previewFor({ ticket: ticketInfo, parent, owner, repo, repoDir })
+    if (previewNeeded({ trail: serializeTrail(trail) }) && typeof preview?.start !== 'function') {
+      const missing = ['这张票有界面，但没有注入预览（等 #469）']
+      log({ level: 'error', msg: '证据补齐失败', owner, repo, ticket: ticket.number, reason: 'preview_required', missing })
+      return { ticket: ticket.number, ok: false, reason: 'preview_required', missing }
+    }
+    const previewImpl = preview?.start && preview?.stop ? cachedPreview(preview) : preview
+
+    const originalBranch = await gitImpl(repoDir, ['branch', '--show-current']).catch(() => '')
+    let switched = false
+    if (originalBranch !== ticketBranch) {
+      try {
+        await gitImpl(repoDir, ['checkout', ticketBranch])
+        switched = true
+      } catch (error) {
+        log({
+          level: 'error',
+          msg: '切不到票分支，跳过流水线',
+          owner,
+          repo,
+          ticket: ticket.number,
+          branch: ticketBranch,
+          error: errorText(error),
+        })
+        return { ticket: ticket.number, skipped: 'branch-busy', reason: errorText(error) }
+      }
+    }
+
+    try {
+      const ensured = await ensureEvidence({
+        repoDir,
+        ticket: ticketInfo,
+        ticketNumber: ticket.number,
+        branch: ticketBranch,
+        runner,
+        preview: previewImpl,
+        notifier,
+        now: clock(),
+      })
+      if (!ensured.ok) {
+        const reason = ensured.reason || 'evidence_not_ready'
+        log({
+          level: 'error',
+          msg: '证据补齐失败',
+          owner,
+          repo,
+          ticket: ticket.number,
+          reason,
+          missing: ensured.missing || [],
+          problems: ensured.problems || [],
+        })
+        return { ticket: ticket.number, ...ensured, reason }
+      }
+
+      const result = await merge({
+        repoDir,
+        ticketBranch,
+        reqBranch,
+        ticket: ticketInfo,
+        trail: ensured.trail,
+        verifier: async ({ headSha: mergedHead }) => {
+          const audit = await runVerifyAudit({
+            repoDir,
+            ticket: ticket.number,
+            branch: mergedHead,
+            runner,
+            now: clock(),
+          })
+          return { ok: audit.ok, problems: audit.problems, evidence: audit.evidence.join(',') }
+        },
+        review: async ({ headSha: reviewHead, mode }) => {
+          const audit = await runReviewAudit({
+            repoDir,
+            ticket: ticket.number,
+            branch: reviewHead,
+            mode: mode || 'all',
+            runner,
+            now: clock(),
+          })
+          return { ok: audit.ok, problems: audit.problems, decision: audit.decision }
+        },
+        merger,
+        preview: previewImpl,
+        notifier,
+        github: gh,
+      })
+
+      log({
+        level: result.ok ? 'info' : 'error',
+        msg: result.ok ? '证据齐，已合需求分支' : '合需求分支失败',
+        owner,
+        repo,
+        ticket: ticket.number,
+        reason: result.reason || '',
+        mergedSha: result.mergedSha || '',
+        missing: result.missing || [],
+        problems: result.problems || [],
+      })
+      return { ticket: ticket.number, ...result }
+    } catch (error) {
+      log({
+        level: 'error',
+        msg: '流水线出错',
+        owner,
+        repo,
+        ticket: ticket.number,
+        error: errorText(error),
+      })
+      return { ticket: ticket.number, ok: false, reason: 'pipeline_error', error: errorText(error) }
+    } finally {
+      if (switched && originalBranch) {
+        await gitImpl(repoDir, ['checkout', originalBranch]).catch(() => {})
+      } else if (switched) {
+        await gitImpl(repoDir, ['checkout', reqBranch]).catch(() => {})
+      }
+    }
+  }
+
+  return async function ticketPipeline({ gh, owner, repo, parents = [], repoDir = '' } = {}) {
+    const runs = []
+    if (!repoDir) return { runs, skipped: 'no-repo' }
+    for (const parent of parents || []) {
+      for (const ticket of parent.subIssues || []) {
+        const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir })
+        if (outcome) runs.push(outcome)
+      }
+    }
+    return { runs }
+  }
+}

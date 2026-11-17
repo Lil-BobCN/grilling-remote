@@ -18,11 +18,13 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { createAgentRunner } from '../lib/agent-runner.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
+import { createTicketPipeline } from '../lib/pipeline.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 import {
   createDecompose,
@@ -136,6 +138,7 @@ export async function run(
     ignite,
     decompose,
     gapProposal,
+    ticketPipeline,
     createFixTicket,
     runner,
     openPr,
@@ -208,6 +211,15 @@ export async function run(
       command: process.env.AFK_AGENT_COMMAND || 'claude',
       log: configOverrides.log || logLine,
     })
+  const ticketPipelineFn =
+    ticketPipeline ||
+    createTicketPipeline({
+      runner: createAgentRunner({
+        command: process.env.AFK_AGENT_COMMAND || 'claude',
+      }),
+      notifier: notify,
+      log: configOverrides.log || logLine,
+    })
 
   const igniteFn =
     ignite ||
@@ -236,6 +248,7 @@ export async function run(
     ignite: igniteFn,
     decompose: decomposeFn,
     gapProposal: gapProposalFn,
+    ticketPipeline: ticketPipelineFn,
     createFixTicket: createFixTicketFn,
     clock,
     config,
