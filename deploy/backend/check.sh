@@ -81,6 +81,25 @@ else
   ok "近 15 分钟没有订单同步积压"
 fi
 
+# 成品预置环境（docs/运维手册.md 第十二节）。没装 helper 时整段跳过。
+if [[ -x /usr/local/sbin/afk-product ]]; then
+  if product_out=$(sudo -n /usr/local/sbin/afk-product product-status --check 2>&1); then
+    ok "成品预置环境正常"
+  else
+    bad "成品预置环境有异常"
+    printf '%s\n' "$product_out" | sed 's/^/  /'
+  fi
+fi
+
+if [[ -r /proc/meminfo ]]; then
+  mem_avail=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+  if [[ -n $mem_avail && $mem_avail -lt 512 ]]; then
+    warn "可用内存 ${mem_avail} MiB，低于 512 MiB，按第十二节报运营者加机器"
+  else
+    ok "可用内存 ${mem_avail} MiB"
+  fi
+fi
+
 echo "最近 3 条请求："
 journalctl -u afkapp -n 3 --no-pager 2>/dev/null | sed 's/^/  /'
 

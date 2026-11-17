@@ -1,0 +1,10 @@
+{
+  "name": "afkfactory-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "工厂层：建客户仓、导入回传件、调度、点火、验证、评审、合并、部署",
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  }
+}

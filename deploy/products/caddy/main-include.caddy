@@ -1,0 +1,5 @@
+# 追加到服务器 /etc/caddy/Caddyfile 末尾的两行，由 deploy/products/install.sh 自动加。
+# 主 Caddyfile 不在仓库里手改，以后整份换配置后重跑 install.sh 即可。
+# 目录为空时 Caddy 只打一条警告，校验照样通过。
+import /etc/caddy/products/*.caddy
+import /etc/caddy/previews/*.caddy

@@ -1,0 +1,1139 @@
+#!/usr/bin/env bash
+# 客户成品 helper：建目录、Compose、.env、database/role 和 Caddy 路由，
+# 负责部署、回滚、备份、预览起停和状态。服务器上用 sudo 跑，sudo 白名单只放这一条。
+#
+#   sudo afk-product product-init <交付地址> --image <镜像:tag>
+#   sudo afk-product product-load <镜像 tar>
+#   sudo afk-product product-deploy <交付地址> [--image <镜像:tag>]
+#   sudo afk-product product-rollback <交付地址>
+#   sudo afk-product product-backup [<交付地址>]
+#   sudo afk-product product-status [<交付地址>] [--check]
+#   sudo afk-product preview-start <地址> <镜像:tag> [--seed <命令>] [--commit-at <ISO 时间>]
+#   sudo afk-product preview-stop <地址>
+#   sudo afk-product preview-status [<地址>] [--check]
+#   sudo afk-product preview-sweep
+#
+# 路径都能用环境变量覆盖，本机测试用：
+#   AFK_PRODUCTS_ROOT、AFK_PREVIEWS_ROOT、AFK_CADDY_PRODUCTS、AFK_CADDY_PREVIEWS、
+#   AFK_CADDY_LOG_DIR、AFK_BACKUP_DIR、AFK_PG_ENV、AFK_PG_CONTAINER、AFK_PORT_START、
+#   AFK_PREVIEW_PORT_START、AFK_NETWORK_PREFIX、AFK_TEMPLATE_DIR、AFK_APP_UID、AFK_APP_GID、
+#   AFK_APP_INTERNAL_PORT、AFK_APP_IMAGE、AFK_UPSTREAM_HOST、AFK_CADDY_RELOAD、AFK_DOCKER、
+#   AFK_BACKUP_SCRIPT、AFK_CADDY_IMAGE、AFK_CADDY_BIN、AFK_CADDY_USER、
+#   AFK_PREVIEW_QUEUE_TIMEOUT、AFK_PREVIEW_QUEUE_POLL、AFK_PREVIEW_LOCK_TIMEOUT、AFK_NOW
+#
+# AFK_UPSTREAM_HOST 默认 127.0.0.1，成品路由反代到 127.0.0.1:<端口>。
+# 本机测试让它指向 compose 容器，Caddy 容器和 app 在同一网络时用。
+# 预览全局同时最多 1 套，第二套在 preview-start 里排队等名额。
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+log() { printf '%s\n' "$*"; }
+
+SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+
+PRODUCTS_ROOT=${AFK_PRODUCTS_ROOT:-/data/products}
+PREVIEWS_ROOT=${AFK_PREVIEWS_ROOT:-/data/previews}
+CADDY_PRODUCTS=${AFK_CADDY_PRODUCTS:-/etc/caddy/products}
+CADDY_PREVIEWS=${AFK_CADDY_PREVIEWS:-/etc/caddy/previews}
+CADDY_LOG_DIR=${AFK_CADDY_LOG_DIR:-/var/log/caddy/previews}
+BACKUP_DIR=${AFK_BACKUP_DIR:-$PRODUCTS_ROOT/backups}
+PG_CONTAINER=${AFK_PG_CONTAINER:-afk-products-postgres}
+PG_ENV=${AFK_PG_ENV:-$PRODUCTS_ROOT/postgres/.env}
+PORT_START=${AFK_PORT_START:-9100}
+PREVIEW_PORT_START=${AFK_PREVIEW_PORT_START:-19200}
+NETWORK_PREFIX=${AFK_NETWORK_PREFIX:-afk-app-}
+UPSTREAM_HOST=${AFK_UPSTREAM_HOST:-127.0.0.1}
+DOCKER=${AFK_DOCKER:-docker}
+CADDY_IMAGE=${AFK_CADDY_IMAGE:-caddy:2.6.2}
+CADDY_BIN=${AFK_CADDY_BIN:-}
+CADDY_USER=${AFK_CADDY_USER:-caddy}
+QUEUE_TIMEOUT=${AFK_PREVIEW_QUEUE_TIMEOUT:-3600}
+QUEUE_POLL=${AFK_PREVIEW_QUEUE_POLL:-5}
+LOCK_TIMEOUT=${AFK_PREVIEW_LOCK_TIMEOUT:-600}
+LOCK_DIR="$PREVIEWS_ROOT/.lock"
+LOCK_HELD=0
+# preview-start 写到一半失败时，EXIT 时把这次预览清掉，免得占着唯一的预览名额。
+START_CLEANUP=0
+CLEANUP_ADDRESS=""
+CLEANUP_IMAGE=""
+
+if [[ -n ${AFK_TEMPLATE_DIR:-} ]]; then
+  TEMPLATE_DIR=$AFK_TEMPLATE_DIR
+elif [[ -f /usr/local/share/afk-product/compose.template.yml ]]; then
+  TEMPLATE_DIR=/usr/local/share/afk-product
+else
+  TEMPLATE_DIR=$SELF_DIR
+fi
+
+# ---------------------------------------------------------------- 小工具
+
+chown_if_root() {
+  [[ ${EUID} -eq 0 ]] || return 0
+  chown "$@"
+}
+
+valid_address() {
+  printf '%s' "$1" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+}
+
+slug_of() {
+  printf '%s' "$1" | sed 's/[^a-z0-9]/_/g'
+}
+
+env_get() { # 文件 键
+  sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -1
+}
+
+env_set() { # 文件 键 值；没有这个键就追加
+  local file=$1 key=$2 value=$3 tmp="$1.tmp.$$"
+  awk -v k="$key" -v v="$value" '
+    BEGIN { done = 0 }
+    index($0, k "=") == 1 { print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$file" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$file"
+}
+
+random_hex() { # 字节数
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$1"
+  else
+    od -An -N "$1" -tx1 /dev/urandom | tr -d ' \n'
+  fi
+}
+
+port_in_use() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1 || return 1
+  exec 3>&- 2>/dev/null || true
+  return 0
+}
+
+used_ports() {
+  local f
+  for f in "$PRODUCTS_ROOT"/*/.env "$PREVIEWS_ROOT"/*/.env; do
+    [[ -f $f ]] || continue
+    env_get "$f" PORT
+  done
+}
+
+pick_port() {
+  local used p
+  used=$(used_ports)
+  p=$PORT_START
+  while [[ $p -lt $((PORT_START + 500)) ]]; do
+    if ! printf '%s\n' "$used" | grep -qx "$p" && ! port_in_use "$p"; then
+      printf '%s' "$p"
+      return 0
+    fi
+    p=$((p + 1))
+  done
+  die "从 $PORT_START 起找不到空闲端口"
+}
+
+pick_preview_port() {
+  local used p
+  used=$(used_ports)
+  p=$PREVIEW_PORT_START
+  while [[ $p -lt $((PREVIEW_PORT_START + 500)) ]]; do
+    if ! printf '%s\n' "$used" | grep -qx "$p" && ! port_in_use "$p"; then
+      printf '%s' "$p"
+      return 0
+    fi
+    p=$((p + 1))
+  done
+  die "从 $PREVIEW_PORT_START 起找不到空闲端口"
+}
+
+pg_superuser() {
+  local v
+  v=$(env_get "$PG_ENV" AFK_PG_SUPERUSER)
+  [[ -n $v ]] || v=$(env_get "$PG_ENV" POSTGRES_USER)
+  printf '%s' "${v:-postgres}"
+}
+
+pg_superpass() {
+  local v
+  v=$(env_get "$PG_ENV" AFK_PG_SUPERUSER_PASSWORD)
+  [[ -n $v ]] || v=$(env_get "$PG_ENV" POSTGRES_PASSWORD)
+  printf '%s' "$v"
+}
+
+require_pg() {
+  [[ -f $PG_ENV ]] || die "找不到 ${PG_ENV}。先跑 deploy/products/install.sh"
+  local running
+  running=$("$DOCKER" inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || true)
+  [[ $running == true ]] || die "共享 Postgres 容器 $PG_CONTAINER 没在跑。先跑 deploy/products/install.sh"
+}
+
+pg_exec() { # SQL
+  "$DOCKER" exec -e PGPASSWORD="$(pg_superpass)" -i "$PG_CONTAINER" \
+    psql -v ON_ERROR_STOP=1 -U "$(pg_superuser)" -d postgres -tAc "$1"
+}
+
+ensure_network() { # 网络名
+  local net=$1
+  if ! "$DOCKER" network inspect "$net" >/dev/null 2>&1; then
+    "$DOCKER" network create "$net" >/dev/null
+    log "建网络 $net"
+  fi
+  if ! "$DOCKER" inspect -f '{{json .NetworkSettings.Networks}}' "$PG_CONTAINER" 2>/dev/null | grep -q "\"$net\""; then
+    "$DOCKER" network connect "$net" "$PG_CONTAINER"
+    log "共享 Postgres 接进 $net"
+  fi
+}
+
+ensure_database() { # 库名 用户名 密码
+  local db=$1 user=$2 pass=$3
+  if [[ -z $(pg_exec "SELECT 1 FROM pg_roles WHERE rolname='$user'") ]]; then
+    pg_exec "CREATE ROLE \"$user\" LOGIN PASSWORD '$pass' NOSUPERUSER NOCREATEDB NOCREATEROLE" >/dev/null
+    log "建 role $user"
+  else
+    pg_exec "ALTER ROLE \"$user\" WITH PASSWORD '$pass' NOSUPERUSER NOCREATEDB NOCREATEROLE" >/dev/null
+  fi
+  if [[ -z $(pg_exec "SELECT 1 FROM pg_database WHERE datname='$db'") ]]; then
+    pg_exec "CREATE DATABASE \"$db\" OWNER \"$user\"" >/dev/null
+    log "建 database $db"
+  fi
+  # 每个软件只能连自己的库：自己的库对 PUBLIC 关门，公共库也不让 PUBLIC 进。
+  pg_exec "REVOKE ALL ON DATABASE \"$db\" FROM PUBLIC" >/dev/null
+  pg_exec "REVOKE CONNECT ON DATABASE postgres FROM PUBLIC" >/dev/null
+  pg_exec "REVOKE CONNECT ON DATABASE template1 FROM PUBLIC" >/dev/null
+}
+
+render_caddy() { # 地址 端口 内部端口
+  local address=$1 port=$2 internal=$3 upstream tmp
+  if [[ $UPSTREAM_HOST == 127.0.0.1 ]]; then
+    upstream="127.0.0.1:$port"
+  else
+    upstream="$UPSTREAM_HOST:$internal"
+  fi
+  install -d -m 755 "$CADDY_PRODUCTS"
+  tmp="$CADDY_PRODUCTS/$address.caddy.tmp.$$"
+  sed -e "s|__ADDRESS__|$address|g" -e "s|__UPSTREAM__|$upstream|g" \
+    "$TEMPLATE_DIR/caddy/product.caddy" >"$tmp"
+  install -m 644 "$tmp" "$CADDY_PRODUCTS/$address.caddy"
+  rm -f "$tmp"
+  chown_if_root root:root "$CADDY_PRODUCTS/$address.caddy"
+}
+
+reload_caddy() {
+  local mode=${AFK_CADDY_RELOAD:-auto}
+  [[ $mode == never ]] && return 0
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy 2>/dev/null; then
+    systemctl reload caddy && log "已 reload caddy"
+  else
+    log "Caddy 路由已写，记得在服务器上 reload caddy"
+  fi
+}
+
+load_product_env() { # 目录
+  local env=$1/.env
+  [[ -f $env ]] || die "找不到 ${env}，先跑 product-init"
+  PORT=$(env_get "$env" PORT)
+  DB_NAME=$(env_get "$env" DB_NAME)
+  DB_USER=$(env_get "$env" DB_USER)
+  DB_PASSWORD=$(env_get "$env" DB_PASSWORD)
+  APP_KEY=$(env_get "$env" APP_KEY)
+  IMAGE=$(env_get "$env" IMAGE)
+  APP_NETWORK=$(env_get "$env" APP_NETWORK)
+  APP_UID=$(env_get "$env" APP_UID)
+  APP_GID=$(env_get "$env" APP_GID)
+  APP_INTERNAL_PORT=$(env_get "$env" APP_INTERNAL_PORT)
+  : "${APP_UID:=1000}" "${APP_GID:=1000}" "${APP_INTERNAL_PORT:=3000}"
+  [[ -n $PORT && -n $DB_NAME && -n $DB_USER && -n $DB_PASSWORD && -n $APP_NETWORK ]] \
+    || die "$env 缺少必需项（PORT、DB_NAME、DB_USER、DB_PASSWORD、APP_NETWORK）"
+}
+
+compose_up() { # 目录
+  local dir=$1
+  "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$(basename "$dir")")" \
+    --env-file "$dir/.env" -f "$dir/compose.yml" up -d --remove-orphans
+}
+
+# 新版没起来时把 .env 和容器都退回上一版。恢复失败只报错，不掩盖原始的部署失败。
+restore_previous_image() { # 目录 旧镜像
+  local dir=$1 old=$2
+  [[ -n $old ]] || return 0
+  env_set "$dir/.env" IMAGE "$old"
+  IMAGE=$old
+  if ! compose_up "$dir"; then
+    printf '恢复上一版 %s 失败，容器保留现场，看 docker logs\n' "$old" >&2
+    return 0
+  fi
+  if wait_http "$PORT"; then
+    log "已恢复上一版 ${old}"
+  else
+    printf '恢复上一版 %s 后 30 秒内没应答，看 docker logs\n' "$old" >&2
+  fi
+  return 0
+}
+
+wait_http() { # 端口
+  local port=$1 i=0
+  while [[ $i -lt 30 ]]; do
+    if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/"; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  return 1
+}
+
+record_release() { # 目录
+  local dir=$1 rel ts
+  ts=$(date -u +%Y%m%dT%H%M%SZ)
+  rel="$dir/releases/$ts"
+  install -d -m 700 "$rel"
+  install -m 600 "$dir/compose.yml" "$rel/compose.yml"
+  printf '%s\n' "$IMAGE" >"$rel/image"
+  chmod 600 "$rel/image"
+  chown_if_root -R root:root "$rel"
+  # 只留最近 3 个版本。
+  local count
+  count=$(ls -1 "$dir/releases" | wc -l | tr -d ' ')
+  if [[ $count -gt 3 ]]; then
+    ls -1 "$dir/releases" | sort | awk -v extra=$((count - 3)) 'NR <= extra' | while IFS= read -r old; do
+      rm -rf "$dir/releases/$old"
+    done
+  fi
+}
+
+# ---------------------------------------------------------------- 预览工具
+
+now_iso() {
+  printf '%s' "${AFK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+}
+
+ts_epoch() { # ISO 时间 → epoch；认不出来返回非零
+  local ts=$1
+  [[ -n $ts ]] || return 1
+  if date -u -d "$ts" +%s >/dev/null 2>&1; then
+    date -u -d "$ts" +%s
+    return 0
+  fi
+  if date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s >/dev/null 2>&1; then
+    date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$ts" +%s
+    return 0
+  fi
+  return 1
+}
+
+epoch_iso() { # epoch → ISO 时间
+  local epoch=$1
+  if date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
+    date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ
+  else
+    date -u -r "$epoch" +%Y-%m-%dT%H:%M:%SZ
+  fi
+}
+
+file_mtime() { # 文件最后写入的 epoch
+  if stat -c %Y "$1" >/dev/null 2>&1; then
+    stat -c %Y "$1"
+  else
+    stat -f %m "$1"
+  fi
+}
+
+release_lock() {
+  [[ $LOCK_HELD -eq 1 ]] || return 0
+  rm -rf "$LOCK_DIR"
+  LOCK_HELD=0
+}
+
+cleanup_start_preview() {
+  [[ $START_CLEANUP -eq 1 ]] || return 0
+  START_CLEANUP=0
+  preview_remove "$CLEANUP_ADDRESS" "$CLEANUP_IMAGE" >/dev/null 2>&1 || true
+  reload_caddy
+}
+
+on_exit() {
+  cleanup_start_preview
+  release_lock
+}
+
+acquire_lock() {
+  local i=0 pid
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [[ -n $pid ]] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$LOCK_DIR"
+      continue
+    fi
+    i=$((i + 1))
+    [[ $i -lt $LOCK_TIMEOUT ]] || die "另一个预览操作一直没结束：$LOCK_DIR"
+    sleep 1
+  done
+  printf '%s\n' $$ >"$LOCK_DIR/pid"
+  LOCK_HELD=1
+}
+
+other_preview() { # 排除这个地址后，第一个在用的预览地址
+  local address=$1 d name
+  for d in "$PREVIEWS_ROOT"/*/; do
+    [[ -f "$d/.env" ]] || continue
+    name=$(basename "$d")
+    [[ $name == "$address" ]] && continue
+    printf '%s' "$name"
+    return 0
+  done
+  return 1
+}
+
+wait_for_preview_slot() { # 地址；拿到名额和锁才返回
+  local address=$1 deadline announced=0 other
+  deadline=$(($(date +%s) + QUEUE_TIMEOUT))
+  while :; do
+    if other=$(other_preview "$address"); then
+      if [[ $announced -eq 0 ]]; then
+        log "排队中：$other 正在使用预览名额，等它销毁（最多 ${QUEUE_TIMEOUT} 秒）"
+        announced=1
+      fi
+      [[ $(date +%s) -lt $deadline ]] || die "排队超时：$other 一直没销毁"
+      sleep "$QUEUE_POLL"
+      continue
+    fi
+    acquire_lock
+    if other=$(other_preview "$address"); then
+      release_lock
+      log "预览名额被 $other 抢到，继续排队"
+      continue
+    fi
+    return 0
+  done
+}
+
+preview_db_name() { # 地址 → 63 字符以内的 database 名
+  local slug name
+  slug=$(slug_of "$1")
+  name="preview_${slug:0:55}"
+  printf '%s' "${name:0:63}"
+}
+
+hash_password() { # 明文 → caddy bcrypt 哈希
+  local pass=$1 out
+  if [[ -n $CADDY_BIN ]]; then
+    out=$("$CADDY_BIN" hash-password --plaintext "$pass")
+  elif command -v caddy >/dev/null 2>&1; then
+    out=$(caddy hash-password --plaintext "$pass")
+  else
+    out=$("$DOCKER" run --rm "$CADDY_IMAGE" caddy hash-password --plaintext "$pass")
+  fi
+  printf '%s' "$out" | tail -1
+}
+
+load_preview_env() { # 目录；缺项返回非零，不直接退出，sweep 要跳过坏的一条
+  local dir=$1 env=$1/.env
+  [[ -f $env ]] || { printf '找不到 %s，先跑 preview-start\n' "$env" >&2; return 1; }
+  PORT=$(env_get "$env" PORT)
+  DB_NAME=$(env_get "$env" DB_NAME)
+  DB_USER=$(env_get "$env" DB_USER)
+  DB_PASSWORD=$(env_get "$env" DB_PASSWORD)
+  APP_KEY=$(env_get "$env" APP_KEY)
+  IMAGE=$(env_get "$env" IMAGE)
+  APP_NETWORK=$(env_get "$env" APP_NETWORK)
+  APP_UID=$(env_get "$env" APP_UID)
+  APP_GID=$(env_get "$env" APP_GID)
+  APP_INTERNAL_PORT=$(env_get "$env" APP_INTERNAL_PORT)
+  BASIC_AUTH_USER=$(env_get "$env" BASIC_AUTH_USER)
+  BASIC_AUTH_PASSWORD=$(env_get "$env" BASIC_AUTH_PASSWORD)
+  CREATED_AT=$(env_get "$env" CREATED_AT)
+  LAST_COMMIT_AT=$(env_get "$env" LAST_COMMIT_AT)
+  : "${APP_UID:=1000}" "${APP_GID:=1000}" "${APP_INTERNAL_PORT:=3000}"
+  if [[ -z $PORT || -z $DB_NAME || -z $DB_USER || -z $DB_PASSWORD || -z $APP_NETWORK ]]; then
+    printf '%s 缺少必需项（PORT、DB_NAME、DB_USER、DB_PASSWORD、APP_NETWORK）\n' "$env" >&2
+    return 1
+  fi
+  return 0
+}
+
+render_preview_caddy() { # 地址 端口 内部端口 用户名 哈希
+  local address=$1 port=$2 internal=$3 user=$4 hash=$5 upstream tmp
+  if [[ $UPSTREAM_HOST == 127.0.0.1 ]]; then
+    upstream="127.0.0.1:$port"
+  else
+    upstream="$UPSTREAM_HOST:$internal"
+  fi
+  install -d -m 755 "$CADDY_PREVIEWS" "$CADDY_LOG_DIR"
+  if [[ ${EUID} -eq 0 ]] && id -u "$CADDY_USER" >/dev/null 2>&1; then
+    chown "$CADDY_USER:$CADDY_USER" "$CADDY_LOG_DIR"
+  fi
+  tmp="$CADDY_PREVIEWS/$address.caddy.tmp.$$"
+  sed -e "s|__ADDRESS__|$address|g" \
+    -e "s|__BASIC_AUTH_USER__|$user|g" \
+    -e "s|__BASIC_AUTH_HASH__|$hash|g" \
+    -e "s|__ACCESS_LOG__|$CADDY_LOG_DIR/$address.log|g" \
+    -e "s|__UPSTREAM__|$upstream|g" \
+    "$TEMPLATE_DIR/caddy/preview.caddy" >"$tmp"
+  install -m 644 "$tmp" "$CADDY_PREVIEWS/$address.caddy"
+  rm -f "$tmp"
+  chown_if_root root:root "$CADDY_PREVIEWS/$address.caddy"
+}
+
+compose_run_seed() { # 目录 命令
+  local dir=$1 cmd=$2
+  "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$(basename "$dir")")" \
+    --env-file "$dir/.env" -f "$dir/compose.yml" run --rm --no-deps app sh -c "$cmd"
+}
+
+preview_last_access() { # 目录 地址
+  local created created_epoch log_epoch
+  created=$(env_get "$1/.env" CREATED_AT)
+  created_epoch=$(ts_epoch "$created" 2>/dev/null || true)
+  if [[ -f "$CADDY_LOG_DIR/$2.log" ]]; then
+    log_epoch=$(file_mtime "$CADDY_LOG_DIR/$2.log")
+    if [[ -n $created_epoch && $created_epoch -gt $log_epoch ]]; then
+      log_epoch=$created_epoch
+    fi
+    epoch_iso "$log_epoch"
+  elif [[ -n $created_epoch ]]; then
+    epoch_iso "$created_epoch"
+  else
+    printf '无记录'
+  fi
+}
+
+# 删一套预览的容器、路由、库、镜像和目录。不加锁，调用方负责锁和 reload。
+# 第二个参数是重建时要接着用的镜像名，同一个镜像就不删，免得重建时没镜像可起。
+preview_remove() { # 地址 [保留镜像名]
+  local address=$1 keep_image=${2:-} dir="$PREVIEWS_ROOT/$1" env="$PREVIEWS_ROOT/$1/.env"
+  local route="$CADDY_PREVIEWS/$address.caddy" slug
+  local db user image network ok=0
+  slug=$(slug_of "$address")
+
+  if [[ -f $env ]]; then
+    db=$(env_get "$env" DB_NAME)
+    user=$(env_get "$env" DB_USER)
+    image=$(env_get "$env" IMAGE)
+    network=$(env_get "$env" APP_NETWORK)
+  fi
+
+  if [[ -f "$dir/compose.yml" && -f $env ]]; then
+    "$DOCKER" compose --project-directory "$dir" --project-name "$slug" \
+      --env-file "$env" -f "$dir/compose.yml" down --remove-orphans >/dev/null 2>&1 || true
+  fi
+  local leftovers
+  leftovers=$("$DOCKER" ps -aq --filter "label=com.docker.compose.project=$slug" 2>/dev/null || true)
+  if [[ -n $leftovers ]]; then
+    "$DOCKER" rm -f $leftovers >/dev/null 2>&1 || ok=1
+  fi
+
+  # 每套预览一个独立网络，销毁时一起删，不然地址池会被占满。
+  # 共享 Postgres 接在这个网络上，先摘掉才能删。
+  if [[ -n $network ]]; then
+    "$DOCKER" network disconnect "$network" "$PG_CONTAINER" >/dev/null 2>&1 || true
+    if "$DOCKER" network rm "$network" >/dev/null 2>&1; then
+      log "删网络 $network"
+    elif "$DOCKER" network inspect "$network" >/dev/null 2>&1; then
+      printf '网络 %s 还被占着，没删\n' "$network" >&2
+      ok=1
+    fi
+  fi
+
+  if [[ -n $db ]]; then
+    local pg_state
+    pg_state=$("$DOCKER" inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || true)
+    if [[ $pg_state == true ]]; then
+      pg_exec "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$db'" >/dev/null 2>&1 || true
+      if ! pg_exec "DROP DATABASE IF EXISTS \"$db\"" >/dev/null; then
+        printf 'database %s 没删掉\n' "$db" >&2
+        ok=1
+      else
+        log "删 database $db"
+      fi
+      if [[ -n $user ]]; then
+        if ! pg_exec "DROP ROLE IF EXISTS \"$user\"" >/dev/null; then
+          printf 'role %s 没删掉\n' "$user" >&2
+          ok=1
+        else
+          log "删 role $user"
+        fi
+      fi
+    else
+      printf '共享 Postgres 没在跑，库 %s 没删\n' "$db" >&2
+      ok=1
+    fi
+  fi
+
+  if [[ -n $image && $image != "$keep_image" ]]; then
+    if "$DOCKER" rmi "$image" >/dev/null 2>&1; then
+      log "删镜像 $image"
+    else
+      log "镜像 $image 还被别处用着，没删"
+    fi
+  fi
+
+  if [[ -f $route ]]; then
+    rm -f "$route"
+    log "删 Caddy 路由 $address"
+  fi
+  rm -rf "$dir"
+  return "$ok"
+}
+
+# ---------------------------------------------------------------- 子命令
+
+cmd_init() {
+  local address="" image=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --image) image=${2:?--image 要跟镜像}; shift 2 ;;
+      -*) die "不认识的参数：$1" ;;
+      *)
+        [[ -z $address ]] || die "只接受一个交付地址"
+        address=$1
+        shift
+        ;;
+    esac
+  done
+  [[ -n $address ]] || die "用法：afk-product product-init <交付地址> --image <镜像:tag>"
+  valid_address "$address" || die "交付地址格式不对：${address}（小写字母、数字、连字符和点）"
+
+  local dir="$PRODUCTS_ROOT/$address"
+  local env="$dir/.env"
+  install -d -m 755 "$PRODUCTS_ROOT" "$dir"
+  install -d -m 700 "$dir/releases" "$BACKUP_DIR"
+
+  if [[ -f $env ]]; then
+    load_product_env "$dir"
+    log "已有 .env，密钥、端口和镜像保持不动（换版本用 product-deploy --image）"
+  else
+    [[ -n $image ]] || image=${AFK_APP_IMAGE:-}
+    [[ -n $image ]] || die "第一次 product-init 要 --image <镜像:tag>"
+    PORT=$(pick_port)
+    DB_NAME=$(slug_of "$address")
+    DB_USER=$DB_NAME
+    DB_PASSWORD=$(random_hex 24)
+    APP_KEY=$(random_hex 32)
+    APP_NETWORK="${NETWORK_PREFIX}${DB_NAME}"
+    APP_UID=${AFK_APP_UID:-1000}
+    APP_GID=${AFK_APP_GID:-1000}
+    APP_INTERNAL_PORT=${AFK_APP_INTERNAL_PORT:-3000}
+    IMAGE=$image
+    cat >"$env" <<EOF
+IMAGE=$IMAGE
+PORT=$PORT
+APP_NETWORK=$APP_NETWORK
+APP_UID=$APP_UID
+APP_GID=$APP_GID
+APP_INTERNAL_PORT=$APP_INTERNAL_PORT
+PG_HOST=$PG_CONTAINER
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+APP_KEY=$APP_KEY
+EOF
+    chmod 600 "$env"
+    chown_if_root root:root "$env"
+    log "写 .env（600 root），端口 $PORT"
+  fi
+
+  local data_dir="$dir/data"
+  install -d -m 700 "$data_dir"
+  chown_if_root "$APP_UID:$APP_GID" "$data_dir"
+
+  [[ -f "$TEMPLATE_DIR/compose.template.yml" ]] || die "找不到模板 $TEMPLATE_DIR/compose.template.yml"
+  install -m 600 "$TEMPLATE_DIR/compose.template.yml" "$dir/compose.yml"
+  chown_if_root root:root "$dir/compose.yml" "$env"
+
+  ensure_network "$APP_NETWORK"
+  ensure_database "$DB_NAME" "$DB_USER" "$DB_PASSWORD"
+  render_caddy "$address" "$PORT" "$APP_INTERNAL_PORT"
+  reload_caddy
+
+  log "成品 $address 初始化完成"
+  log "  目录    $dir"
+  log "  端口    127.0.0.1:$PORT"
+  log "  数据库  ${DB_NAME}（role ${DB_USER}）"
+  log "  Caddy   $CADDY_PRODUCTS/$address.caddy"
+  log "下一步：afk-product product-deploy $address --image $IMAGE"
+}
+
+cmd_load() {
+  local tar=${1:?用法：afk-product product-load <镜像 tar>}
+  [[ $# -eq 1 ]] || die "用法：afk-product product-load <镜像 tar>"
+  [[ -f $tar ]] || die "找不到镜像包：$tar"
+  local out tags tag
+  if ! out=$("$DOCKER" load -i "$tar" 2>&1); then
+    printf '%s\n' "$out" >&2
+    die "docker load 失败：$tar"
+  fi
+  printf '%s\n' "$out"
+  tags=$(printf '%s\n' "$out" | sed -n 's/^Loaded image: //p')
+  if [[ -n $tags ]]; then
+    while IFS= read -r tag; do
+      log "镜像 tag：$tag"
+    done <<<"$tags"
+  fi
+}
+
+cmd_deploy() {
+  local address="" image=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --image) image=${2:?--image 要跟镜像}; shift 2 ;;
+      -*) die "不认识的参数：$1" ;;
+      *) address=$1; shift ;;
+    esac
+  done
+  [[ -n $address ]] || die "用法：afk-product product-deploy <交付地址> [--image <镜像:tag>]"
+  local dir="$PRODUCTS_ROOT/$address"
+  load_product_env "$dir"
+  [[ -f $dir/compose.yml ]] || die "找不到 $dir/compose.yml，先跑 product-init"
+  local old_image=$IMAGE
+  local switched=0
+  if [[ -n $image && $image != "$IMAGE" ]]; then
+    env_set "$dir/.env" IMAGE "$image"
+    IMAGE=$image
+    switched=1
+  fi
+
+  require_pg
+  ensure_network "$APP_NETWORK"
+  if ! compose_up "$dir"; then
+    printf 'compose up 失败（镜像 %s）\n' "$IMAGE" >&2
+    if [[ $switched -eq 1 ]]; then restore_previous_image "$dir" "$old_image"; fi
+    exit 1
+  fi
+
+  # 健康检查通过才记版本；失败不把坏版本留在 .env 和 releases 里。
+  if wait_http "$PORT"; then
+    record_release "$dir"
+    log "部署完成：$address 在 127.0.0.1:$PORT 应答（镜像 ${IMAGE}）"
+  else
+    printf '部署后 30 秒内 127.0.0.1:%s 没应答（镜像 %s），容器保留现场\n' "$PORT" "$IMAGE" >&2
+    "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$address")" \
+      --env-file "$dir/.env" -f "$dir/compose.yml" logs --tail 30 >&2 || true
+    if [[ $switched -eq 1 ]]; then restore_previous_image "$dir" "$old_image"; fi
+    exit 1
+  fi
+}
+
+cmd_rollback() {
+  local address=${1:?用法：afk-product product-rollback <交付地址>}
+  local dir="$PRODUCTS_ROOT/$address"
+  load_product_env "$dir"
+  local count newest previous target
+  count=$(ls -1 "$dir/releases" 2>/dev/null | wc -l | tr -d ' ')
+  [[ $count -ge 2 ]] || die "$address 只有一个版本，没有可回滚的版本"
+  newest=$(ls -1 "$dir/releases" | sort | tail -1)
+  previous=$(ls -1 "$dir/releases" | sort | tail -2 | head -1)
+  target=$(cat "$dir/releases/$previous/image")
+  [[ -n $target ]] || die "版本 $previous 没记镜像"
+  env_set "$dir/.env" IMAGE "$target"
+  IMAGE=$target
+  compose_up "$dir"
+  if wait_http "$PORT"; then
+    log "已回滚到 ${target}（版本 ${previous}，替换 ${newest}）"
+  else
+    die "回滚到 $target 后 30 秒内没应答，看 docker logs"
+  fi
+}
+
+cmd_backup() {
+  local script=${AFK_BACKUP_SCRIPT:-}
+  if [[ -z $script ]]; then
+    if [[ -f $SELF_DIR/backup.sh ]]; then
+      script=$SELF_DIR/backup.sh
+    elif [[ -f /usr/local/sbin/afk-product-backup ]]; then
+      script=/usr/local/sbin/afk-product-backup
+    else
+      die "找不到 backup.sh（本目录或 /usr/local/sbin/afk-product-backup）"
+    fi
+  fi
+  exec bash "$script" "$@"
+}
+
+cmd_status() {
+  local check=0 address=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --check) check=1; shift ;;
+      -*) die "不认识的参数：$1" ;;
+      *) address=$1; shift ;;
+    esac
+  done
+  local failed=0 running total code state
+
+  state=$("$DOCKER" inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || true)
+  if [[ $state == true ]]; then
+    log "共享 Postgres  $PG_CONTAINER  在跑"
+  else
+    log "共享 Postgres  $PG_CONTAINER  不在"
+    [[ $check -eq 1 ]] && failed=1
+  fi
+
+  local dirs=()
+  if [[ -n $address ]]; then
+    dirs=("$PRODUCTS_ROOT/$address")
+  else
+    local d
+    for d in "$PRODUCTS_ROOT"/*/; do
+      [[ -f "$d/.env" ]] || continue
+      # postgres/、backups/ 下面也有 .env，只认带 DB_NAME 的成品目录。
+      [[ -n $(env_get "$d/.env" DB_NAME) ]] || continue
+      dirs+=("${d%/}")
+    done
+  fi
+
+  if [[ ${#dirs[@]} -eq 0 ]]; then
+    log "没有成品"
+  fi
+
+  local dir slug port image
+  for dir in ${dirs[@]+"${dirs[@]}"}; do
+    [[ -d $dir ]] || { log "成品 $address 不存在"; [[ $check -eq 1 ]] && failed=1; continue; }
+    load_product_env "$dir"
+    slug=$(slug_of "$(basename "$dir")")
+    running=$("$DOCKER" ps -q --filter "label=com.docker.compose.project=$slug" | wc -l | tr -d ' ')
+    total=$("$DOCKER" ps -aq --filter "label=com.docker.compose.project=$slug" | wc -l | tr -d ' ')
+    code=$(curl -s -o /dev/null --max-time 3 -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || true)
+    [[ -n $code ]] || code='无应答'
+    log "成品 $(basename "$dir")  端口 $PORT  镜像 $IMAGE  容器 $running/$total  本机 HTTP $code"
+    if [[ $check -eq 1 ]]; then
+      [[ $running -ge 1 ]] || failed=1
+      [[ $code != '无应答' ]] || failed=1
+    fi
+  done
+
+  if [[ -r /proc/meminfo ]]; then
+    local mem
+    mem=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+    log "可用内存  ${mem} MiB（连续 3 天低于 512 MiB 报运营者加机器）"
+    [[ -n $mem && $mem -lt 512 ]] && log "注意：可用内存低于 512 MiB"
+  fi
+
+  [[ $check -eq 1 && $failed -ne 0 ]] && return 1
+  return 0
+}
+
+# ---------------------------------------------------------------- 预览子命令
+
+cmd_preview_start() {
+  local address="" image="" seed="" commit_at=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --seed) seed=${2:?--seed 要跟命令}; shift 2 ;;
+      --commit-at) commit_at=${2:?--commit-at 要跟 ISO 时间}; shift 2 ;;
+      -*) die "不认识的参数：$1" ;;
+      *)
+        if [[ -z $address ]]; then
+          address=$1
+        elif [[ -z $image ]]; then
+          image=$1
+        else
+          die "只接受地址和镜像两个位置参数"
+        fi
+        shift
+        ;;
+    esac
+  done
+  [[ -n $address && -n $image ]] || die "用法：afk-product preview-start <地址> <镜像:tag> [--seed <命令>] [--commit-at <ISO 时间>]"
+  valid_address "$address" || die "预览地址格式不对：${address}（小写字母、数字、连字符和点）"
+  "$DOCKER" image inspect "$image" >/dev/null 2>&1 \
+    || die "镜像 $image 不在本机；先在 Mac 上构建、docker save 传上来再 docker load"
+  require_pg
+  install -d -m 755 "$PREVIEWS_ROOT"
+  wait_for_preview_slot "$address"
+
+  local dir="$PREVIEWS_ROOT/$address" env="$PREVIEWS_ROOT/$address/.env"
+  if [[ -d $dir ]]; then
+    log "同名预览已存在，先销毁重建"
+    preview_remove "$address" "$image" || true
+  fi
+
+  : "${commit_at:=$(now_iso)}"
+  ts_epoch "$commit_at" >/dev/null 2>&1 || die "commit-at 时间格式不对：${commit_at}（要 YYYY-MM-DDTHH:MM:SSZ）"
+  PORT=$(pick_preview_port)
+  DB_NAME=$(preview_db_name "$address")
+  DB_USER=$DB_NAME
+  DB_PASSWORD=$(random_hex 24)
+  APP_KEY=$(random_hex 32)
+  APP_NETWORK="${NETWORK_PREFIX}${DB_NAME}"
+  APP_UID=${AFK_APP_UID:-1000}
+  APP_GID=${AFK_APP_GID:-1000}
+  APP_INTERNAL_PORT=${AFK_APP_INTERNAL_PORT:-3000}
+  BASIC_AUTH_USER="u$(random_hex 4)"
+  BASIC_AUTH_PASSWORD=$(random_hex 12)
+  CREATED_AT=$(now_iso)
+  LAST_COMMIT_AT=$commit_at
+
+  install -d -m 755 "$dir"
+  install -d -m 700 "$dir/data"
+  chown_if_root "$APP_UID:$APP_GID" "$dir/data"
+
+  cat >"$env" <<EOF
+ADDRESS=$address
+IMAGE=$image
+PORT=$PORT
+APP_NETWORK=$APP_NETWORK
+APP_UID=$APP_UID
+APP_GID=$APP_GID
+APP_INTERNAL_PORT=$APP_INTERNAL_PORT
+PG_HOST=$PG_CONTAINER
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+APP_KEY=$APP_KEY
+BASIC_AUTH_USER=$BASIC_AUTH_USER
+BASIC_AUTH_PASSWORD=$BASIC_AUTH_PASSWORD
+CREATED_AT=$CREATED_AT
+LAST_COMMIT_AT=$LAST_COMMIT_AT
+EOF
+  chmod 600 "$env"
+  chown_if_root root:root "$env"
+  START_CLEANUP=1
+  CLEANUP_ADDRESS=$address
+  CLEANUP_IMAGE=$image
+
+  [[ -f "$TEMPLATE_DIR/compose.template.yml" ]] || die "找不到模板 $TEMPLATE_DIR/compose.template.yml"
+  install -m 600 "$TEMPLATE_DIR/compose.template.yml" "$dir/compose.yml"
+  chown_if_root root:root "$dir/compose.yml"
+
+  ensure_network "$APP_NETWORK"
+  ensure_database "$DB_NAME" "$DB_USER" "$DB_PASSWORD"
+  local hash
+  hash=$(hash_password "$BASIC_AUTH_PASSWORD") || die "生成 Basic Auth 哈希失败"
+  [[ -n $hash ]] || die "生成 Basic Auth 哈希失败"
+  render_preview_caddy "$address" "$PORT" "$APP_INTERNAL_PORT" "$BASIC_AUTH_USER" "$hash"
+  reload_caddy
+
+  if ! compose_up "$dir"; then
+    printf 'compose up 失败，清理这次预览\n' >&2
+    preview_remove "$address" >/dev/null 2>&1 || true
+    reload_caddy
+    die "预览 $address 没起来"
+  fi
+
+  if ! wait_http "$PORT"; then
+    printf '预览端口 %s 30 秒内没应答，清理这次预览\n' "$PORT" >&2
+    "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$address")" \
+      --env-file "$env" -f "$dir/compose.yml" logs --tail 30 >&2 || true
+    preview_remove "$address" >/dev/null 2>&1 || true
+    reload_caddy
+    die "预览 $address 没应答"
+  fi
+
+  if [[ -n $seed ]]; then
+    if ! compose_run_seed "$dir" "$seed"; then
+      printf '种子脚本失败，清理这次预览\n' >&2
+      preview_remove "$address" >/dev/null 2>&1 || true
+      reload_caddy
+      die "预览 $address 的种子数据没跑成"
+    fi
+    log "种子脚本跑完"
+  fi
+
+  START_CLEANUP=0
+  release_lock
+  log "预览 $address 起好了（镜像 ${image}）"
+  log "  目录    $dir"
+  log "  端口    127.0.0.1:$PORT"
+  log "  数据库  ${DB_NAME}（role ${DB_USER}）"
+  log "  Caddy   $CADDY_PREVIEWS/$address.caddy"
+  log "  Mac 侧收 AFK_PREVIEW 行，写到 private/预览/$address.env"
+  log "AFK_PREVIEW address=$address"
+  log "AFK_PREVIEW user=$BASIC_AUTH_USER"
+  log "AFK_PREVIEW password=$BASIC_AUTH_PASSWORD"
+  log "AFK_PREVIEW db=$DB_NAME"
+  log "AFK_PREVIEW dir=$dir"
+  log "AFK_PREVIEW env=$env"
+}
+
+cmd_preview_stop() {
+  local address=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -*) die "不认识的参数：$1" ;;
+      *)
+        [[ -z $address ]] || die "只接受一个预览地址"
+        address=$1
+        shift
+        ;;
+    esac
+  done
+  [[ -n $address ]] || die "用法：afk-product preview-stop <地址>"
+  valid_address "$address" || die "预览地址格式不对：${address}"
+  local dir="$PREVIEWS_ROOT/$address" route="$CADDY_PREVIEWS/$address.caddy"
+  if [[ ! -d $dir && ! -f $route ]]; then
+    log "预览 $address 不存在，不用销毁"
+    return 0
+  fi
+  require_pg
+  acquire_lock
+  local ok=0
+  preview_remove "$address" || ok=$?
+  reload_caddy
+  release_lock
+  [[ $ok -eq 0 ]] || die "预览 $address 没删干净，看上面的报错"
+  log "预览 $address 已销毁"
+}
+
+cmd_preview_status() {
+  local check=0 address=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --check) check=1; shift ;;
+      -*) die "不认识的参数：$1" ;;
+      *)
+        [[ -z $address ]] || die "只接受一个预览地址"
+        address=$1
+        shift
+        ;;
+    esac
+  done
+  local failed=0 running total code state db_state route last name slug dirs=() d
+
+  state=$("$DOCKER" inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || true)
+  if [[ $state == true ]]; then
+    log "共享 Postgres  $PG_CONTAINER  在跑"
+  else
+    log "共享 Postgres  $PG_CONTAINER  不在"
+    [[ $check -eq 1 ]] && failed=1
+  fi
+
+  if [[ -n $address ]]; then
+    dirs=("$PREVIEWS_ROOT/$address")
+  else
+    for d in "$PREVIEWS_ROOT"/*/; do
+      [[ -f "$d/.env" ]] || continue
+      dirs+=("${d%/}")
+    done
+  fi
+  if [[ ${#dirs[@]} -eq 0 ]]; then
+    log "没有预览"
+  fi
+
+  for dir in ${dirs[@]+"${dirs[@]}"}; do
+    name=$(basename "$dir")
+    if [[ ! -d $dir ]]; then
+      log "预览 $name 不存在"
+      [[ $check -eq 1 ]] && failed=1
+      continue
+    fi
+    if ! load_preview_env "$dir"; then
+      log "预览 $name  .env 缺项，看上面的报错"
+      [[ $check -eq 1 ]] && failed=1
+      continue
+    fi
+    slug=$(slug_of "$name")
+    running=$("$DOCKER" ps -q --filter "label=com.docker.compose.project=$slug" | wc -l | tr -d ' ')
+    total=$("$DOCKER" ps -aq --filter "label=com.docker.compose.project=$slug" | wc -l | tr -d ' ')
+    code=$(curl -s -o /dev/null --max-time 3 -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || true)
+    [[ -n $code ]] || code='无应答'
+    if [[ -f "$CADDY_PREVIEWS/$name.caddy" ]]; then route=有; else route=缺; fi
+    if [[ $state == true ]]; then
+      if [[ $(pg_exec "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'") == 1 ]]; then
+        db_state=有
+      else
+        db_state=缺
+      fi
+    else
+      db_state=未知
+    fi
+    last=$(preview_last_access "$dir" "$name")
+    log "预览 $name  端口 $PORT  容器 $running/$total  路由 $route  数据库 $db_state  最后访问 $last  本机 HTTP $code"
+    if [[ $check -eq 1 ]]; then
+      [[ $running -ge 1 ]] || failed=1
+      [[ $route == 有 ]] || failed=1
+      [[ $db_state == 有 ]] || failed=1
+      [[ $code != '无应答' ]] || failed=1
+    fi
+  done
+
+  [[ $check -eq 1 && $failed -ne 0 ]] && return 1
+  return 0
+}
+
+cmd_preview_sweep() {
+  [[ $# -eq 0 ]] || die "用法：afk-product preview-sweep"
+  local now now_epoch d dirs=() address created_epoch commit_epoch access_epoch
+  local last_activity reason removed=0 failed=0 entry
+  now=$(now_iso)
+  now_epoch=$(ts_epoch "$now" 2>/dev/null || true)
+  [[ -n $now_epoch ]] || die "AFK_NOW 格式不对：${now}（要 YYYY-MM-DDTHH:MM:SSZ）"
+  for d in "$PREVIEWS_ROOT"/*/; do
+    [[ -f "$d/.env" ]] || continue
+    dirs+=("${d%/}")
+  done
+  if [[ ${#dirs[@]} -eq 0 ]]; then
+    log "没有预览"
+    return 0
+  fi
+  require_pg
+  acquire_lock
+  for d in "${dirs[@]}"; do
+    address=$(basename "$d")
+    if ! load_preview_env "$d"; then
+      printf '预览 %s 的 .env 缺项，跳过\n' "$address" >&2
+      failed=1
+      continue
+    fi
+    created_epoch=$(ts_epoch "$CREATED_AT" 2>/dev/null || true)
+    commit_epoch=$(ts_epoch "$LAST_COMMIT_AT" 2>/dev/null || true)
+    access_epoch=""
+    if [[ -f "$CADDY_LOG_DIR/$address.log" ]]; then
+      access_epoch=$(file_mtime "$CADDY_LOG_DIR/$address.log")
+    fi
+    reason=""
+    if [[ -n $created_epoch && $((now_epoch - created_epoch)) -ge 604800 ]]; then
+      reason="满 7 天"
+    else
+      last_activity=$created_epoch
+      for entry in "$commit_epoch" "$access_epoch"; do
+        [[ -n $entry ]] || continue
+        if [[ -z $last_activity || $entry -gt $last_activity ]]; then
+          last_activity=$entry
+        fi
+      done
+      if [[ -n $last_activity && $((now_epoch - last_activity)) -ge 86400 ]]; then
+        reason="24 小时无新提交且无访问"
+      fi
+    fi
+    if [[ -z $reason ]]; then
+      log "保留 ${address}：还有活动或未满 24 小时"
+      continue
+    fi
+    if preview_remove "$address"; then
+      log "销毁 ${address}：${reason}"
+      removed=1
+    else
+      printf '销毁 %s 失败，下次体检再试\n' "$address" >&2
+      failed=1
+    fi
+  done
+  [[ $removed -eq 1 ]] && reload_caddy
+  release_lock
+  return "$failed"
+}
+
+# ---------------------------------------------------------------- 入口
+
+trap on_exit EXIT
+
+cmd=${1:-}
+[[ -n $cmd ]] || { usage; exit 1; }
+shift
+case $cmd in
+  product-init) cmd_init "$@" ;;
+  product-load) cmd_load "$@" ;;
+  product-deploy) cmd_deploy "$@" ;;
+  product-rollback) cmd_rollback "$@" ;;
+  product-backup) cmd_backup "$@" ;;
+  product-status) cmd_status "$@" ;;
+  preview-start) cmd_preview_start "$@" ;;
+  preview-stop) cmd_preview_stop "$@" ;;
+  preview-status) cmd_preview_status "$@" ;;
+  preview-sweep) cmd_preview_sweep "$@" ;;
+  -h | --help | help) usage ;;
+  *) die "不认识的子命令：${cmd}（看 afk-product --help）" ;;
+esac

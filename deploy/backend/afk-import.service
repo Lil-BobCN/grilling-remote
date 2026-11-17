@@ -1,0 +1,24 @@
+[Unit]
+Description=afkfactory 回传导入
+Documentation=https://github.com/Lil-BobCN/grilling-remote/tree/main/docs
+After=network-online.target afkapp.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=afkapp
+Group=afkapp
+WorkingDirectory=/data/app/current
+EnvironmentFile=/etc/afkapp/app.env
+ExecStart=/usr/bin/node /data/app/current/bin/import.mjs --once
+
+# 和 afkapp.service 同一套边界：只写数据目录，token 从 EnvironmentFile 注入。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/data/customers /data/uploads
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afk-import

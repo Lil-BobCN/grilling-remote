@@ -1,0 +1,8 @@
+[Unit]
+Description=客户成品备份（pg_dump 到 /data/products/backups）
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/afk-product-backup

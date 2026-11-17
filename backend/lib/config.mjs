@@ -38,8 +38,11 @@ export function loadConfig(env = process.env) {
     gitTimeoutMs: readInt(env.AFK_GIT_TIMEOUT_MS, 15000),
     syncRetryMs: readInt(env.AFK_SYNC_RETRY_MS, 60 * 1000),
     githubToken: env.GITHUB_TOKEN || '',
+    githubAdminToken: env.GITHUB_ADMIN_TOKEN || '',
+    githubOwner: env.GITHUB_OWNER || '',
     githubApi: env.GITHUB_API || 'https://api.github.com',
     githubTimeoutMs: readInt(env.GITHUB_TIMEOUT_MS, 5000),
     progressCacheMs: readInt(env.PROGRESS_CACHE_MS, 60 * 1000),
+    siteBase: (env.SITE_BASE || 'https://afkfactory.space').replace(/\/+$/, ''),
   }
 }
