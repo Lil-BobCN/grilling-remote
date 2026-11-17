@@ -11,5 +11,8 @@
     "start": "node src/server.mjs",
     "check": "bash scripts/check.sh",
     "verify": "bash scripts/verify.sh"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16"
   }
 }
