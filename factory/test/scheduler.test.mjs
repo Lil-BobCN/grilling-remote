@@ -633,6 +633,58 @@ function commentsOf(fake, owner, repo, number) {
   return issue.comments.map((comment) => comment.body)
 }
 
+async function assertRejectionIgnitesFixTicket(t, { small }) {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '待验收', small })
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parent.number,
+    body: '驳回：客户说取货时间不能选。',
+  })
+  const fixTicket = createFixTicketJob({ gh })
+  const ignite = fakeIgnite()
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    createFixTicket: fixTicket,
+    ignite: ignite.ignite,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:开发中'))
+  let children = await gh.listSubIssues({ owner: OWNER, repo: REPO, number: parent.number })
+  assert.equal(children.length, 1, '第一轮建一张修复子票')
+  const fix = children[0]
+  assert.equal(fix.title, '客户说取货时间不能选')
+  assert.deepEqual(
+    fix.labels.map((label) => (typeof label === 'string' ? label : label.name)),
+    ['状态:排队中'],
+  )
+  assert.equal(ignite.calls.length, 0, '第一轮只建票，不点火')
+
+  // 同一张父工单、同一批评论：驳回后面已经有进度行，第二轮接着点火。
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    createFixTicket: fixTicket,
+    ignite: ignite.ignite,
+    clock: () => NOW,
+    config,
+  })
+
+  children = await gh.listSubIssues({ owner: OWNER, repo: REPO, number: parent.number })
+  assert.equal(children.length, 1, '第二轮不重复建票')
+  assert.equal(ignite.calls.length, 1)
+  assert.equal(ignite.calls[0].ticket.number, fix.number)
+  assert.ok(labelsOf(fake, OWNER, REPO, fix.number).includes('Sandcastle'))
+}
+
 test('collectRepos 只服务 customers.json 里 active 且 repos 非空的行，不扫前缀', () => {
   const rows = collectRepos({
     gh: null,
@@ -867,58 +919,6 @@ test('待验收+驳回： → 回开发中，写已驳回进度，另开修复�
   await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), createFixTicket: fix.createFixTicket.bind(fix), clock: () => NOW, config })
   assert.equal(fix.calls.length, 1)
 })
-
-async function assertRejectionIgnitesFixTicket(t, { small }) {
-  const { fake, gh } = await setupRepo(t)
-  const parent = await createParent(gh, { state: '待验收', small })
-  await gh.createComment({
-    owner: OWNER,
-    repo: REPO,
-    number: parent.number,
-    body: '驳回：客户说取货时间不能选。',
-  })
-  const fixTicket = createFixTicketJob({ gh })
-  const ignite = fakeIgnite()
-  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
-
-  await runOnce({
-    gh,
-    customers: customers(),
-    notifier: fakeNotifier(),
-    createFixTicket: fixTicket,
-    ignite: ignite.ignite,
-    clock: () => NOW,
-    config,
-  })
-
-  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:开发中'))
-  let children = await gh.listSubIssues({ owner: OWNER, repo: REPO, number: parent.number })
-  assert.equal(children.length, 1, '第一轮建一张修复子票')
-  const fix = children[0]
-  assert.equal(fix.title, '客户说取货时间不能选')
-  assert.deepEqual(
-    fix.labels.map((label) => (typeof label === 'string' ? label : label.name)),
-    ['状态:排队中'],
-  )
-  assert.equal(ignite.calls.length, 0, '第一轮只建票，不点火')
-
-  // 同一张父工单、同一批评论：驳回后面已经有进度行，第二轮接着点火。
-  await runOnce({
-    gh,
-    customers: customers(),
-    notifier: fakeNotifier(),
-    createFixTicket: fixTicket,
-    ignite: ignite.ignite,
-    clock: () => NOW,
-    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
-  })
-
-  children = await gh.listSubIssues({ owner: OWNER, repo: REPO, number: parent.number })
-  assert.equal(children.length, 1, '第二轮不重复建票')
-  assert.equal(ignite.calls.length, 1)
-  assert.equal(ignite.calls[0].ticket.number, fix.number)
-  assert.ok(labelsOf(fake, OWNER, REPO, fix.number).includes('Sandcastle'))
-}
 
 test('待验收驳回后第二轮点火修复子票，不重复建票', async (t) => {
   await assertRejectionIgnitesFixTicket(t, { small: false })

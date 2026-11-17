@@ -239,10 +239,13 @@ function selectTicket({ subIssues, closedNumbers }) {
 }
 
 /**
- * 开发中挑下一张子票，返回点火动作：驳回建的修复子票、以及子票跑完后接上的下一张，都走这里。
- * 有 open 子票、没有子票正在跑、`selectTicket` 能挑出没有未关闭阻塞的票、并发额度够，才点火。
+ * 开发中挑下一张子票，返回点火动作。
+ * 驳回建的修复子票、子票跑完后接上的下一张，都走这里。
+ * 条件：有 open 子票、没有子票正在跑、并发额度够。
+ * `selectTicket` 还要能挑出没有未关闭阻塞的票。
+ * 没有可跑的票时返回空数组，等下一次状态变化。
  */
-function igniteNextAction({ subIssues, closedNumbers, repoBusy, activeCount, maxActive }) {
+function igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive }) {
   const open = subIssues.filter(isOpen)
   if (open.length === 0) return []
   if (open.some(isSandcastle)) return []
@@ -339,7 +342,7 @@ export function routeParent({
     if (state === '开发中') {
       const hits = stallHits({ comments, trails })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
-      return igniteNextAction({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
+      return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
     }
     return []
   }
@@ -366,7 +369,7 @@ export function routeParent({
   }
 
   if (state === '开发中') {
-    return igniteNextAction({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
+    return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
   }
 
   if (state === '排队中') {
