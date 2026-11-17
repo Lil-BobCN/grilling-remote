@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
 import { MERGER_TOOLS } from './agent-runner.mjs'
-import { runReviewAudit, runVerifyAudit } from './audit-agents.mjs'
+import { runFixerAudit, runReviewAudit, runVerifyAudit } from './audit-agents.mjs'
 import {
   freshVerifyRows,
   mergeTicket,
@@ -22,7 +22,7 @@ import { git } from './git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from './ignition.mjs'
 import { logLine } from './log.mjs'
 import { previewNeeded } from './preview.mjs'
-import { parseProgress } from './progress.mjs'
+import { parseProgress, progressLine } from './progress.mjs'
 import { hasLabel } from './scheduler.mjs'
 
 export const SANDBOX_LABEL = 'Sandcastle'
@@ -103,6 +103,7 @@ function parseMergerVerdict(result) {
  * @param {object} options.runner 验证、评审和默认解冲突用的 agent runner
  * @param {Function} [options.previewFor] 按票返回预览实现；返回 null 表示没有预览
  * @param {Function} [options.ensureEvidence] 默认 `ensureEvidenceBeforeMerge`
+ * @param {Function} [options.fixer] 评审没过时的修复实现，默认 `runFixerAudit`
  * @param {Function} [options.merge] 默认 `mergeTicket`
  * @returns {(context: {gh: object, owner: string, repo: string, parents: Array, repoDir: string}) => Promise<object>}
  */
@@ -114,6 +115,7 @@ export function createTicketPipeline({
   log = logLine,
   agentsDir,
   ensureEvidence = ensureEvidenceBeforeMerge,
+  fixer: fixerOverride,
   merge = mergeTicket,
   readTrailImpl = readTrail,
   freshVerifyRowsImpl = freshVerifyRows,
@@ -169,6 +171,36 @@ export function createTicketPipeline({
       htmlUrl: ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`,
     }
 
+    const fixer =
+      fixerOverride ||
+      (({ repoDir: dir, branch, findings, round }) =>
+        runFixerAudit({ repoDir: dir, ticket: ticket.number, branch, findings, round, runner }))
+
+    // 评审没过的那一轮在父工单留一行进度，轮次递增，三圈停滞检测读得到。
+    const reviewProgress = async ({ round, ok, problems }) => {
+      if (ok) return
+      const body = progressLine({
+        path: ticketInfo.path,
+        tier: '开发中',
+        step: '评审修复',
+        round: ticketInfo.round + round - 1,
+        stuck: false,
+        note: `评审没过：${problems.slice(0, 2).join('；')}`.replace(/\s+/g, ' ').slice(0, 160),
+      })
+      try {
+        await gh.createComment({ owner, repo, number: parent.number, body })
+      } catch (error) {
+        log({
+          level: 'error',
+          msg: '评审进度没写成',
+          owner,
+          repo,
+          ticket: ticket.number,
+          error: errorText(error),
+        })
+      }
+    }
+
     const preview = previewFor({ ticket: ticketInfo, parent, owner, repo, repoDir })
     if (previewNeeded({ trail: serializeTrail(trail) }) && typeof preview?.start !== 'function') {
       const missing = ['这张票有界面，但没有注入预览（等 #469）']
@@ -207,6 +239,8 @@ export function createTicketPipeline({
         preview: previewImpl,
         notifier,
         now: clock(),
+        fixer,
+        onReviewRound: reviewProgress,
       })
       if (!ensured.ok) {
         const reason = ensured.reason || 'evidence_not_ready'

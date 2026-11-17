@@ -7,6 +7,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { readTrail } from './evidence.mjs'
+import { git } from './git.mjs'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
@@ -74,7 +75,8 @@ export function parentFacts(parent) {
   const customer = /^\s*-\s*客户简称：\s*(.+?)\s*$/m.exec(body)?.[1] || parent?.customer || ''
   const requirement =
     /^\s*-\s*需求名：\s*(.+?)\s*$/m.exec(body)?.[1] || parent?.requirement || parent?.title || ''
-  return { customer: customer || '未知客户', requirement }
+  const order = /<!--\s*factory:order=([^\s>]+)\s*-->/.exec(body)?.[1] || ''
+  return { customer: customer || '未知客户', requirement, order }
 }
 
 function parentLink(parent, owner, repo) {
@@ -256,6 +258,22 @@ function igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, ma
 }
 
 /**
+ * 子票全部完成、每张票都已合进需求分支，叫收尾。
+ * 分支事实由 `collectBranchFacts` 提前算好；这里只看快照，不碰 git。
+ * 收尾成功后才转 `待验收`，失败留在 `开发中` 等下一轮。
+ */
+function finishActions({ parent, subIssues }) {
+  if (parent?.branchesMerged !== true) return []
+  const order = String(parent?.order || '')
+  if (!order || subIssues.length === 0) return []
+  if (subIssues.some(isOpen)) return []
+  return [
+    { type: 'finish', reqBranch: `req/${order}` },
+    { type: 'setState', from: '开发中', to: '待验收' },
+  ]
+}
+
+/**
  * 一张父工单该做什么。纯函数，不碰 GitHub。
  * @returns {Array<object>} 动作数组；空数组表示停，等下一次状态变化。
  */
@@ -340,6 +358,8 @@ export function routeParent({
       ]
     }
     if (state === '开发中') {
+      const finish = finishActions({ parent, subIssues })
+      if (finish.length) return finish
       const hits = stallHits({ comments, trails })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
       return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
@@ -361,6 +381,11 @@ export function routeParent({
         data: {},
       }),
     ]
+  }
+
+  if (state === '开发中') {
+    const finish = finishActions({ parent, subIssues })
+    if (finish.length) return finish
   }
 
   if (state === '排队中' || state === '开发中') {
@@ -657,6 +682,7 @@ export async function collectSnapshot({ gh, owner, repo }) {
         spec: spec ? slimIssue(spec) : null,
         customer: facts.customer,
         requirement: facts.requirement,
+        order: facts.order,
       }),
     )
   }
@@ -678,6 +704,35 @@ export async function collectTrails({ repoDir, parents = [] } = {}) {
     }
   }
   return trails
+}
+
+/**
+ * 收尾前的分支事实：子票全关，且每个 `ticket/<n>` 都已合进 `req/<order>`。
+ * 结果写到父工单快照的 `branchesMerged`。仓库读不到、分支不存在或子票没齐一律 false。
+ */
+export async function collectBranchFacts({ repoDir, parents = [] } = {}) {
+  for (const parent of parents) {
+    parent.branchesMerged = await branchesMerged({ repoDir, parent })
+  }
+  return parents
+}
+
+async function branchesMerged({ repoDir, parent }) {
+  const order = String(parent?.order || '')
+  const subIssues = parent?.subIssues || []
+  if (!repoDir || !order || subIssues.length === 0) return false
+  if (subIssues.some((ticket) => ticket.state !== 'closed')) return false
+  const reqBranch = `req/${order}`
+  for (const ticket of subIssues) {
+    const ticketBranch = `ticket/${ticket.number}`
+    try {
+      await git(repoDir, ['rev-parse', '--verify', '--quiet', ticketBranch])
+      await git(repoDir, ['merge-base', '--is-ancestor', ticketBranch, reqBranch])
+    } catch {
+      return false
+    }
+  }
+  return true
 }
 
 // ---- 路由一个仓 ----
@@ -780,8 +835,9 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
 
 // ---- 执行动作 ----
 
-function missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket }) {
+function missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish }) {
   for (const action of actions) {
+    if (action.type === 'finish' && typeof finish !== 'function') return 'finish'
     if (action.type === 'ignite' && typeof ignite !== 'function') return 'ignite'
     if (action.type === 'runDecompose' && typeof decompose !== 'function') return 'decompose'
     if (action.type === 'runGapProposal' && typeof gapProposal !== 'function') {
@@ -931,6 +987,7 @@ async function sendEvent({ notifier, event, config, now }) {
 }
 
 const EXECUTION_ORDER = [
+  'finish',
   'runGapProposal',
   'runDecompose',
   'ignite',
@@ -952,11 +1009,12 @@ async function executeActions({
   decompose,
   gapProposal,
   createFixTicket,
+  finish,
   notifier,
   config,
   now,
 }) {
-  const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket })
+  const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish })
   if (missing) return { skipped: missing, results: [] }
 
   const ordered = [...actions].sort(
@@ -964,7 +1022,12 @@ async function executeActions({
   )
   const results = []
   for (const action of ordered) {
-    if (action.type === 'setState') {
+    if (action.type === 'finish') {
+      const result = await finish({ owner, repo, parent, reqBranch: action.reqBranch })
+      results.push({ type: 'finish', result })
+      // 收尾没成就不转状态，下一轮再看。
+      if (result?.ok !== true) return { skipped: 'finish-failed', results }
+    } else if (action.type === 'setState') {
       results.push(await setStateLabel({ gh, owner, repo, parent, to: action.to }))
     } else if (action.type === 'comment') {
       const created = await ensureCommentOnce(gh, {
@@ -1020,6 +1083,7 @@ async function executeActions({
 }
 
 function decisionOf(actions) {
+  if (actions.some((action) => action.type === 'finish')) return 'finish'
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
   if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
@@ -1045,6 +1109,7 @@ function reasonOf(parent, actions) {
 }
 
 function summarizeAction(action) {
+  if (action.type === 'finish') return { type: 'finish', reqBranch: action.reqBranch }
   if (action.type === 'setState') return { type: 'setState', from: action.from, to: action.to }
   if (action.type === 'comment') return { type: 'comment', body: action.body }
   if (action.type === 'notify') return { type: 'notify', event: action.event, key: action.key }
@@ -1119,6 +1184,7 @@ export async function runOnce({
   gapProposal,
   ticketPipeline,
   createFixTicket,
+  finish,
   clock = () => new Date(),
   config = {},
 }) {
@@ -1177,6 +1243,10 @@ export async function runOnce({
       } catch (error) {
         report.errors.push({ repo: row.repo, trails: true, message: error.message })
       }
+      await collectBranchFacts({
+        repoDir: join(config.repoRoot, row.repo),
+        parents: snapshot.parents,
+      })
     }
     let pipeline = null
     if (typeof ticketPipeline === 'function') {
@@ -1218,6 +1288,7 @@ export async function runOnce({
             decompose,
             gapProposal,
             createFixTicket,
+            finish,
             notifier,
             config,
             now: nowDate,
