@@ -183,6 +183,10 @@ export function createGithub({
       return rows[0] || null
     },
 
+    async listPulls({ owner, repo, state = 'all' }) {
+      return requestAll(repoPath(owner, repo, `/pulls?state=${encodeURIComponent(state)}`))
+    },
+
     async mergePull({ owner, repo, number, mergeMethod = 'merge', commitTitle } = {}) {
       return request('PUT', repoPath(owner, repo, `/pulls/${number}/merge`), {
         merge_method: mergeMethod,

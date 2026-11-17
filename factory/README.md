@@ -11,7 +11,10 @@
 | `lib/scaffold.mjs` | 建客户仓和模板应用 | #458（在 `backend/`） |
 | `lib/map-issues.mjs` | 按 `map.md` 建地图 issue 和决定票 | #460、#462 |
 | `lib/scheduler.mjs` | 30 秒一轮的路由表 | #463、#470 |
-| `lib/scheduler-jobs.mjs` | 调度器的默认实现：叫拆票、建修复子票、读待答问题、读昨日合并、每日 preview-sweep | #457 |
+| `lib/scheduler-jobs.mjs` | 调度器的默认实现：叫补缺口、叫拆票、建修复子票、读待答问题、读昨日合并、每日 preview-sweep | #457、#477 |
+| `bin/scheduler.mjs` | 调度器命令行：`--once`、`--loop`、`--dry-run`；每轮输出 `executed` 和错误，`--loop` 写 JSONL | #463、#479 |
+| `bin/status.mjs` | 汇总父工单、子票、最新 trail、PR、正在跑的 job 和最后错误 | #479 |
+| `bin/gate.mjs` | `answer` 追加 gate 答行，给控制台用 | #479 |
 | `lib/progress.mjs` | 客户进度转档行 `进度 v1｜…` | #463 |
 | `lib/notify.mjs` | 调 `notifier/` 命令行发通知 | #463 |
 | `lib/lock.mjs` | 每仓一把文件锁 | #463 |

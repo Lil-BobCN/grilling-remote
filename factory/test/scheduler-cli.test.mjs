@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { run } from '../bin/scheduler.mjs'
+import { run, runSummary } from '../bin/scheduler.mjs'
 import { addRemote, commitAll, git, initBareRepo, initRepo, push } from '../lib/git.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
@@ -76,6 +76,8 @@ test('--once 每张父工单打印一行 {repo,parent,decision,actions}', async 
   assert.equal(lines[0].decision, 'advance')
   assert.ok(Array.isArray(lines[0].actions))
   assert.match(lines[0].reason, /点头：补缺口/)
+  assert.ok(lines[0].executed, '输出带 executed')
+  assert.ok(Array.isArray(lines[0].errors), '输出带 errors')
 
   const stored = fake.state.issues.get(`${OWNER}/${REPO}`).find((row) => row.number === parent.number)
   assert.deepEqual(stored.labels, ['状态:排队中'])
@@ -86,6 +88,26 @@ test('--once 缺 --owner 时报错，不偷偷扫账号', async () => {
     run(['--once', '--customers', '/tmp/nope.json'], { gh: {}, notifier: {} }),
     /缺 --owner/,
   )
+})
+
+test('runSummary 把每张父工单的 executed 和 report.errors 收成一行', () => {
+  const summary = runSummary({
+    now: '2026-11-17T10:00:00.000Z',
+    repos: [
+      {
+        repo: REPO,
+        parents: [
+          { parent: 1, decision: 'develop', executed: { skipped: null, results: [{ type: 'ignite' }] } },
+        ],
+      },
+    ],
+    errors: [{ repo: REPO, parent: 1, message: '点火失败' }],
+  })
+  assert.equal(summary.ts, '2026-11-17T10:00:00.000Z')
+  assert.equal(summary.executed.length, 1)
+  assert.equal(summary.executed[0].parent, 1)
+  assert.deepEqual(summary.executed[0].executed.results, [{ type: 'ignite' }])
+  assert.equal(summary.errors.length, 1)
 })
 
 async function repoFixture(t) {
