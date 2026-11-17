@@ -13,7 +13,8 @@ import { createGithub } from './github.mjs'
 import { git } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
-import { hasLabel, labelNames } from './scheduler.mjs'
+import { parseProgress, progressLine } from './progress.mjs'
+import { hasLabel, labelNames, SMALL_LABEL } from './scheduler.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -429,6 +430,28 @@ async function removeSandcastleIfPresent({ gh, owner, repo, number, log }) {
 }
 
 /**
+ * @param {Array<{body?: string}>} comments
+ * @returns {number} 父工单已有进度的最大轮次；没有进度行时是 0
+ */
+function maxProgressRound(comments = []) {
+  let round = 0
+  for (const comment of comments) {
+    for (const line of String(comment?.body || '').split(/\r?\n/)) {
+      const parsed = parseProgress(line)
+      if (parsed) round = Math.max(round, parsed.round)
+    }
+  }
+  return round
+}
+
+function oneLine(text, limit = 200) {
+  return String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, limit)
+}
+
+/**
  * @param {object} options
  * @param {object} [options.config]
  * @param {object} [options.config.gh] 注入的 GitHub 客户端；不传就用 token 新建
@@ -520,6 +543,86 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     })
   }
 
+  /**
+   * 点火失败收尾：摘 `Sandcastle`、发「出事」、父工单写一条进度行。
+   * 三步各自兜底，任何一步失败都不改点火的返回结果。
+   */
+  async function markIgnitionFailure({
+    owner,
+    repo,
+    parent,
+    ticket,
+    customer,
+    requirement,
+    stage,
+    error,
+  }) {
+    const at = now()
+    const message = oneLine(error) || '未知错误'
+    const link =
+      ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`
+
+    await removeSandcastleIfPresent({ gh, owner, repo, number: ticket.number, log })
+
+    try {
+      if (typeof notifier?.send === 'function') {
+        await notifier.send({
+          v: 1,
+          key: `#${ticket.number}:出事:点火失败:${at.toISOString()}`,
+          event: '出事',
+          occurred_at: at.toISOString(),
+          link,
+          data: {
+            customer,
+            requirement,
+            reason: oneLine(`点火失败：${stage}：${message}`),
+            tried: oneLine(`${stage}阶段报错：${message}`),
+          },
+        })
+      }
+    } catch (err) {
+      log({
+        level: 'error',
+        msg: '发点火失败通知失败',
+        owner,
+        repo,
+        ticket: ticket.number,
+        error: String(err?.message || err),
+      })
+    }
+
+    const parentNumber = parent?.number
+    if (!parentNumber) return
+    try {
+      const [current, comments] = await Promise.all([
+        gh.getIssue({ owner, repo, number: parentNumber }).catch(() => parent),
+        gh.listComments({ owner, repo, number: parentNumber }),
+      ])
+      await gh.createComment({
+        owner,
+        repo,
+        number: parentNumber,
+        body: progressLine({
+          path: hasLabel(current, SMALL_LABEL) ? '小需求' : '其余',
+          tier: '开发中',
+          step: '点火失败',
+          round: maxProgressRound(comments) + 1,
+          stuck: true,
+          note: oneLine(`${stage}：${message}`, 160),
+        }),
+      })
+    } catch (err) {
+      log({
+        level: 'error',
+        msg: '写点火失败进度失败',
+        owner,
+        repo,
+        ticket: ticket.number,
+        error: String(err?.message || err),
+      })
+    }
+  }
+
   async function ignite({ owner = config.owner, repo, parent, ticket }) {
     const order = parentOrder(parent?.body)
     const requirement =
@@ -531,6 +634,8 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       : `ticket/${ticket.number}`
     let pushedBranch = ticketBranch
     let runCommits = []
+    // 失败时用来写清是哪一步出的事：准备、运行、推送、开 PR。
+    let stage = '准备'
 
     try {
       if (!order) throw new Error('父工单正文里没有 <!-- factory:order=... --> 标记')
@@ -632,6 +737,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       }
 
       const gate = createStartedGate()
+      stage = '运行'
       const timer = delay(timeoutMs)
       const runPromise = Promise.resolve().then(() =>
         execute({ ...runnerArgs, started: gate.started, prepared }),
@@ -660,6 +766,16 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           reqBranch,
           ticketBranch,
         })
+        await markIgnitionFailure({
+          owner,
+          repo,
+          parent,
+          ticket,
+          customer,
+          requirement,
+          stage: '点火超时',
+          error: '两分钟没收到回执',
+        })
         return { ok: false, timeout: true, reqBranch, ticketBranch }
       }
 
@@ -684,9 +800,20 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           reqBranch,
           ticketBranch,
         })
+        await markIgnitionFailure({
+          owner,
+          repo,
+          parent,
+          ticket,
+          customer,
+          requirement,
+          stage: '没有提交',
+          error: '这次 run 没有产生提交',
+        })
         return { ok: false, error: 'no-commits', reqBranch, ticketBranch }
       }
 
+      stage = '推送'
       try {
         await pushBranch({
           config,
@@ -704,6 +831,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
 
       let prUrl = result?.prUrl || ''
       if (!prUrl) {
+        stage = '开 PR'
         if (typeof openPr !== 'function') throw new Error('没有注入 openPr，runner 也没返回 PR 链接')
         const created = await openPr({
           repoDir,
@@ -764,6 +892,16 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         ticketBranch,
         branch: pushedBranch,
         commits: runCommits.length,
+        error: message,
+      })
+      await markIgnitionFailure({
+        owner,
+        repo,
+        parent,
+        ticket,
+        customer,
+        requirement,
+        stage,
         error: message,
       })
       return { ok: false, error: message, reqBranch, ticketBranch }
