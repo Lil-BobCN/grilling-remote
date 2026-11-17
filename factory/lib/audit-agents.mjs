@@ -15,10 +15,15 @@ import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendTrail } from './evidence.mjs'
-import { REVIEW_TOOLS, NO_WRITE_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
+import { FIXER_TOOLS, REVIEW_TOOLS, NO_WRITE_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
 import { git } from './git.mjs'
 
 export const AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
+export const FIX_COMMIT_PREFIX = 'FACTORY: 评审修复'
+
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error)
+}
 
 function tail(text, limit = 400) {
   const value = String(text ?? '').trim()
@@ -311,4 +316,91 @@ export async function runReviewAudit({
   }
 
   return { ok, headSha, problems, evidence: [summary], decision: decisions.join('、'), rows }
+}
+
+function fixerBrief({ ticket, branch, headSha, round, findings, instructions }) {
+  return [
+    String(instructions || '').trim(),
+    '',
+    '## 这次修复',
+    '',
+    `票：#${ticket}`,
+    `分支：${branch}`,
+    `head：${headSha}`,
+    `轮次：${round}`,
+    '',
+    '评审没过的问题：',
+    ...(findings.length ? findings.map((finding) => `- ${finding}`) : ['- 见评审意见']),
+    '',
+    `改完提交，提交信息以 \`${FIX_COMMIT_PREFIX} #${ticket} 第${round}轮\` 开头。只改这些问题，不扩大范围；修不了就在正文写清原因，不要硬改。`,
+  ].join('\n')
+}
+
+/**
+ * 已经用掉的修复轮次：数票分支上 `FACTORY: 评审修复 #<票号>` 开头的提交。
+ * 轮次上限靠它跨调度轮次累计。
+ */
+export async function fixerRoundsUsed({ repoDir, ticket, branch }) {
+  const output = await git(repoDir, ['log', '--format=%s', branch]).catch(() => '')
+  if (!output) return 0
+  const marker = `${FIX_COMMIT_PREFIX} #${ticket}`
+  return output.split(/\r?\n/).filter((line) => line.startsWith(marker)).length
+}
+
+/**
+ * 跑一次修复 agent，只改票分支。
+ *
+ * agent 自己提交或把改动留在工作树都可以：留下未提交的代码改动由这里补提交，
+ * 提交信息统一 `FACTORY: 评审修复 #<票号> 第<轮>轮`，复评跑在提交后的 head 上。
+ * `.audit/` 不算代码改动，不因为证据行多了就记一轮。
+ *
+ * @returns {Promise<{ok: boolean, changed: boolean, headSha: string, problems: string[]}>}
+ */
+export async function runFixerAudit({
+  repoDir,
+  ticket,
+  branch,
+  round = 1,
+  findings = [],
+  runner,
+  instructions,
+  agentsDir = AGENTS_DIR,
+} = {}) {
+  if (!repoDir || !ticket || !branch) throw new Error('修复需要 repoDir、ticket 和 branch')
+  if (typeof runner?.run !== 'function') throw new Error('修复需要注入 runner')
+  const headSha = await git(repoDir, ['rev-parse', branch])
+  const text = instructions ?? (await readFile(join(agentsDir, 'fixer.md'), 'utf8').catch(() => ''))
+  const run = await runner.run({
+    name: `fix-${ticket}-${headSha.slice(0, 8)}-r${round}`,
+    cwd: repoDir,
+    allowedTools: FIXER_TOOLS,
+    brief: fixerBrief({ ticket, branch, headSha, round, findings, instructions: text }),
+  })
+
+  const problems = []
+  if (!run?.ok) {
+    problems.push(`修复 agent 退出码 ${run?.code ?? 1}：${tail(run?.stderr || run?.stdout)}`)
+  }
+
+  let after = headSha
+  try {
+    const status = await git(repoDir, ['status', '--porcelain'])
+    const codeChanges = status
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .filter((line) => !line.slice(3).startsWith('.audit/'))
+    if (codeChanges.length) {
+      // 只提交代码改动；trail 还留在工作树里，等合并阶段按原有路径提交。
+      await git(repoDir, ['add', '-A', '--', '.', ':(exclude).audit'])
+      const staged = await git(repoDir, ['diff', '--cached', '--name-only'])
+      if (staged) {
+        await git(repoDir, ['commit', '-m', `${FIX_COMMIT_PREFIX} #${ticket} 第${round}轮`])
+      }
+    }
+    after = await git(repoDir, ['rev-parse', branch])
+  } catch (error) {
+    problems.push(`修复提交失败：${errorText(error)}`)
+  }
+  if (after === headSha) problems.push('修复 agent 没改出提交')
+  return { ok: problems.length === 0, changed: after !== headSha, headSha: after, problems }
 }

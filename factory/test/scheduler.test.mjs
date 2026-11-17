@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
+import { commitAll, git, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { progressLine } from '../lib/progress.mjs'
 import { createFixTicket as createFixTicketJob } from '../lib/scheduler-jobs.mjs'
@@ -337,6 +338,59 @@ test('开发中：没有 open 子票就不点', () => {
   assert.deepEqual(actions, [])
 })
 
+test('开发中：子票全关且都已合进 req 分支 → 叫 finish，成功后转待验收', () => {
+  const actions = routeParent({
+    parent: parent({
+      labels: labels('状态:开发中'),
+      order: 'o-0001',
+      branchesMerged: true,
+    }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' }), sub({ number: 52, state: 'closed' })],
+    closedNumbers: [51, 52],
+    now: NOW,
+  })
+  assert.deepEqual(types(actions), ['finish', 'setState'])
+  assert.equal(actions[0].reqBranch, 'req/o-0001')
+  assert.equal(actions[1].from, '开发中')
+  assert.equal(actions[1].to, '待验收')
+})
+
+test('小需求开发中：子票全关且已合进 req 分支 → 也叫 finish', () => {
+  const actions = routeParent({
+    parent: parent({
+      labels: labels('状态:开发中', '大小:小需求'),
+      order: 'o-0001',
+      branchesMerged: true,
+    }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+  })
+  assert.deepEqual(types(actions), ['finish', 'setState'])
+})
+
+test('开发中：分支没合齐或还有 open 子票，不叫 finish', () => {
+  const notMerged = routeParent({
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: false }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+  })
+  assert.ok(!types(notMerged).includes('finish'))
+
+  const stillOpen = routeParent({
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: true }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' }), sub({ number: 52 })],
+    closedNumbers: [51],
+    now: NOW,
+  })
+  assert.ok(!types(stillOpen).includes('finish'))
+})
+
 test('没有状态标签 → needs-info', () => {
   const actions = routeParent({
     parent: parent({ labels: [] }),
@@ -592,6 +646,25 @@ function customers(rows = [{ id: 'c-0001', short_name: 'acme', status: 'active',
   return rows
 }
 
+/** 本地仓 fixture：main 上建 req/o-0001，再把每张票的 ticket/<n> 合进去。 */
+async function makeRequirementRepo(t, ticketNumbers) {
+  const root = await mkdtemp(join(tmpdir(), 'afk-scheduler-finish-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const repoDir = join(root, REPO)
+  await initRepo(repoDir)
+  await writeFile(join(repoDir, 'README.md'), 'base\n')
+  await commitAll(repoDir, 'FACTORY: 初始提交')
+  await git(repoDir, ['checkout', '-b', 'req/o-0001'])
+  for (const number of ticketNumbers) {
+    await git(repoDir, ['checkout', '-B', `ticket/${number}`, 'req/o-0001'])
+    await writeFile(join(repoDir, `ticket-${number}.txt`), `票 ${number}\n`)
+    await commitAll(repoDir, `FACTORY: 票 ${number}`)
+    await git(repoDir, ['checkout', 'req/o-0001'])
+    await git(repoDir, ['merge', '--no-ff', '--no-edit', `ticket/${number}`])
+  }
+  return { root, repoDir }
+}
+
 function fakeNotifier() {
   const delivered = new Map()
   const calls = []
@@ -828,6 +901,74 @@ test('runOnce：把仓库快照交给 D3/D4/D5 流水线', async (t) => {
   assert.equal(calls[0].repo, REPO)
   assert.equal(calls[0].parents.length, 1)
   assert.equal(calls[0].repoDir, join(config.repoRoot, REPO))
+})
+
+test('runOnce：开发中、子票全关且都合进 req 分支 → 叫一次 finish，父工单转待验收', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  const second = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: second.number })
+  const { root } = await makeRequirementRepo(t, [first.number, second.number])
+  const calls = []
+  const finish = async (args) => {
+    calls.push(args)
+    return { ok: true }
+  }
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, repoRoot: root }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].parent.number, parent.number)
+  assert.equal(calls[0].reqBranch, 'req/o-0001')
+  assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:待验收'])
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.equal(calls.length, 1, '收尾成功后不再重复叫')
+})
+
+test('runOnce：票分支还没合进 req 分支就不叫 finish', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  const second = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: second.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  const calls = []
+  const finish = async (args) => {
+    calls.push(args)
+    return { ok: true }
+  }
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, repoRoot: root }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.equal(calls.length, 0)
 })
 
 test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火；重启不再点第二次', async (t) => {

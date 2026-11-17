@@ -18,7 +18,7 @@ import { readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
-import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
+import { fixerRoundsUsed, runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
 import {
   assessMerge,
@@ -221,10 +221,24 @@ async function notifyAuditIncident({ notifier, ticket, problems }) {
   }
 }
 
+/** 每轮评审结果交给调用方；回调抛错不影响评审结论。 */
+async function reportReviewRound({ onReviewRound, round, audit }) {
+  if (typeof onReviewRound !== 'function') return
+  try {
+    await onReviewRound({ round, ok: audit.ok, problems: audit.problems || [] })
+  } catch {
+    // 进度写不进去不改评审结论。
+  }
+}
+
 /**
  * 合并前补齐四样证据：缺 verify 或 review 就先起预览，跑对应的 agent 写 trail，
  * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
- * 按 fresh 验证者 id 的差额补跑。跑不过就销毁预览、发「出事」、返回 evidence_not_ready。
+ * 按 fresh 验证者 id 的差额补跑。
+ *
+ * 评审没过时，如果注入了 `fixer`，按轮次修完再复评；最多两轮（跨调度轮次按
+ * 票分支上的修复提交累计）。每轮评审结果交给 `onReviewRound`，调度器用它写进度行。
+ * 修不过或没注入 fixer 就销毁预览、发「出事」、返回 evidence_not_ready。
  *
  * @returns {Promise<{ok: boolean, trail?: object[], reason?: string, missing?: string[], problems?: string[], previewStarted?: boolean}>}
  */
@@ -238,6 +252,9 @@ export async function ensureEvidenceBeforeMerge({
   preview,
   notifier,
   now,
+  fixer,
+  onReviewRound,
+  maxFixRounds = 2,
 } = {}) {
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)
@@ -294,7 +311,7 @@ export async function ensureEvidenceBeforeMerge({
       }
     }
     if (gaps.includes('review')) {
-      const audit = await runReviewAudit({
+      let audit = await runReviewAudit({
         repoDir,
         ticket: ticketNumber,
         branch,
@@ -303,6 +320,27 @@ export async function ensureEvidenceBeforeMerge({
         extraBrief,
         now,
       })
+      let round = 1
+      await reportReviewRound({ onReviewRound, round, audit })
+      if (!audit.ok && typeof fixer === 'function') {
+        let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
+        while (!audit.ok && used < maxFixRounds) {
+          used += 1
+          const fixed = await fixer({ repoDir, branch, findings: audit.problems, round: used })
+          if (!fixed?.ok) break
+          audit = await runReviewAudit({
+            repoDir,
+            ticket: ticketNumber,
+            branch,
+            mode: 'all',
+            runner,
+            extraBrief,
+            now,
+          })
+          round += 1
+          await reportReviewRound({ onReviewRound, round, audit })
+        }
+      }
       if (!audit.ok) problems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
     }
   } catch (error) {

@@ -23,11 +23,12 @@ import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
-import { createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
+import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
+import { runFinish } from './finish.mjs'
 import {
   createDecompose,
   createFixTicket as createFixTicketJob,
@@ -37,6 +38,7 @@ import {
   createPreviewSweep,
 } from '../lib/scheduler-jobs.mjs'
 import {
+  collectBranchFacts,
   collectRepos,
   collectSnapshot,
   hasLabel,
@@ -92,6 +94,7 @@ export function runSummary(report) {
 }
 
 function previewDecision(actions) {
+  if (actions.some((action) => action.type === 'finish')) return 'finish'
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
   if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
@@ -113,7 +116,7 @@ function stillSandcastle(ticket) {
 }
 
 /** 只读预览：读快照、跑路由，打印结论，不执行任何动作。 */
-async function preview({ gh, customers, owner, now, out, maxActive }) {
+async function preview({ gh, customers, owner, now, out, maxActive, repoRoot = '' }) {
   const nowDate = now instanceof Date ? now : new Date(now)
   const repos = collectRepos({ gh, customers, owner })
   const snapshots = []
@@ -132,6 +135,9 @@ async function preview({ gh, customers, owner, now, out, maxActive }) {
   }
 
   for (const { row, snapshot } of snapshots) {
+    if (repoRoot) {
+      await collectBranchFacts({ repoDir: join(repoRoot, row.repo), parents: snapshot.parents })
+    }
     const routed = routeRepo({
       snapshot,
       now: nowDate,
@@ -164,6 +170,7 @@ export async function run(
     gapProposal,
     ticketPipeline,
     createFixTicket,
+    finish,
     runner,
     openPr,
     push,
@@ -208,7 +215,7 @@ export async function run(
 
   if (dryRun) {
     const now = clock ? clock() : new Date()
-    await preview({ gh: client, customers, owner, now, out, maxActive })
+    await preview({ gh: client, customers, owner, now, out, maxActive, repoRoot })
     return { dryRun: true }
   }
 
@@ -270,6 +277,27 @@ export async function run(
       clock,
     })
 
+  // 收尾复用 bin/finish 的入口：收尾评审、PR、合主干、部署都不另写一套。
+  const finishFn =
+    finish ||
+    (async ({ owner, repo, parent, reqBranch }) => {
+      const order = parentOrder(parent?.body)
+      const branch = reqBranch || (order ? `req/${order}` : '')
+      if (!branch) return { ok: false, reason: 'no-order' }
+      const result = await runFinish(
+        {
+          owner,
+          repo,
+          parent: String(parent.number),
+          'req-branch': branch,
+          main: 'main',
+          'repo-dir': join(repoRoot, repo),
+        },
+        { gh: client, notifier: notify },
+      )
+      return { ...result.output, ok: result.exitCode === 0, exitCode: result.exitCode }
+    })
+
   const options = {
     gh: client,
     customers,
@@ -279,6 +307,7 @@ export async function run(
     gapProposal: gapProposalFn,
     ticketPipeline: ticketPipelineFn,
     createFixTicket: createFixTicketFn,
+    finish: finishFn,
     clock,
     config,
   }
