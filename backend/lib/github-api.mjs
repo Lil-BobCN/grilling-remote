@@ -87,6 +87,13 @@ export function createGithubApi({
       return request('POST', repoPath(owner, repo, '/labels'), { name, color, description })
     },
 
+    updateLabel({ owner, repo, name, color, description }) {
+      return request('PATCH', repoPath(owner, repo, `/labels/${encodeURIComponent(name)}`), {
+        color,
+        description,
+      })
+    },
+
     listLabels({ owner, repo }) {
       return request('GET', repoPath(owner, repo, `/labels?per_page=${PER_PAGE}`))
     },

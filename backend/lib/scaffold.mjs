@@ -11,6 +11,7 @@ import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { GithubApiError } from './github-api.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -263,7 +264,19 @@ export async function scaffoldCustomerRepo({
 
     step = 'labels'
     for (const label of LABELS) {
-      await gh.createLabel({ owner, repo: repoName, ...label })
+      try {
+        await gh.createLabel({ owner, repo: repoName, ...label })
+      } catch (error) {
+        // 新仓自带 GitHub 默认标签，wontfix 会撞名。已存在就改成我们的颜色和说明。
+        if (!(error instanceof GithubApiError) || error.status !== 422) throw error
+        await gh.updateLabel({
+          owner,
+          repo: repoName,
+          name: label.name,
+          color: label.color,
+          description: label.description,
+        })
+      }
     }
     const created = await gh.listLabels({ owner, repo: repoName })
     const present = new Set(created.map((row) => row.name))

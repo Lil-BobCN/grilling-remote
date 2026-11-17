@@ -1,6 +1,6 @@
 [Unit]
 Description=afkfactory 回传导入
-Documentation=https://github.com/Lil-BobCN/grilling-remote/blob/main/docs/后端服务.md
+Documentation=https://github.com/Lil-BobCN/grilling-remote/tree/main/docs
 After=network-online.target afkapp.service
 Wants=network-online.target
 

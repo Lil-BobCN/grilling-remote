@@ -3,7 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PORT=${PORT:-4317}
+# 导入服务从 app.env 继承 PORT=8787，和正在跑的 afkapp 撞端口。
+# 这里用独立变量，别读父进程的 PORT。
+VERIFY_PORT=${VERIFY_PORT:-4317}
+PORT=$VERIFY_PORT
 export PORT
 
 node src/server.mjs &
