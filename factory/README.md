@@ -45,7 +45,7 @@
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 
-容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。`GH_TOKEN` 也在这个文件里，只给当前客户仓的 issue、PR 和内容权限。
+容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。`GH_TOKEN` 也在这个文件里，用 fine-grained PAT（细粒度个人访问令牌），只选当前客户仓，Issues、Pull requests、Contents 读写。
 
 手工点火一张票：
 
@@ -53,6 +53,29 @@
 node factory/bin/ignite.mjs --owner <owner> --repo <repo> --parent <父工单号> --ticket <子票号>
 node factory/bin/ignite.mjs ... --dry-run
 ```
+
+## Mac 常驻
+
+`factory/bin/install-launchd.mjs` 把两个 launchd 任务装到运营者 Mac：
+
+| Label | 跑什么 | 日志 |
+| --- | --- | --- |
+| `com.afkfactory.pull-inbox` | 每 5 分钟跑一次 `factory/bin/pull-inbox.mjs` | `~/.afkfactory/logs/pull-inbox.log` |
+| `com.afkfactory.scheduler` | 常驻 `factory/bin/scheduler.mjs --loop`，异常退出由 launchd 拉起 | `~/.afkfactory/logs/scheduler.log`；每轮另写 `~/.afkfactory/logs/scheduler-runs.jsonl` |
+
+安装：
+
+```bash
+node factory/bin/install-launchd.mjs --repo-root <仓库路径>
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.pull-inbox.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.scheduler.plist
+```
+
+安装只复制 plist 和 wrapper，不加载任务。重装后先 `launchctl bootout gui/$(id -u)/<Label>`，再 bootstrap。
+
+两个 wrapper 都 source `~/.afkfactory/env`，需要的键：`AFK_SERVER`、`AFK_SSH_KEY`、`GITHUB_OWNER`、`GITHUB_TOKEN`（细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写）。token 不写进 plist。
+
+调度器状态只在 GitHub。进程重启后按标签和阻塞边重新推导，不重复点火。
 
 ## 约定
 
