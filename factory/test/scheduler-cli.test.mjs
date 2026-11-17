@@ -188,6 +188,11 @@ test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转�
     prCalls.push(args)
     return { url: 'https://github.com/acme/acme-demo/pull/9' }
   }
+  const pushCalls = []
+  async function push(args) {
+    pushCalls.push(args)
+    return { branch: args.branch }
+  }
   const lines = []
 
   await run(['--once', '--customers', customersPath, '--owner', OWNER], {
@@ -195,6 +200,7 @@ test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转�
     notifier: quietNotifier(),
     runner,
     openPr,
+    push,
     out: (line) => lines.push(JSON.parse(line)),
     clock: () => new Date('2026-11-17T10:00:00+08:00'),
     repoRoot: join(root, 'repos'),
@@ -206,6 +212,8 @@ test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转�
   assert.equal(lines[0].parent, parent.number)
   assert.equal(lines[0].decision, 'develop')
   assert.equal(runnerCalls.length, 1)
+  assert.equal(pushCalls.length, 1)
+  assert.equal(pushCalls[0].branch, `ticket/${child.number}`)
   assert.equal(prCalls.length, 1)
   assert.equal(prCalls[0].base, 'req/o-0001')
   assert.equal(prCalls[0].head, `ticket/${child.number}`)

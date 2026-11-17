@@ -116,13 +116,26 @@ async function runGit(args, { cwd, env } = {}) {
   return git(cwd || process.cwd(), args, { env, timeoutMs: 120000 })
 }
 
+function remoteUrlFor(config, owner, repo) {
+  return config.remoteUrlFor
+    ? config.remoteUrlFor({ owner, repo })
+    : `https://github.com/${owner}/${repo}.git`
+}
+
+/** 默认 push：用仓库现有的凭据配置把票分支推到 origin。 */
+export function createGitPush() {
+  return async function pushBranch({ config, repoDir, owner, repo, branch }) {
+    const env = gitAuthEnv(remoteUrlFor(config, owner, repo), config.token)
+    await runGit(['push', '-u', 'origin', branch], { cwd: repoDir, env })
+    return { branch }
+  }
+}
+
 /** 客户仓 checkout：没有就 clone，有就 fetch，然后切到需求分支。 */
 async function ensureRepoCheckout({ config, owner, repo, reqBranch }) {
   const root = config.repoRoot || defaultRepoRoot()
   const repoDir = join(root, repo)
-  const url = config.remoteUrlFor
-    ? config.remoteUrlFor({ owner, repo })
-    : `https://github.com/${owner}/${repo}.git`
+  const url = remoteUrlFor(config, owner, repo)
   const env = gitAuthEnv(url, config.token)
 
   if (await exists(join(repoDir, '.git'))) {
@@ -411,7 +424,7 @@ async function removeSandcastleIfPresent({ gh, owner, repo, number, log }) {
  * @param {{send: Function}} options.notifier 通知模块
  * @param {Function} [options.clock]
  */
-export function createIgnite({ config = {}, runner, openPr, notifier, clock = () => new Date() }) {
+export function createIgnite({ config = {}, runner, openPr, push, notifier, clock = () => new Date() }) {
   const gh =
     config.gh ||
     createGithub({
@@ -420,6 +433,7 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
     })
   const log = config.log || logLine
   const timeoutMs = config.timeoutMs ?? 120000
+  const pushBranch = typeof push === 'function' ? push : createGitPush()
 
   function now() {
     const value = clock()
@@ -502,6 +516,8 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
     const ticketBranch = config.ticketBranch
       ? config.ticketBranch({ ticket, parent })
       : `ticket/${ticket.number}`
+    let pushedBranch = ticketBranch
+    let runCommits = []
 
     try {
       if (!order) throw new Error('父工单正文里没有 <!-- factory:order=... --> 标记')
@@ -636,6 +652,8 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
 
       const result = outcome.kind === 'done' ? outcome.value : await runPromise
       const commits = normalizeCommits(result?.commits)
+      runCommits = commits
+      pushedBranch = result?.branch || ticketBranch
 
       if (!commits.length) {
         await ensureCommentOnce(gh, {
@@ -656,15 +674,36 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
         return { ok: false, error: 'no-commits', reqBranch, ticketBranch }
       }
 
+      try {
+        await pushBranch({
+          config,
+          repoDir,
+          owner,
+          repo,
+          branch: pushedBranch,
+          commits,
+        })
+      } catch (error) {
+        throw new Error(
+          `推送 ${pushedBranch} 失败（${commits.length} 个提交）：${String(error?.message || error)}`,
+        )
+      }
+
       let prUrl = result?.prUrl || ''
       if (!prUrl) {
         if (typeof openPr !== 'function') throw new Error('没有注入 openPr，runner 也没返回 PR 链接')
         const created = await openPr({
           repoDir,
           base: reqBranch,
-          head: ticketBranch,
+          head: pushedBranch,
           title: ticket.title || `票 #${ticket.number}`,
-          body: buildPrBody({ ticket, reqBranch, ticketBranch, customer, requirement }),
+          body: buildPrBody({
+            ticket,
+            reqBranch,
+            ticketBranch: pushedBranch,
+            customer,
+            requirement,
+          }),
         })
         prUrl =
           typeof created === 'string'
@@ -677,7 +716,7 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
         owner,
         repo,
         number: ticket.number,
-        body: `点火完成：分支 \`${ticketBranch}\`，${commits.length} 个提交，PR ${prUrl}`,
+        body: `点火完成：分支 \`${pushedBranch}\`，${commits.length} 个提交，PR ${prUrl}`,
       })
       log({
         level: 'info',
@@ -685,11 +724,12 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
         owner,
         repo,
         ticket: ticket.number,
-        branch: result?.branch || ticketBranch,
+        branch: pushedBranch,
         commits: commits.length,
         pr: prUrl,
+        afkResult: result,
       })
-      return { ok: true, branch: result?.branch || ticketBranch, commits, prUrl }
+      return { ok: true, branch: pushedBranch, commits, prUrl }
     } catch (error) {
       const message = String(error?.message || error)
       await ensureCommentOnce(gh, {
@@ -706,6 +746,8 @@ export function createIgnite({ config = {}, runner, openPr, notifier, clock = ()
         ticket: ticket.number,
         reqBranch,
         ticketBranch,
+        branch: pushedBranch,
+        commits: runCommits.length,
         error: message,
       })
       return { ok: false, error: message, reqBranch, ticketBranch }
