@@ -7,7 +7,7 @@ import { run as runIgniteCli } from '../bin/ignite.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { addRemote, commitAll, git, initBareRepo, initRepo, push } from '../lib/git.mjs'
-import { buildPrompt, createIgnite } from '../lib/ignition.mjs'
+import { buildPrompt, createGhOpenPr, createIgnite } from '../lib/ignition.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 import { runOnce } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
@@ -398,6 +398,78 @@ test('点火成功先 push 票分支，PR head 用 push 的分支', async (t) =>
   const done = logs.find((row) => row.msg === '点火完成')
   assert.equal(done.commits, 2)
   assert.deepEqual(done.afkResult, { commits: [{ sha: 'abc123' }, { sha: 'def456' }], branch })
+})
+
+test('gh pr create 退出码 1 但 stdout 有 PR 地址：点火算完成，不重复开 PR', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner()
+  const calls = []
+  const openPr = createGhOpenPr({
+    exec: async (command, args) => {
+      calls.push({ command, args })
+      return { code: 1, stdout: 'https://github.com/acme/demo/pull/15\n', stderr: '' }
+    },
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.prUrl, 'https://github.com/acme/demo/pull/15')
+  assert.equal(calls.length, 1)
+  const comments = commentsOf(fake, ticket.number)
+  assert.match(comments[0], /点火完成/)
+  assert.match(comments[0], /pull\/15/)
+})
+
+test('注入的 openPr 返回非零退出码但 stderr 有 PR 地址：点火算完成', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner()
+  const calls = []
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: async (args) => {
+      calls.push(args)
+      return { code: 1, stdout: '', stderr: 'https://github.com/acme/demo/pull/16\n' }
+    },
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.prUrl, 'https://github.com/acme/demo/pull/16')
+  assert.equal(calls.length, 1)
+  assert.match(commentsOf(fake, ticket.number)[0], /点火完成/)
+})
+
+test('注入的 openPr 返回非零退出码且没有 PR 地址：点火失败', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: async () => ({ code: 1, stdout: '', stderr: 'network down' }),
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, false)
+  assert.match(result.error, /没拿到链接/)
+  assert.match(commentsOf(fake, ticket.number)[0], /点火失败/)
 })
 
 test('没有提交时不 push、不开 PR，仍写「没有产生提交」', async (t) => {
@@ -794,6 +866,56 @@ test('ignite CLI --dry-run 只打印 prompt 和命令，不贴标签', async (t)
   assert.match(text, /# 分支：req\/o-0001 → ticket\/\d+/)
   assert.match(text, /gh pr create --base req\/o-0001/)
   assert.deepEqual(labelsOf(fake, ticket.number), ['状态:排队中'])
+})
+
+test('createGhOpenPr：退出码非零但从 stdout 找到 PR 地址时返回地址', async () => {
+  const calls = []
+  const openPr = createGhOpenPr({
+    exec: async (command, args) => {
+      calls.push({ command, args })
+      return { code: 1, stdout: 'https://github.com/o/r/pull/15\n', stderr: 'warning' }
+    },
+  })
+
+  const created = await openPr({
+    repoDir: '/tmp/x',
+    base: 'req/o-0001',
+    head: 'ticket/15',
+    title: '票 15',
+    body: 'body',
+  })
+
+  assert.deepEqual(created, { url: 'https://github.com/o/r/pull/15' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].command, 'gh')
+  assert.deepEqual(calls[0].args.slice(0, 2), ['pr', 'create'])
+})
+
+test('createGhOpenPr：退出码非零但地址只在 stderr 里也认', async () => {
+  const openPr = createGhOpenPr({
+    exec: async () => ({ code: 1, stdout: '', stderr: '提示\nhttps://github.com/o/r/pull/21\n' }),
+  })
+
+  const created = await openPr({
+    repoDir: '/tmp/x',
+    base: 'req/o-0001',
+    head: 'ticket/21',
+    title: '票 21',
+    body: 'body',
+  })
+
+  assert.deepEqual(created, { url: 'https://github.com/o/r/pull/21' })
+})
+
+test('createGhOpenPr：退出码非零且没有 PR 地址时抛错', async () => {
+  const openPr = createGhOpenPr({
+    exec: async () => ({ code: 1, stdout: '出错了', stderr: 'network down' }),
+  })
+
+  await assert.rejects(
+    openPr({ repoDir: '/tmp/x', base: 'req/o-0001', head: 'ticket/21', title: '票 21', body: 'body' }),
+    /gh pr create 失败（退出码 1）/,
+  )
 })
 
 test('buildPrompt：第一行 /tdd，分节放 spec、票三段、AGENTS、feature map 和相关代码', () => {

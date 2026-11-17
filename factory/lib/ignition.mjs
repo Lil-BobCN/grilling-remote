@@ -310,6 +310,17 @@ function commandTail(result, limit = 2000) {
   return text.length > limit ? text.slice(-limit) : text
 }
 
+const PULL_REQUEST_URL = /https?:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/
+
+/** 从 gh 输出里找 PR 地址：`gh pr create` 偶发建出 PR 却退出非零。 */
+function findPullRequestUrl(result) {
+  for (const text of [result?.stdout, result?.stderr]) {
+    const found = PULL_REQUEST_URL.exec(String(text || ''))
+    if (found) return found[0]
+  }
+  return ''
+}
+
 /** 默认 openPr：在客户仓里跑 `gh pr create`。 */
 export function createGhOpenPr({ token = '', exec = null } = {}) {
   async function runCommand(command, args, options) {
@@ -338,6 +349,8 @@ export function createGhOpenPr({ token = '', exec = null } = {}) {
       { cwd: repoDir, env },
     )
     if (result.code !== 0) {
+      const url = findPullRequestUrl(result)
+      if (url) return { url }
       throw new Error(`gh pr create 失败（退出码 ${result.code}）：${commandTail(result)}`)
     }
     return { url: String(result.stdout || '').trim() }
@@ -708,7 +721,10 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         prUrl =
           typeof created === 'string'
             ? created.trim()
-            : created?.url || created?.html_url || String(created?.stdout || '').trim()
+            : created?.url ||
+              created?.html_url ||
+              findPullRequestUrl(created) ||
+              String(created?.stdout || '').trim()
         if (!prUrl) throw new Error('开 PR 后没拿到链接')
       }
 
