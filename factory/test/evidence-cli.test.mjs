@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
-import { appendTrail, readTrail } from '../lib/evidence.mjs'
+import { appendTrail, freshVerifiers, readTrail } from '../lib/evidence.mjs'
 import { git } from '../lib/git.mjs'
 
 const NOW = '2026-11-17T10:00:00+08:00'
@@ -297,6 +297,124 @@ test('证据已经齐了就不跑 agent', async () => {
     })
     assert.equal(result.ok, true)
     assert.equal(runner.calls.length, 0)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+async function highRiskRepo() {
+  const dir = await makeRepo()
+  await git(dir, ['checkout', '-b', 'ticket/51'])
+  await mkdir(join(dir, 'db', 'migrations'), { recursive: true })
+  await writeFile(join(dir, 'db', 'migrations', '001_init.sql'), 'create table t;\n')
+  await git(dir, ['add', '-A'])
+  await git(dir, ['commit', '-m', 'ticket work'])
+  const headSha = await git(dir, ['rev-parse', 'HEAD'])
+  return { dir, headSha }
+}
+
+async function appendReadyExceptVerifiers({ dir, headSha, verifyRows }) {
+  for (const item of verifyRows) {
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'verify',
+      decision: headSha,
+      why: item.why,
+      evidence: '.audit/screenshots/after.png',
+      result: 'pass',
+    })
+  }
+  await appendTrail({
+    repoDir: dir,
+    ticket: 51,
+    ts: NOW,
+    phase: 'test',
+    decision: 'npm test',
+    why: `测试 head ${headSha}`,
+    evidence: 'pass',
+    result: 'pass',
+  })
+  for (const decision of ['标准', 'spec']) {
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'review',
+      decision,
+      why: `head ${headSha}`,
+      evidence: 'AFK_VERDICT pass',
+      result: 'pass',
+    })
+  }
+}
+
+test('高风险票只有一个验证者时自动补第二个，按 plan.verifiers 补差额', async () => {
+  const { dir, headSha } = await highRiskRepo()
+  try {
+    await appendReadyExceptVerifiers({
+      dir,
+      headSha,
+      verifyRows: [{ why: `验证 head ${headSha}` }],
+    })
+    const runner = fakeRunner(true)
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'ticket/51',
+      baseBranch: 'main',
+      runner,
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(runner.calls.length, 1, '只补第二个验证者，评审不重跑')
+    assert.ok(runner.calls[0].name.startsWith('verify-51-'))
+    const rows = await readTrail({ repoDir: dir, ticket: 51 })
+    const verifyRows = rows.filter((row) => row.phase === 'verify' && row.result === 'pass')
+    assert.equal(verifyRows.length, 2)
+    assert.ok(verifyRows.some((row) => row.why.includes('verifier=v1')))
+    const ids = await freshVerifiers({ trail: rows, repoDir: dir })
+    assert.equal(ids.length, 2, JSON.stringify(ids))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('同一验证者 id 写两行只算一个，仍补一个不同 id 的验证者', async () => {
+  const { dir, headSha } = await highRiskRepo()
+  try {
+    await appendReadyExceptVerifiers({
+      dir,
+      headSha,
+      verifyRows: [
+        { why: `验证 head ${headSha} · verifier=v1` },
+        { why: `复验 head ${headSha} · verifier=v1` },
+      ],
+    })
+    const runner = fakeRunner(true)
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'ticket/51',
+      baseBranch: 'main',
+      runner,
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(runner.calls.length, 1, '两行同 id 只算一个验证者')
+    const rows = await readTrail({ repoDir: dir, ticket: 51 })
+    const ids = await freshVerifiers({ trail: rows, repoDir: dir })
+    assert.deepEqual(ids, ['v1', 'v2'])
+    assert.equal(rows.filter((row) => row.phase === 'verify' && row.result === 'pass').length, 3)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

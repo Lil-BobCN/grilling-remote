@@ -5,7 +5,7 @@
  * `{ok, evidence: [截图或 trace 路径], problems: [...], tests: [{command, result}], link}`。
  * 这里解析这一行，把结果追加成 `.audit/<票号>.tsv` 的行：
  *
- * - `phase=verify`，`decision=<head>`，`evidence=<路径，逗号分隔>`，`result=pass|fail`；
+ * - `phase=verify`，`decision=<head>`，`why` 可带 `verifier=<id>`，`evidence=<路径，逗号分隔>`，`result=pass|fail`；
  * - `phase=test`，有测试结果时一行一条；
  * - `phase=review`，`decision=标准`、`decision=spec` 或 `decision=interrogate`。
  *
@@ -150,6 +150,9 @@ function verifyBrief({ ticket, branch, headSha, before, instructions, extraBrief
 /**
  * 跑一次验证 agent，写 verify 和 test 行。
  *
+ * `verifierId` 记在 verify 行的 why 里（`verifier=<id>`），用于按验证者去重；
+ * 不传时行为不变，旧 trail 一样能读。
+ *
  * @returns {Promise<{ok: boolean, headSha: string, problems: string[], evidence: string[], rows: object[]}>}
  */
 export async function runVerifyAudit({
@@ -157,6 +160,7 @@ export async function runVerifyAudit({
   ticket,
   branch,
   before = '',
+  verifierId = '',
   runner,
   instructions,
   agentsDir = AGENTS_DIR,
@@ -167,9 +171,10 @@ export async function runVerifyAudit({
   if (!repoDir || !ticket || !branch) throw new Error('验证需要 repoDir、ticket 和 branch')
   if (typeof runner?.run !== 'function') throw new Error('验证需要注入 runner')
   const headSha = await git(repoDir, ['rev-parse', branch])
+  const id = String(verifierId || '').trim().replace(/\s+/g, '-')
   const text = instructions ?? (await readFile(join(agentsDir, 'verify.md'), 'utf8'))
   const run = await runner.run({
-    name: `verify-${ticket}-${headSha.slice(0, 8)}`,
+    name: `verify-${ticket}-${headSha.slice(0, 8)}${id ? `-${id}` : ''}`,
     cwd: repoDir,
     tools: NO_WRITE_TOOLS,
     allowedTools: VERIFY_TOOLS,
@@ -196,7 +201,7 @@ export async function runVerifyAudit({
         ts: now,
         phase: 'verify',
         decision: headSha,
-        why: before ? `改前 ${before}` : '按验收条件验证',
+        why: `${before ? `改前 ${before}` : '按验收条件验证'}${id ? ` · verifier=${id}` : ''}`,
         evidence: evidence.join(','),
         result: ok ? 'pass' : 'fail',
       }),

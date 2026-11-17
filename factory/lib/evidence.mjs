@@ -22,6 +22,7 @@ export const TRAIL_COLUMNS = ['ts', 'phase', 'decision', 'why', 'evidence', 'res
 export const TRAIL_HEADER = TRAIL_COLUMNS.join('\t')
 
 const SHA_RE = /[0-9a-f]{7,40}/gi
+const VERIFIER_RE = /(?:^|\s)verifier=([^\s,;]+)/i
 const MEDIA_EXTENSIONS = new Set([
   'png',
   'jpg',
@@ -592,7 +593,7 @@ async function conflictMarkers(repoDir, files) {
   return found
 }
 
-async function diffInfo(repoDir, base, head) {
+export async function diffInfo(repoDir, base, head) {
   const names = await git(repoDir, ['diff', '--name-status', `${base}...${head}`]).catch(() => '')
   const files = []
   for (const line of names.split(/\r?\n/)) {
@@ -634,6 +635,28 @@ export async function freshVerifyRows({ trail, headSha = '', repoDir = '' } = {}
   return rows.filter(
     (row) => row.phase === 'verify' && row.result === 'pass' && freshFor(row, shas),
   )
+}
+
+/** 从 trail 行读验证者 id；旧行没写时返回空串。 */
+export function verifierIdOf(row) {
+  const match = VERIFIER_RE.exec(`${row?.why ?? ''} ${row?.decision ?? ''}`)
+  return match ? match[1].toLowerCase() : ''
+}
+
+/**
+ * 新鲜的验证者 id，按 id 去重。同一 id 写几行都算一个。
+ * 旧行没有 id 时一行算一个，避免旧 trail 突然凑不够验证队。
+ *
+ * @returns {Promise<string[]>}
+ */
+export async function freshVerifiers({ trail, headSha = '', repoDir = '' } = {}) {
+  const rows = await freshVerifyRows({ trail, headSha, repoDir })
+  const ids = []
+  rows.forEach((row, index) => {
+    const id = verifierIdOf(row) || `legacy-${index + 1}`
+    if (!ids.includes(id)) ids.push(id)
+  })
+  return ids
 }
 
 async function notifyIncident({ notifier, ticket, reason, tried, link }) {
@@ -754,17 +777,14 @@ export async function mergeTicket({
   const risk = riskLevel({ files, diffStat })
   const changedLines = diffStat.additions + diffStat.deletions
   const plan = verifyPlan({ risk, changedLines })
-  const shas = [ticketHead, await lastCodeCommit(repoDir, ticketHead)]
 
   if (risk === 'high') {
-    const freshVerifiers = rows.filter(
-      (row) => row.phase === 'verify' && row.result === 'pass' && freshFor(row, shas),
-    ).length
-    if (freshVerifiers < 2) {
+    const fresh = await freshVerifiers({ trail: rows, headSha: ticketHead, repoDir })
+    if (fresh.length < plan.verifiers) {
       return {
         ok: false,
         reason: 'evidence_not_ready',
-        missing: [`高风险验证队（至少 2 个验证者，当前 ${freshVerifiers} 个）`],
+        missing: [`高风险验证队（至少 ${plan.verifiers} 个验证者，当前 ${fresh.length} 个）`],
         stale: [],
       }
     }

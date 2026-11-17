@@ -21,11 +21,15 @@ import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
 import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
 import {
+  diffInfo,
+  freshVerifiers,
   readTrail,
   evidenceReady,
   mergeTicket,
   missingEvidenceAxes,
+  riskLevel,
   serializeTrail,
+  verifyPlan,
 } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
@@ -161,6 +165,18 @@ function auditGaps(rows = []) {
   return gaps
 }
 
+/** 已用的验证者 id 之外，按顺序取 count 个新 id（v1、v2…）。 */
+function nextVerifierIds(existing = [], count = 0) {
+  const ids = []
+  let index = 1
+  while (ids.length < count) {
+    const id = `v${index}`
+    if (!existing.includes(id)) ids.push(id)
+    index += 1
+  }
+  return ids
+}
+
 /** 预览只起一次：证据补齐用掉以后，合并阶段复用同一套，合完再销毁。 */
 function cachedPreview(preview) {
   let started = null
@@ -207,7 +223,8 @@ async function notifyAuditIncident({ notifier, ticket, problems }) {
 
 /**
  * 合并前补齐四样证据：缺 verify 或 review 就先起预览，跑对应的 agent 写 trail，
- * 再读一遍。跑不过就销毁预览、发「出事」、返回 evidence_not_ready。
+ * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
+ * 按 fresh 验证者 id 的差额补跑。跑不过就销毁预览、发「出事」、返回 evidence_not_ready。
  *
  * @returns {Promise<{ok: boolean, trail?: object[], reason?: string, missing?: string[], problems?: string[], previewStarted?: boolean}>}
  */
@@ -216,6 +233,7 @@ export async function ensureEvidenceBeforeMerge({
   ticket,
   ticketNumber,
   branch,
+  baseBranch,
   runner,
   preview,
   notifier,
@@ -223,11 +241,24 @@ export async function ensureEvidenceBeforeMerge({
 } = {}) {
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)
-  if (gaps.length === 0) return { ok: true, trail: rows }
+
+  let plan = null
+  let freshIds = []
+  const headSha = await git(repoDir, ['rev-parse', branch])
+  if (baseBranch) {
+    const { files, diffStat } = await diffInfo(repoDir, baseBranch, branch)
+    const risk = riskLevel({ files, diffStat })
+    plan = verifyPlan({ risk, changedLines: diffStat.additions + diffStat.deletions })
+    freshIds = await freshVerifiers({ trail: rows, headSha, repoDir })
+  }
+  const missingVerifiers = plan ? Math.max(0, plan.verifiers - freshIds.length) : 0
+  const verifyRuns = gaps.includes('verify')
+    ? Math.max(missingVerifiers, plan ? 0 : 1)
+    : missingVerifiers
+  if (gaps.length === 0 && verifyRuns === 0) return { ok: true, trail: rows }
 
   let started = null
   if (previewNeeded({ trail: serializeTrail(rows) }) && typeof preview?.start === 'function') {
-    const headSha = await git(repoDir, ['rev-parse', branch])
     started = await preview
       .start({ repoDir, ticket, ticketBranch: branch, headSha, risk: 'normal' })
       .catch((error) => ({ ok: false, error: errorText(error) }))
@@ -244,16 +275,23 @@ export async function ensureEvidenceBeforeMerge({
       : ''
   const problems = []
   try {
-    if (gaps.includes('verify')) {
-      const audit = await runVerifyAudit({
-        repoDir,
-        ticket: ticketNumber,
-        branch,
-        runner,
-        extraBrief,
-        now,
-      })
-      if (!audit.ok) problems.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+    if (verifyRuns > 0) {
+      const ids = plan ? nextVerifierIds(freshIds, verifyRuns) : ['']
+      for (const verifierId of ids) {
+        const audit = await runVerifyAudit({
+          repoDir,
+          ticket: ticketNumber,
+          branch,
+          verifierId,
+          runner,
+          extraBrief,
+          now,
+        })
+        if (!audit.ok) {
+          problems.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+          break
+        }
+      }
     }
     if (gaps.includes('review')) {
       const audit = await runReviewAudit({
@@ -358,6 +396,7 @@ async function runMerge(options, deps = {}) {
     ticket,
     ticketNumber,
     branch: ticketBranch,
+    baseBranch: reqBranch,
     runner,
     preview,
     notifier,
