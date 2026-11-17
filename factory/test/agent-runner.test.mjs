@@ -9,7 +9,7 @@ import {
   createAgentRunner,
 } from '../lib/agent-runner.mjs'
 
-test('默认 command 是 claude，跑 -p --restricted，brief 同时留文件', async () => {
+test('默认 command 是 claude，提示词在前，跑 -p --restricted，brief 同时留文件', async () => {
   const calls = []
   const runner = createAgentRunner({
     exec: async (command, args, options) => {
@@ -26,10 +26,11 @@ test('默认 command 是 claude，跑 -p --restricted，brief 同时留文件', 
 
   assert.equal(result.ok, true)
   assert.equal(calls[0].command, 'claude')
-  assert.equal(calls[0].args[0], '-p')
-  assert.equal(calls[0].args[1], '--restricted')
-  assert.equal(calls[0].args[2], '--tools')
-  assert.equal(calls[0].args[3], AGENT_TOOLS)
+  assert.equal(calls[0].args[0], '按验收条件点一遍应用')
+  assert.equal(calls[0].args[1], '-p')
+  assert.equal(calls[0].args[2], '--restricted')
+  assert.equal(calls[0].args[3], '--tools')
+  assert.equal(calls[0].args[4], AGENT_TOOLS)
   assert.equal(AGENT_TOOLS, 'Bash,Read,Write,Edit')
   assert.ok(calls[0].args.includes('按验收条件点一遍应用'))
   assert.equal(calls[0].options.cwd, '/tmp/example')

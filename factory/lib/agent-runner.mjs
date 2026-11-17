@@ -100,13 +100,14 @@ export function createAgentRunner({
 
     const toolSet = toolList(runToolSet === undefined ? tools : runToolSet)
     const allowed = toolList(runTools === undefined ? allowedTools : runTools)
+    // 提示词放最前。`--tools`、`--allowedTools` 接收多个值，放后面会把提示词一起吞掉。
     const args = [
+      text,
+      ...extraArgs,
       '-p',
       '--restricted',
       ...(toolSet.length ? ['--tools', toolSet.join(',')] : []),
       ...(allowed.length ? ['--allowedTools', allowed.join(',')] : []),
-      ...extraArgs,
-      text,
     ]
     const result = await exec(command, args, { cwd, env })
     const code = Number.isInteger(result?.code) ? result.code : 1
