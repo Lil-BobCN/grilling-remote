@@ -13,13 +13,15 @@
 
 ## 做法
 
-1. 先写失败的测试，再改代码。
-2. 改动只覆盖这张票的验收条件，不顺手重构无关代码。
-3. 一个功能一个目录，别的功能只从它的 `index.mjs` 进。
+1. 先跑 `npm install`，把 `package.json` 里的依赖装好。
+2. 先写失败的测试，再改代码。
+3. 改动只覆盖这张票的验收条件，不顺手重构无关代码。
+4. 一个功能一个目录，别的功能只从它的 `index.mjs` 进。
 
 ## 完成信号
 
 1. `bash scripts/check.sh` 全过。
-2. 改了顾客能看到的行为，`bash scripts/verify.sh` 通过，截图留在 `.audit/screenshots/`。
-3. 提交信息以 `FACTORY:` 开头。
-4. 在票上写一条评论：改了什么、跑了什么命令、结果是什么。
+2. 改了数据库相关代码，`node scripts/db-smoke.mjs` 通过（测试库是 pglite，不连外部 Postgres）。
+3. 改了顾客能看到的行为，`bash scripts/verify.sh` 通过，截图留在 `.audit/screenshots/`。
+4. 提交信息以 `FACTORY:` 开头。
+5. 在票上写一条评论：改了什么、跑了什么命令、结果是什么。

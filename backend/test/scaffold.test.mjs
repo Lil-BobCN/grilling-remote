@@ -45,6 +45,7 @@ const REQUIRED_FILES = [
   'docs/agents/domain.md',
   'docs/agents/feature-map.md',
   'scripts/check.sh',
+  'scripts/db-smoke.mjs',
   'scripts/lint.mjs',
   'scripts/verify.sh',
   '.github/workflows/ci.yml',
@@ -129,6 +130,42 @@ test('新仓生成全套文件、初始提交并推送到 main', async (t) => {
   for (const file of REQUIRED_FILES) {
     assert.ok(tracked.includes(file), `远端缺少 ${file}`)
   }
+})
+
+test('模板容器带 gh 和统一测试库 pglite，AGENTS.md 写清来源', async (t) => {
+  const { gh, workDir, bare } = await setup(t)
+  await scaffoldCustomerRepo({
+    ...ARGS,
+    gh,
+    workDir,
+    remoteUrl: bare,
+    verify: FAKE_VERIFY,
+  })
+
+  const dockerfile = await readFile(join(workDir, '.sandcastle', 'Dockerfile'), 'utf8')
+  assert.match(dockerfile, /apt-get install[^\n]*\bgh\b/, '容器 Dockerfile 没有装 gh')
+
+  const packageJson = JSON.parse(await readFile(join(workDir, 'package.json'), 'utf8'))
+  assert.match(
+    packageJson.devDependencies?.['@electric-sql/pglite'] || '',
+    /^(\^|~)?0\./,
+    'package.json 没有 pglite 开发依赖',
+  )
+
+  const smoke = await readFile(join(workDir, 'scripts', 'db-smoke.mjs'), 'utf8')
+  assert.match(smoke, /@electric-sql\/pglite/)
+  assert.match(smoke, /select/i)
+
+  const agents = await readFile(join(workDir, 'AGENTS.md'), 'utf8')
+  assert.ok(agents.split('\n').length <= 40, 'AGENTS.md 超过 40 行')
+  assert.match(agents, /pglite/)
+  assert.match(agents, /scripts\/db-smoke\.mjs/)
+
+  const gitignore = await readFile(join(workDir, '.gitignore'), 'utf8')
+  assert.match(gitignore, /^node_modules\/$/m, '.gitignore 没有忽略 node_modules，npm install 会混进提交')
+
+  const ci = await readFile(join(workDir, '.github', 'workflows', 'ci.yml'), 'utf8')
+  assert.match(ci, /npm install/, 'CI 没装依赖，用了 pglite 的测试会失败')
 })
 
 test('九个标签真实存在，给测试票打标签成功', async (t) => {

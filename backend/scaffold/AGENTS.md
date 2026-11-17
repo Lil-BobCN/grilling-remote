@@ -15,6 +15,7 @@
 ## 检查
 
 - 改完跑 `bash scripts/check.sh`。typecheck、lint、test 全过才算做完。
+- 数据库测试用 pglite（WASM 版 Postgres），不连外部库。先 `npm install`，再跑 `node scripts/db-smoke.mjs` 确认测试库能用。
 - 改了顾客能看到的行为，再跑 `bash scripts/verify.sh`，截图留在 `.audit/screenshots/`。
 
 ## 任务
