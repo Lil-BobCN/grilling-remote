@@ -24,6 +24,7 @@ import {
   assessMerge,
   diffInfo,
   freshVerifiers,
+  interrogateStatus,
   readTrail,
   mergeTicket,
   missingEvidenceAxes,
@@ -41,6 +42,7 @@ import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
+const INTERROGATE_MISSING = '高风险评审（interrogate）'
 const USAGE = `用法：
   node factory/bin/evidence.mjs merge --repo-dir <路径> --ticket <票号> --ticket-branch <分支> --req-branch <分支> [--dry-run]
   可选：--owner --repo --parent --pr --customer --product --agent-command`
@@ -157,11 +159,12 @@ function defaultPreview({ customer, product, pr }) {
   }
 }
 
-function auditGaps(rows = []) {
+function auditGaps(rows = [], { interrogate = false } = {}) {
   const missingAxes = missingEvidenceAxes(rows)
   const gaps = []
   if (missingAxes.verify) gaps.push('verify')
   if (missingAxes.reviewStandard || missingAxes.reviewSpec) gaps.push('review')
+  if (interrogate) gaps.push(INTERROGATE_MISSING)
   return gaps
 }
 
@@ -222,10 +225,10 @@ async function notifyAuditIncident({ notifier, ticket, problems }) {
 }
 
 /** 每轮评审结果交给调用方；回调抛错不影响评审结论。 */
-async function reportReviewRound({ onReviewRound, round, audit }) {
+async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
   if (typeof onReviewRound !== 'function') return
   try {
-    await onReviewRound({ round, ok: audit.ok, problems: audit.problems || [] })
+    await onReviewRound({ round, ok, problems })
   } catch {
     // 进度写不进去不改评审结论。
   }
@@ -234,11 +237,13 @@ async function reportReviewRound({ onReviewRound, round, audit }) {
 /**
  * 合并前补齐四样证据：缺 verify 或 review 就先起预览，跑对应的 agent 写 trail，
  * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
- * 按 fresh 验证者 id 的差额补跑。
+ * 按 fresh 验证者 id 的差额补跑；高风险票还要求一条指向当前 head 的 interrogate pass。
  *
- * 评审没过时，如果注入了 `fixer`，按轮次修完再复评；最多两轮（跨调度轮次按
- * 票分支上的修复提交累计）。每轮评审结果交给 `onReviewRound`，调度器用它写进度行。
+ * 评审或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；最多两轮
+ * （跨调度轮次按票分支上的修复提交累计）。每次修完 head 变了，验证、standard/spec
+ * 和 interrogate 都重跑。每轮结果交给 `onReviewRound`，调度器用它写进度行。
  * 修不过或没注入 fixer 就销毁预览、发「出事」、返回 evidence_not_ready。
+ * 轮次用完且同一 head 已经判过 interrogate fail 时不再重跑，直接返回。
  *
  * @returns {Promise<{ok: boolean, trail?: object[], reason?: string, missing?: string[], problems?: string[], previewStarted?: boolean}>}
  */
@@ -261,18 +266,39 @@ export async function ensureEvidenceBeforeMerge({
 
   let plan = null
   let freshIds = []
+  let risk = 'normal'
   const headSha = await git(repoDir, ['rev-parse', branch])
   if (baseBranch) {
     const { files, diffStat } = await diffInfo(repoDir, baseBranch, branch)
-    const risk = riskLevel({ files, diffStat })
+    risk = riskLevel({ files, diffStat })
     plan = verifyPlan({ risk, changedLines: diffStat.additions + diffStat.deletions })
     freshIds = await freshVerifiers({ trail: rows, headSha, repoDir })
   }
+  const wantsInterrogate = Boolean(plan) && risk === 'high'
+  const interrogate = wantsInterrogate
+    ? await interrogateStatus({ trail: rows, headSha, repoDir })
+    : { pass: true, fail: null }
+  const interrogateGap = wantsInterrogate && !interrogate.pass
+
   const missingVerifiers = plan ? Math.max(0, plan.verifiers - freshIds.length) : 0
   const verifyRuns = gaps.includes('verify')
     ? Math.max(missingVerifiers, plan ? 0 : 1)
     : missingVerifiers
-  if (gaps.length === 0 && verifyRuns === 0) return { ok: true, trail: rows }
+  if (gaps.length === 0 && verifyRuns === 0 && !interrogateGap) return { ok: true, trail: rows }
+
+  // 轮次用完、同一 head 已经判过 fail：再跑一次要 9–12 分钟，问题不会变。
+  if (interrogateGap && interrogate.fail && gaps.length === 0 && verifyRuns === 0) {
+    const used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
+    if (used >= maxFixRounds) {
+      const detail = interrogate.fail.evidence ? `：${interrogate.fail.evidence}` : ''
+      return {
+        ok: false,
+        reason: 'evidence_not_ready',
+        missing: [INTERROGATE_MISSING],
+        problems: [`${INTERROGATE_MISSING}在 head ${headSha} 判过 fail，修复轮次已用完${detail}`],
+      }
+    }
+  }
 
   let started = null
   if (previewNeeded({ trail: serializeTrail(rows) }) && typeof preview?.start === 'function') {
@@ -291,6 +317,7 @@ export async function ensureEvidenceBeforeMerge({
       ? `预览：${started.url}（用户名 ${started.user}，密码 ${started.password}）`
       : ''
   const problems = []
+  let interrogateFailed = false
   try {
     if (verifyRuns > 0) {
       const ids = plan ? nextVerifierIds(freshIds, verifyRuns) : ['']
@@ -310,25 +337,11 @@ export async function ensureEvidenceBeforeMerge({
         }
       }
     }
-    if (gaps.includes('review')) {
-      let audit = await runReviewAudit({
-        repoDir,
-        ticket: ticketNumber,
-        branch,
-        mode: 'all',
-        runner,
-        extraBrief,
-        now,
-      })
-      let round = 1
-      await reportReviewRound({ onReviewRound, round, audit })
-      if (!audit.ok && typeof fixer === 'function') {
-        let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
-        while (!audit.ok && used < maxFixRounds) {
-          used += 1
-          const fixed = await fixer({ repoDir, branch, findings: audit.problems, round: used })
-          if (!fixed?.ok) break
-          audit = await runReviewAudit({
+    if (gaps.includes('review') || interrogateGap) {
+      const runReviewRound = async ({ standards }) => {
+        const roundProblems = []
+        if (standards) {
+          const audit = await runReviewAudit({
             repoDir,
             ticket: ticketNumber,
             branch,
@@ -337,11 +350,78 @@ export async function ensureEvidenceBeforeMerge({
             extraBrief,
             now,
           })
+          if (!audit.ok) roundProblems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
+        }
+        if (wantsInterrogate) {
+          const audit = await runReviewAudit({
+            repoDir,
+            ticket: ticketNumber,
+            branch,
+            mode: 'interrogate',
+            runner,
+            extraBrief,
+            now,
+          })
+          interrogateFailed = !audit.ok
+          if (!audit.ok) {
+            roundProblems.push(
+              ...(audit.problems.length ? audit.problems : [INTERROGATE_MISSING]),
+            )
+          }
+        }
+        return roundProblems
+      }
+
+      // 修完 head 变了，旧验证不算数，按计划把验证队补回来。
+      const reverifyAfterFix = async () => {
+        const fixedHead = await git(repoDir, ['rev-parse', branch])
+        if (!plan) {
+          const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
+          return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
+        }
+        const trail = await readTrail({ repoDir, ticket: ticketNumber })
+        const fresh = await freshVerifiers({ trail, headSha: fixedHead, repoDir })
+        const needed = Math.max(0, plan.verifiers - fresh.length)
+        const found = []
+        for (const verifierId of nextVerifierIds(fresh, needed)) {
+          const audit = await runVerifyAudit({
+            repoDir,
+            ticket: ticketNumber,
+            branch,
+            verifierId,
+            runner,
+            extraBrief,
+            now,
+          })
+          if (!audit.ok) {
+            found.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+            break
+          }
+        }
+        return found
+      }
+
+      let round = 1
+      let failed = await runReviewRound({ standards: gaps.includes('review') })
+      await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
+      if (failed.length && typeof fixer === 'function') {
+        let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
+        while (failed.length && used < maxFixRounds) {
+          used += 1
+          const fixed = await fixer({ repoDir, branch, findings: failed, round: used })
+          if (!fixed?.ok) break
           round += 1
-          await reportReviewRound({ onReviewRound, round, audit })
+          const verifyProblems = await reverifyAfterFix()
+          if (verifyProblems.length) {
+            failed = verifyProblems
+            await reportReviewRound({ onReviewRound, round, ok: false, problems: failed })
+            break
+          }
+          failed = await runReviewRound({ standards: true })
+          await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
         }
       }
-      if (!audit.ok) problems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
+      if (failed.length) problems.push(...failed)
     }
   } catch (error) {
     problems.push(errorText(error))
@@ -353,7 +433,12 @@ export async function ensureEvidenceBeforeMerge({
       await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})
     }
     await notifyAuditIncident({ notifier, ticket, problems })
-    return { ok: false, reason: 'evidence_not_ready', missing: auditGaps(rows), problems }
+    return {
+      ok: false,
+      reason: 'evidence_not_ready',
+      missing: auditGaps(rows, { interrogate: wantsInterrogate && interrogateFailed }),
+      problems,
+    }
   }
   return { ok: true, trail: rows, previewStarted: Boolean(started?.ok) }
 }

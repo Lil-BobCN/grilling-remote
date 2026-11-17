@@ -208,6 +208,55 @@ function scriptedRunner({ reviews = [] } = {}) {
   }
 }
 
+/** 高风险票用：standard/spec 总过，interrogate 按脚本返回；fixer 每次改一行代码。 */
+function interrogateRunner({ interrogate = [] } = {}) {
+  const calls = []
+  let index = 0
+  let fixCount = 0
+  return {
+    calls,
+    async run(args) {
+      calls.push(args)
+      if (args.name.startsWith('review-')) {
+        if (args.name.endsWith('-interrogate')) {
+          const ok = interrogate[index] !== 'fail'
+          index += 1
+          return {
+            ok: true,
+            code: 0,
+            stdout: `AFK_VERDICT ${JSON.stringify({
+              ok,
+              evidence: ['https://github.com/acme/demo/pull/7#discussion_r1'],
+              problems: ok
+                ? []
+                : ['到店取名额满时仍默认选中到店取，提交没有 slotId', '到店取名额 count 子查询没有锁，会超卖'],
+            })}\n`,
+            stderr: '',
+          }
+        }
+        return {
+          ok: true,
+          code: 0,
+          stdout: 'AFK_VERDICT {"ok":true,"evidence":["https://github.com/acme/demo/pull/7"],"problems":[]}\n',
+          stderr: '',
+        }
+      }
+      if (args.name.startsWith('fix-')) {
+        fixCount += 1
+        await writeFile(join(args.cwd, 'src', 'app.mjs'), `export const APP = ${10 + fixCount}\n`)
+        return { ok: true, code: 0, stdout: 'AFK_FIX: done\n', stderr: '' }
+      }
+      return {
+        ok: true,
+        code: 0,
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}\n',
+        stderr: '',
+      }
+    },
+  }
+}
+
 function issueOf(fake, number) {
   return fake.state.issues.get(`${OWNER}/${REPO}`).find((row) => row.number === number)
 }
@@ -567,4 +616,136 @@ test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify
   assert.equal(second.runs[0].ok, false)
   assert.equal(second.runs[0].reason, 'evidence_not_ready')
   assert.equal((await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length, verifyRows)
+})
+
+test('高风险 interrogate 判不过：fixer 修完重新验证、standard/spec 和 interrogate 后合分支', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const head = await addMigrationCommit(repoDir, ticket.number)
+  await seedCompleteTrail({ repoDir, ticketNumber: ticket.number, head, verifiers: ['v1', 'v2'] })
+  const runner = interrogateRunner({ interrogate: ['fail', 'pass'] })
+  const notifier = fakeNotifier()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier,
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
+  assert.ok(result.runs[0].mergedSha)
+
+  const fixIndex = runner.calls.findIndex((call) => call.name.startsWith('fix-'))
+  assert.ok(fixIndex >= 0, 'interrogate 没过没起 fixer')
+  assert.equal(runner.calls[fixIndex].allowedTools, FIXER_TOOLS)
+
+  const afterFix = runner.calls.slice(fixIndex + 1)
+  const verifyNames = afterFix.filter((call) => call.name.startsWith('verify-')).map((call) => call.name)
+  assert.ok(
+    verifyNames.some((name) => name.endsWith('-v1')) && verifyNames.some((name) => name.endsWith('-v2')),
+    `修完没重新跑两个验证者：${verifyNames.join('、')}`,
+  )
+  const reviewNames = afterFix.filter((call) => call.name.startsWith('review-')).map((call) => call.name)
+  assert.deepEqual(
+    reviewNames.slice(0, 2),
+    [`review-${ticket.number}-all`, `review-${ticket.number}-interrogate`],
+    `修完要先跑 standard/spec 再跑 interrogate：${reviewNames.join('、')}`,
+  )
+  assert.equal(
+    runner.calls.filter((call) => call.name.endsWith('-interrogate')).length,
+    2,
+    'interrogate 一次不过，修完要再审一次',
+  )
+
+  const subjects = (await git(repoDir, ['log', '--format=%s', `ticket/${ticket.number}`]))
+    .split(/\r?\n/)
+    .filter(Boolean)
+  assert.ok(
+    subjects.some((line) => line.startsWith(`FACTORY: 评审修复 #${ticket.number}`)),
+    `没有 FACTORY: 评审修复 提交：${subjects.join(' / ')}`,
+  )
+
+  const rows = await readTrail({ repoDir, ticket: ticket.number })
+  assert.ok(rows.some((row) => row.phase === 'review' && row.decision === 'interrogate' && row.result === 'fail'))
+  assert.ok(rows.some((row) => row.phase === 'review' && row.decision === 'interrogate' && row.result === 'pass'))
+  assert.ok(rows.some((row) => row.phase === 'merge' && row.result === 'pass'))
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const repair = progress.filter((body) => body.includes('细阶段：评审修复'))
+  assert.equal(repair.length, 1, 'interrogate 失败那一轮要在父工单写一条进度')
+  assert.match(repair[0], /轮次：2/)
+})
+
+test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再重跑同一 head 的 interrogate', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const head = await addMigrationCommit(repoDir, ticket.number)
+  await seedCompleteTrail({ repoDir, ticketNumber: ticket.number, head, verifiers: ['v1', 'v2'] })
+  const runner = interrogateRunner({ interrogate: ['fail', 'fail', 'fail', 'fail'] })
+  const notifier = fakeNotifier()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier,
+    log: () => {},
+  })
+  const context = {
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  }
+
+  const first = await pipeline(context)
+
+  assert.equal(first.runs[0].ok, false)
+  assert.equal(first.runs[0].reason, 'evidence_not_ready')
+  assert.match(first.runs[0].problems.join('；'), /到店取名额/)
+  assert.equal(
+    runner.calls.filter((call) => call.name.startsWith('fix-')).length,
+    2,
+    'fixer 最多跑两轮',
+  )
+  assert.equal(
+    runner.calls.filter((call) => call.name.endsWith('-interrogate')).length,
+    3,
+    '初始一次加两轮修复各一次',
+  )
+  assert.ok(notifier.calls.some((event) => event.event === '出事'), '修不过要发出事通知')
+  assert.equal(issueOf(fake, ticket.number).state, 'open')
+  assert.ok(
+    !(await readTrail({ repoDir, ticket: ticket.number })).some(
+      (row) => row.phase === 'merge' && row.result === 'pass',
+    ),
+    'interrogate 没过不能合需求分支',
+  )
+
+  const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
+  const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
+  assert.equal(progress.length, 3)
+  assert.deepEqual(
+    progress.map((comment) => /轮次：(\d+)/.exec(comment.body)?.[1]),
+    ['2', '3', '4'],
+  )
+  assert.equal(stallHits({ comments }).some((hit) => hit.reason === '三圈没进展'), true)
+
+  const before = runner.calls.length
+  const second = await pipeline(context)
+
+  assert.equal(second.runs[0].ok, false)
+  assert.equal(second.runs[0].reason, 'evidence_not_ready')
+  assert.match(second.runs[0].problems.join('；'), /修复轮次已用完/)
+  assert.equal(runner.calls.length, before, '同一 head、轮次用完，不再跑 agent')
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 2)
+  assert.equal(runner.calls.filter((call) => call.name.endsWith('-interrogate')).length, 3)
 })
