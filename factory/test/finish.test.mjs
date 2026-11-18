@@ -795,3 +795,191 @@ test('finish --dry-run 只打印四栏和检查结果，不建 PR', async () => 
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('开 PR 前推需求分支：fixer 评审批次的提交已经推上去', async () => {
+  const { fake, gh, dir, state } = await closedRequirement()
+  try {
+    const calls = []
+    const sent = []
+    const pushedHeads = []
+    let reviewCount = 0
+    let fixSha = ''
+    const result = await finishRequirement({
+      repoDir: dir,
+      owner: OWNER,
+      repo: REPO,
+      parent: state,
+      reqBranch: 'req/order-1',
+      mainBranch: 'main',
+      ...flowInjections(gh, calls, sent),
+      push: async ({ repoDir, branch }) => {
+        calls.push(['push', { repoDir, branch }])
+        pushedHeads.push(await git(repoDir, ['rev-parse', branch]))
+      },
+      review: async (ctx) => {
+        reviewCount += 1
+        calls.push(['review', ctx])
+        if (reviewCount === 1) return { ok: false, findings: ['验收条件第 2 条没做'] }
+        return { ok: true }
+      },
+      fixer: async () => {
+        await writeFile(join(dir, 'fix.txt'), 'fix\n')
+        fixSha = await commitAll(dir, 'FACTORY: 修收尾评审问题')
+        return { ok: true }
+      },
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    const kinds = calls.map(([kind]) => kind)
+    assert.ok(kinds.includes('push'), JSON.stringify(kinds))
+    assert.ok(kinds.indexOf('push') < kinds.indexOf('openPr'), JSON.stringify(kinds))
+    assert.equal(pushedHeads[0], fixSha)
+    assert.equal(fake.state.pulls.get(`${OWNER}/${REPO}`)[0].merged, true)
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('需求分支推不上去：返回 push_failed，不开 PR、不合主干', async () => {
+  const { fake, gh, dir, state } = await closedRequirement()
+  try {
+    const calls = []
+    const sent = []
+    let openCalls = 0
+    const result = await finishRequirement({
+      repoDir: dir,
+      owner: OWNER,
+      repo: REPO,
+      parent: state,
+      reqBranch: 'req/order-1',
+      mainBranch: 'main',
+      ...flowInjections(gh, calls, sent),
+      openPr: async () => {
+        openCalls += 1
+        return {}
+      },
+      push: async () => {
+        throw new Error('远端拒绝')
+      },
+    })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'push_failed')
+    assert.ok(result.error.includes('远端拒绝'), result.error)
+    assert.equal(openCalls, 0)
+    assert.equal(fake.state.pulls.get(`${OWNER}/${REPO}`).length, 0)
+    assert.ok(!calls.some(([kind]) => kind === 'mergePr'))
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('review 过、verify 挂：fixer 收到验证问题，修完重跑评审和验证后合 PR', async () => {
+  const { fake, gh, dir, state } = await closedRequirement()
+  try {
+    const calls = []
+    const sent = []
+    const fixCalls = []
+    const pushedHeads = []
+    let verifyCount = 0
+    let reviewCount = 0
+    let fixSha = ''
+    const result = await finishRequirement({
+      repoDir: dir,
+      owner: OWNER,
+      repo: REPO,
+      parent: state,
+      reqBranch: 'req/order-1',
+      mainBranch: 'main',
+      ...flowInjections(gh, calls, sent),
+      push: async ({ repoDir, branch }) => {
+        calls.push(['push', { branch }])
+        pushedHeads.push(await git(repoDir, ['rev-parse', branch]))
+      },
+      review: async (ctx) => {
+        reviewCount += 1
+        calls.push(['review', ctx])
+        return { ok: true }
+      },
+      verify: async (ctx) => {
+        verifyCount += 1
+        calls.push(['verify', ctx])
+        if (verifyCount === 1) return { ok: false, problems: ['同一个取货时段并发下单，名额超卖'] }
+        return { ok: true }
+      },
+      fixer: async (ctx) => {
+        fixCalls.push(ctx)
+        await writeFile(join(dir, 'concurrency-fix.txt'), 'fix\n')
+        fixSha = await commitAll(dir, 'FACTORY: 修并发测试')
+        return { ok: true }
+      },
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(verifyCount, 2)
+    assert.equal(reviewCount, 2)
+    assert.equal(fixCalls.length, 1)
+    assert.deepEqual(fixCalls[0].findings, ['同一个取货时段并发下单，名额超卖'])
+    assert.equal(pushedHeads.length, 2)
+    assert.equal(pushedHeads[1], fixSha)
+    assert.equal(fake.state.pulls.get(`${OWNER}/${REPO}`)[0].merged, true)
+    assert.ok(sent.some((event) => event.event === '自己合并'))
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('verify 两轮都挂：发「出事」、不合 PR、不再重跑', async () => {
+  const { fake, gh, dir, state } = await closedRequirement()
+  try {
+    const calls = []
+    const sent = []
+    const fixCalls = []
+    let verifyCount = 0
+    let mergeCalls = 0
+    const result = await finishRequirement({
+      repoDir: dir,
+      owner: OWNER,
+      repo: REPO,
+      parent: state,
+      reqBranch: 'req/order-1',
+      mainBranch: 'main',
+      ...flowInjections(gh, calls, sent),
+      maxFixRounds: 1,
+      mergePr: async () => {
+        mergeCalls += 1
+        return { merged: true }
+      },
+      push: async () => {},
+      verify: async (ctx) => {
+        verifyCount += 1
+        calls.push(['verify', ctx])
+        return { ok: false, problems: ['并发测试超时'] }
+      },
+      fixer: async (ctx) => {
+        fixCalls.push(ctx)
+        await writeFile(join(dir, `fix-${fixCalls.length}.txt`), 'fix\n')
+        await commitAll(dir, `FACTORY: 第 ${fixCalls.length} 轮修验证问题`)
+        return { ok: true }
+      },
+    })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'verify_failed')
+    assert.ok(result.problems.includes('并发测试超时'), JSON.stringify(result))
+    assert.equal(verifyCount, 2)
+    assert.equal(fixCalls.length, 1)
+    assert.equal(mergeCalls, 0)
+    const pull = fake.state.pulls.get(`${OWNER}/${REPO}`)[0]
+    assert.equal(pull.merged, false)
+    const incident = sent.find((event) => event.event === '出事')
+    assert.ok(incident)
+    assert.ok(incident.data.tried.includes('并发测试超时'), incident.data.tried)
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})

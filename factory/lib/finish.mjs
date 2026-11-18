@@ -9,7 +9,13 @@ import { dirname } from 'node:path'
 import { git } from './git.mjs'
 import { hasLabel } from './scheduler.mjs'
 import { parentCustomer, parentRequirement } from './ignition.mjs'
-import { MANIFEST_RE, readTrail, riskLevel, riskReasons } from './evidence.mjs'
+import {
+  MANIFEST_RE,
+  readTrail,
+  resolveMaxFixRounds,
+  riskLevel,
+  riskReasons,
+} from './evidence.mjs'
 
 const SMALL_LABEL = '大小:小需求'
 
@@ -343,6 +349,25 @@ async function runReview({ review, repoDir, reqBranch, parentIssue, small }) {
   }
 }
 
+async function runVerify({ verify, repoDir, branch, parentIssue }) {
+  try {
+    return await verify({ repoDir, branch, parent: parentIssue })
+  } catch (error) {
+    return { ok: false, error: `PR 验证跑不起来：${errorText(error)}` }
+  }
+}
+
+/** 推需求分支；没注入 push 时跳过（测试或只读调用方）。 */
+async function pushRequirement({ push, repoDir, owner, repo, reqBranch }) {
+  if (typeof push !== 'function') return { ok: true }
+  try {
+    await push({ repoDir, owner, repo, branch: reqBranch })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: errorText(error) }
+  }
+}
+
 /**
  * 按分支 diff 生成 `/pr` 四栏，只读，不建 PR。`--dry-run` 也走这里。
  * 返回的 `title` 和 `body` 直接交给 `openPr`。
@@ -381,7 +406,10 @@ export async function previewRequirement({ repoDir, parent, reqBranch, mainBranc
  * 收尾合并。
  *
  * `parent` 是 `collectRequirementState` 的返回值，不是 issue 本身。
+ * 开 PR 前先推需求分支，fixer 的提交不能只留在本地。
  * 评审或验证过不了就停：通知「出事」，不改结论，不放宽检查。
+ * 验证没过时把 problems 交给 fixer，修完重推、重跑评审和验证；
+ * 修复轮次有上限（`maxFixRounds` 或环境变量 `AFK_MAX_FIX_ROUNDS`），用完仍失败就停。
  * 验证和评审都过就合主干，单向门只写进 PR 正文，不等人。
  */
 export async function finishRequirement({
@@ -394,11 +422,13 @@ export async function finishRequirement({
   review,
   verify,
   fixer,
+  push,
   openPr,
   mergePr,
   notifier,
   cleanup,
   small,
+  maxFixRounds = resolveMaxFixRounds(),
 } = {}) {
   const parentIssue = parent?.parent
   if (!repoDir || !reqBranch || !parentIssue?.number || parent?.allClosed === undefined) {
@@ -477,6 +507,11 @@ export async function finishRequirement({
     }
   }
 
+  const pushed = await pushRequirement({ push, repoDir, owner, repo, reqBranch })
+  if (!pushed.ok) {
+    return { ok: false, reason: 'push_failed', error: pushed.error }
+  }
+
   const preview = await previewRequirement({ repoDir, parent, reqBranch, mainBranch })
   const body = preview.body
   const title = preview.title
@@ -490,27 +525,63 @@ export async function finishRequirement({
   }
   const pr = normalizePr(created, { owner, repo })
 
-  let verified
-  try {
-    verified = await verify({
-      repoDir,
-      branch: pr?.head?.ref || reqBranch,
-      parent: parentIssue,
-    })
-  } catch (error) {
-    verified = { ok: false, error: errorText(error) }
+  const verifyBranch = pr?.head?.ref || reqBranch
+  let verified = await runVerify({ verify, repoDir, branch: verifyBranch, parentIssue })
+  let problems = passed(verified) ? [] : findingsOf(verified)
+  let lastFailed = 'verify'
+  let fixNote = ''
+
+  if (problems.length && typeof fixer === 'function') {
+    for (let round = 1; round <= maxFixRounds && problems.length > 0; round += 1) {
+      let fixed
+      try {
+        fixed = await fixer({ repoDir, branch: verifyBranch, findings: problems, round })
+      } catch (error) {
+        fixNote = `统一修没成：${errorText(error)}`
+        break
+      }
+      if (fixed && typeof fixed === 'object' && fixed.ok === false) {
+        fixNote = `统一修没成：${findingsOf(fixed).join('；') || '未知原因'}`
+        break
+      }
+
+      // 修完的提交要推上去，否则 PR 头仍是旧提交，合了会丢修复。
+      const pushedFix = await pushRequirement({ push, repoDir, owner, repo, reqBranch })
+      if (!pushedFix.ok) {
+        return { ok: false, reason: 'push_failed', pr, error: pushedFix.error }
+      }
+
+      const reviewed = await runReview({ review, repoDir, reqBranch, parentIssue, small: smallFlag })
+      if (!passed(reviewed)) {
+        problems = findingsOf(reviewed)
+        lastFailed = 'review'
+        continue
+      }
+
+      verified = await runVerify({ verify, repoDir, branch: verifyBranch, parentIssue })
+      problems = passed(verified) ? [] : findingsOf(verified)
+      lastFailed = 'verify'
+    }
   }
-  if (!passed(verified)) {
-    const problems = findingsOf(verified)
+
+  if (problems.length) {
+    const tag = lastFailed === 'review' ? '收尾评审' : 'PR 验证'
+    const label =
+      lastFailed === 'review' ? '收尾评审没过' : `PR #${prNumber(pr) || '?'} 上验证没过`
     await notifyIncident({
       notifier,
       parentIssue,
       owner,
       repo,
-      tag: 'PR 验证',
-      tried: `PR #${prNumber(pr) || '?'} 上验证没过${problems.length ? `：${problems.join('；')}` : ''}`,
+      tag,
+      tried: `${label}${problems.length ? `：${problems.join('；')}` : ''}${fixNote ? `。${fixNote}` : ''}`,
     })
-    return { ok: false, reason: 'verify_failed', pr, problems }
+    return {
+      ok: false,
+      reason: lastFailed === 'review' ? 'review_failed' : 'verify_failed',
+      pr,
+      problems,
+    }
   }
 
   let merged

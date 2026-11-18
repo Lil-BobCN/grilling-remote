@@ -28,7 +28,7 @@ import {
   previewRequirement,
 } from '../lib/finish.mjs'
 import { createGithub } from '../lib/github.mjs'
-import { git } from '../lib/git.mjs'
+import { git, pushOrigin } from '../lib/git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.mjs'
 import { ensureCommentOnce } from '../lib/issues.mjs'
 import { createNotifier } from '../lib/notify.mjs'
@@ -107,7 +107,7 @@ function fixerBrief({ instructions, reqBranch, findings }) {
     '',
     `需求分支：${reqBranch}`,
     '',
-    '收尾评审报的问题：',
+    '收尾评审或验证报的问题：',
     ...(findings.length ? findings.map((finding) => `- ${finding}`) : ['- 见上一条评审意见']),
     '',
     '在一个提交里统一修完，提交前缀 `FACTORY:`。只改这些问题，不扩大范围。',
@@ -259,6 +259,11 @@ export async function runFinish(options, deps = {}) {
     }
   }
 
+  const push =
+    deps.push ||
+    (async ({ repoDir: dir, branch }) =>
+      pushOrigin(dir, branch, { token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '' }))
+
   const openPr = async ({ owner, repo, base, head, title, body }) => {
     const existing =
       typeof gh.findPullByHead === 'function'
@@ -284,6 +289,7 @@ export async function runFinish(options, deps = {}) {
     review,
     verify,
     fixer,
+    push,
     openPr,
     mergePr,
     notifier,

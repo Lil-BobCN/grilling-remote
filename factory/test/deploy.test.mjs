@@ -345,6 +345,7 @@ function finishDeps(gh, sent, deployCalls, zipCalls, deployResult, deliveredCall
     runner: {
       run: async () => ({ ok: true, stdout: 'AFK_VERDICT: pass' }),
     },
+    push: async () => {},
     notifier: { send: async (event) => sent.push(event) },
     deploy: async (args) => {
       deployCalls.push(args)
