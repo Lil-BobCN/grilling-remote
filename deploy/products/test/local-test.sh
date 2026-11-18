@@ -232,12 +232,13 @@ test_init() {
   assert_not_contains "$compose" '/var/run/docker.sock' "compose 不挂 Docker socket"
   assert_not_contains "$compose" 'network_mode: host' "compose 不用 host 网络"
 
-  local port db_name db_user db_pass app_key image network
+  local port db_name db_user db_pass app_key admin_pass image network
   port=$(env_get "$env" PORT)
   db_name=$(env_get "$env" DB_NAME)
   db_user=$(env_get "$env" DB_USER)
   db_pass=$(env_get "$env" DB_PASSWORD)
   app_key=$(env_get "$env" APP_KEY)
+  admin_pass=$(env_get "$env" ADMIN_PASSWORD)
   image=$(env_get "$env" IMAGE)
   network=$(env_get "$env" APP_NETWORK)
 
@@ -254,6 +255,11 @@ test_init() {
     ok "数据库密码和应用密钥是随机长串"
   else
     bad "数据库密码或应用密钥太短"
+  fi
+  if [[ $admin_pass =~ ^[0-9a-f]{48}$ ]]; then
+    ok "后台口令 ADMIN_PASSWORD 是随机 hex"
+  else
+    bad "后台口令 ADMIN_PASSWORD 缺失或格式不对（${admin_pass}）"
   fi
 
   assert_contains "$TMP/caddy/products/$ADDR.caddy" "$ADDR" "Caddy 路由写的是交付地址"
@@ -285,6 +291,27 @@ test_init() {
     bad "重复 product-init 失败"
   fi
   assert_eq "$before" "$(cat "$env")" "重复 product-init 不改密钥、端口和镜像"
+
+  # 旧版 .env 没有 ADMIN_PASSWORD：再跑 init 要补上，其他键一个不动。
+  local before_legacy admin_filled after_without
+  grep -v '^ADMIN_PASSWORD=' "$env" >"$TMP/legacy.env"
+  cat "$TMP/legacy.env" >"$env"
+  rm -f "$TMP/legacy.env"
+  before_legacy=$(cat "$env")
+  if bash "$HELPER" product-init "$ADDR" --image "$APP_IMAGE" >/dev/null; then
+    ok "缺 ADMIN_PASSWORD 时 product-init 退出 0"
+  else
+    bad "缺 ADMIN_PASSWORD 时 product-init 失败"
+  fi
+  admin_filled=$(env_get "$env" ADMIN_PASSWORD)
+  if [[ $admin_filled =~ ^[0-9a-f]{48}$ ]]; then
+    ok "已有 .env 缺键时补上 ADMIN_PASSWORD"
+  else
+    bad "已有 .env 缺键时没补上 ADMIN_PASSWORD（${admin_filled}）"
+  fi
+  after_without=$(grep -v '^ADMIN_PASSWORD=' "$env")
+  assert_eq "$before_legacy" "$after_without" "补 ADMIN_PASSWORD 不改其他键"
+  assert_mode "$env" 600 "补键后 .env 还是 600"
 }
 
 # ---------------------------------------------------------------- 1b. 两个软件互相隔离
@@ -299,7 +326,7 @@ test_isolation() {
   fi
 
   local env2=$TMP/products/$addr2/.env
-  local port1 port2 db1 db2 user1 user2 pass1 pass2
+  local port1 port2 db1 db2 user1 user2 pass1 pass2 admin1 admin2
   port1=$(env_get "$TMP/products/$ADDR/.env" PORT)
   port2=$(env_get "$env2" PORT)
   db1=$(env_get "$TMP/products/$ADDR/.env" DB_NAME)
@@ -308,6 +335,14 @@ test_isolation() {
   user2=$(env_get "$env2" DB_USER)
   pass1=$(env_get "$TMP/products/$ADDR/.env" DB_PASSWORD)
   pass2=$(env_get "$env2" DB_PASSWORD)
+  admin1=$(env_get "$TMP/products/$ADDR/.env" ADMIN_PASSWORD)
+  admin2=$(env_get "$env2" ADMIN_PASSWORD)
+
+  if [[ -n $admin1 && -n $admin2 && $admin1 != "$admin2" ]]; then
+    ok "两个软件的后台口令各不相同"
+  else
+    bad "两个软件的后台口令为空或相同"
+  fi
 
   if [[ $port2 =~ ^[0-9]+$ ]] && ((port2 >= PORT_START && port2 < PORT_START + 500)) \
     && [[ $port2 != "$port1" ]]; then
@@ -360,6 +395,8 @@ test_deploy() {
     bad "容器用户是 root（user=${user}）"
   fi
   assert_eq 101 "$(docker exec "$first_id" id -u)" "容器内 uid 是 101"
+  assert_eq "$(env_get "$env" ADMIN_PASSWORD)" "$(docker exec "$first_id" printenv ADMIN_PASSWORD)" \
+    "容器里能读到 ADMIN_PASSWORD"
 
   if docker inspect -f '{{json .Mounts}}' "$first_id" | grep -q 'docker.sock'; then
     bad "容器挂了 Docker socket"
@@ -427,6 +464,16 @@ EOF
     ok "product-status 报本机 HTTP 200"
   else
     bad "product-status 没报 HTTP 200"
+  fi
+  if printf '%s' "$status" | grep -qF "$env 的 ADMIN_PASSWORD"; then
+    ok "product-status 提示后台口令位置"
+  else
+    bad "product-status 没提示后台口令位置"
+  fi
+  if printf '%s' "$status" | grep -qF "$(env_get "$env" ADMIN_PASSWORD)"; then
+    bad "product-status 打印了后台口令的值"
+  else
+    ok "product-status 不打印后台口令的值"
   fi
   if bash "$HELPER" product-status --check >/dev/null; then
     ok "product-status --check 通过"

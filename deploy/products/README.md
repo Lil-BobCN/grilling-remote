@@ -95,11 +95,21 @@ sudo afk-product product-deploy <客户简称>-<软件简称>.afkfactory.space
 
 1. 建 `/data/products/<地址>/`、`data/`、`releases/`。
 2. 从 9100 起挑第一个空闲端口，记进 `.env`。
-3. 生成数据库密码和应用密钥，写 `.env`（600 root）。
+3. 生成数据库密码、应用密钥和后台口令，写 `.env`（600 root）。
 4. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
 5. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
 
-已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。
+已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。旧版 `.env` 缺 `ADMIN_PASSWORD` 时补一个新的，其他键不动。
+
+### 后台口令
+
+应用启动要求 `ADMIN_PASSWORD`，没有它就退出。`product-init` 生成 24 字节随机 hex，写在 `/data/products/<地址>/.env`，Compose 的 `env_file` 把它传给容器。查口令：
+
+```bash
+sudo grep '^ADMIN_PASSWORD=' /data/products/<地址>/.env
+```
+
+`product-status` 只提示文件位置，不打印值。换口令就改 `.env` 里这一行，再跑一次 `product-deploy <地址>` 让容器重建。
 
 ## Mac 侧部署脚本
 
