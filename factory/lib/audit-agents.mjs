@@ -11,8 +11,8 @@
  *
  * 截图路径在仓库里不存在时判 fail，不把没留下的证据写成通过。
  */
-import { readFile, stat } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { mkdir, readFile, rename, stat } from 'node:fs/promises'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendTrail } from './evidence.mjs'
 import { FIXER_TOOLS, REVIEW_TOOLS, NO_WRITE_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
@@ -110,6 +110,62 @@ async function missingEvidence({ repoDir, headSha, verdict }) {
   return missing
 }
 
+/** 验证证据按票和验证者分目录，跨票、跨验证者同名不覆盖。 */
+export function evidenceDirFor({ ticket, verifierId = '' }) {
+  const id = String(verifierId || '').trim().replace(/\s+/g, '-') || 'default'
+  return `.audit/evidence/${String(ticket).trim()}/${id}`
+}
+
+async function isTrackedPath(repoDir, path) {
+  try {
+    await git(repoDir, ['ls-files', '--error-unmatch', '--', path])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 把共享目录里的未跟踪证据挪进票和验证者自己的目录，返回改写后的路径。
+ * 已经提交进 git 的证据不动：它挂在票分支上，已经按票隔离。
+ */
+async function relocateEvidence({ repoDir, ticket, verifierId, evidence = [] }) {
+  const dir = evidenceDirFor({ ticket, verifierId })
+  const moves = new Map()
+  const used = new Set()
+  for (const token of evidence) {
+    if (!token || isAbsolute(token) || /^[a-z][a-z0-9+.-]*:\/\//i.test(token)) continue
+    const clean = token.replace(/^\.\//, '')
+    if (!clean || clean.startsWith(`${dir}/`)) continue
+    if (clean.split('/').includes('..') || clean.startsWith('.git/')) continue
+    try {
+      if (!(await stat(join(repoDir, clean))).isFile()) continue
+    } catch {
+      continue
+    }
+    if (await isTrackedPath(repoDir, clean)) continue
+    const relative = (clean.startsWith('.audit/') ? clean.slice('.audit/'.length) : clean).replace(
+      /^\/+/,
+      '',
+    )
+    if (!relative) continue
+    let target = `${dir}/${relative}`
+    let index = 2
+    while (used.has(target)) {
+      const dot = relative.lastIndexOf('.')
+      const suffixed =
+        dot > 0 ? `${relative.slice(0, dot)}-${index}${relative.slice(dot)}` : `${relative}-${index}`
+      target = `${dir}/${suffixed}`
+      index += 1
+    }
+    used.add(target)
+    await mkdir(dirname(join(repoDir, target)), { recursive: true })
+    await rename(join(repoDir, clean), join(repoDir, target))
+    moves.set(token, target)
+  }
+  return evidence.map((token) => moves.get(token) || token)
+}
+
 function testPassed(row) {
   if (typeof row === 'string') return /^(pass|ok|通过|0)$/i.test(row.trim())
   if (row?.pass === true || row?.ok === true) return true
@@ -131,7 +187,7 @@ function testResultText(row) {
   return testPassed(row) ? 'pass' : 'fail'
 }
 
-function verifyBrief({ ticket, branch, headSha, before, instructions, extraBrief = '' }) {
+function verifyBrief({ ticket, branch, headSha, before, instructions, extraBrief = '', evidenceDir = '' }) {
   return [
     String(instructions || '').trim(),
     '',
@@ -141,13 +197,14 @@ function verifyBrief({ ticket, branch, headSha, before, instructions, extraBrief
     `分支：${branch}`,
     `head：${headSha}`,
     before ? `改前提交：${before}` : '改前提交：没给',
+    ...(evidenceDir ? [`证据目录：${evidenceDir}/`] : []),
     ...(extraBrief ? ['', String(extraBrief).trim()] : []),
     '',
     '要求：',
     '- 不改代码，不提交，不推分支。',
-    '- 截图和 trace 写成相对仓库根目录的路径。',
+    '- 截图和 trace 写成相对仓库根目录的路径，放进上面的证据目录，不要放共享目录。',
     '- 最后一行只写一行 JSON：',
-    '  AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}',
+    `  AFK_VERDICT {"ok":true,"evidence":["${evidenceDir || '.audit/verify'}/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}`,
     '  判不过时 ok 写 false，problems 写清原因；没有跑测试就不写 tests。',
   ].join('\n')
 }
@@ -177,26 +234,32 @@ export async function runVerifyAudit({
   if (typeof runner?.run !== 'function') throw new Error('验证需要注入 runner')
   const headSha = await git(repoDir, ['rev-parse', branch])
   const id = String(verifierId || '').trim().replace(/\s+/g, '-')
+  const evidenceDir = evidenceDirFor({ ticket, verifierId: id })
   const text = instructions ?? (await readFile(join(agentsDir, 'verify.md'), 'utf8'))
   const run = await runner.run({
     name: `verify-${ticket}-${headSha.slice(0, 8)}${id ? `-${id}` : ''}`,
     cwd: repoDir,
     tools: NO_WRITE_TOOLS,
     allowedTools: VERIFY_TOOLS,
-    brief: verifyBrief({ ticket, branch, headSha, before, instructions: text, extraBrief }),
+    brief: verifyBrief({ ticket, branch, headSha, before, instructions: text, extraBrief, evidenceDir }),
   })
 
   const verdict = run?.ok
     ? parseAuditVerdict(run.stdout)
     : { found: false, ok: false, problems: [`验证 agent 退出码 ${run?.code ?? 1}：${tail(run?.stderr || run?.stdout)}`], evidence: [], tests: [] }
 
+  const evidence = await relocateEvidence({
+    repoDir,
+    ticket,
+    verifierId: id,
+    evidence: stringList(verdict.evidence),
+  })
   const problems = [...(verdict.problems || [])]
-  const missing = await missingEvidence({ repoDir, headSha, verdict })
+  const missing = await missingEvidence({ repoDir, headSha, verdict: { evidence } })
   problems.push(...missing)
   if (!verdict.found && problems.length === 0) problems.push('验证 agent 没写 AFK_VERDICT 行')
   const ok = verdict.ok && problems.length === 0
 
-  const evidence = stringList(verdict.evidence)
   const rows = []
   if (record) {
     rows.push(

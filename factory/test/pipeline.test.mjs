@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -864,4 +864,75 @@ test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再�
   assert.equal(runner.calls.length, before, '同一 head、轮次用完，不再跑 agent')
   assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 2)
   assert.equal(runner.calls.filter((call) => call.name.endsWith('-interrogate')).length, 3)
+})
+
+test('未跟踪证据挡住切票分支：先归档再切，不返回 branch-busy', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  // 上一张票验证留下的证据：需求分支里是未跟踪文件，票分支已经跟踪同一路径。
+  await mkdir(join(repoDir, '.audit', 'verify'), { recursive: true })
+  await writeFile(join(repoDir, '.audit', 'verify', 'after.png'), 'LEFTOVER-EVIDENCE')
+  const runner = fakeRunner()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  const run = result.runs[0]
+  assert.notEqual(run.skipped, 'branch-busy', JSON.stringify(run))
+  assert.equal(run.ok, true, JSON.stringify(run))
+  assert.ok(run.mergedSha)
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+
+  const archived = (await readdir(join(repoDir, '.audit', 'archive'), { recursive: true })).filter(
+    (name) => name.endsWith('after.png'),
+  )
+  assert.equal(archived.length, 1, `归档目录里没有 after.png：${archived.join('、')}`)
+  assert.equal(
+    await readFile(join(repoDir, '.audit', 'archive', archived[0]), 'utf8'),
+    'LEFTOVER-EVIDENCE',
+    '归档不能改证据内容',
+  )
+})
+
+test('归档处理不了时返回 branch_conflict，不再报 branch-busy', async (t) => {
+  const { gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  await mkdir(join(repoDir, '.audit', 'verify'), { recursive: true })
+  await writeFile(join(repoDir, '.audit', 'verify', 'after.png'), 'LEFTOVER-EVIDENCE')
+  await git(repoDir, ['config', 'core.hooksPath', '.git/nonexistent-hooks'])
+  // 目标分支被另一个工作树占着，checkout 会失败，归档也救不回来。
+  const other = join(repoDir, '..', 'other-worktree')
+  await git(repoDir, ['worktree', 'add', other, `ticket/${ticket.number}`])
+  t.after(() => git(repoDir, ['worktree', 'remove', '--force', other]).catch(() => {}))
+  const runner = fakeRunner()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].ok, false)
+  assert.equal(result.runs[0].reason, 'branch_conflict')
+  assert.notEqual(result.runs[0].skipped, 'branch-busy')
+  assert.equal(runner.calls.length, 0, '切不过去就不跑验证和评审')
 })

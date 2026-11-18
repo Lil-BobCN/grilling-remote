@@ -4,8 +4,8 @@
  * 证据已经齐了也要继续走合并：合并没成，下一轮接着试，并按 verifyPlan
  * 补足验证者。失败不在这里修，只返回原因，下一轮继续看同一事实。
  */
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, rename, stat } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
 import { MERGER_TOOLS } from './agent-runner.mjs'
@@ -46,6 +46,58 @@ function progressRound(comments = []) {
     }
   }
   return round + 1
+}
+
+function archiveStamp(at) {
+  const date = at instanceof Date ? at : new Date(at ?? Date.now())
+  const iso = Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
+  return `${iso.slice(0, 19).replace(/[-:]/g, '')}Z`
+}
+
+function branchSlug(branch) {
+  const slug = String(branch || '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+  return slug || 'detached'
+}
+
+/** 当前工作树里的未跟踪文件，和目标分支跟踪的路径取交集。 */
+async function untrackedOverlaps({ gitImpl, repoDir, branch }) {
+  const tracked = await gitImpl(repoDir, ['ls-tree', '-r', '--name-only', branch])
+  const paths = new Set(String(tracked).split(/\r?\n/).filter(Boolean))
+  if (paths.size === 0) return []
+  const untracked = await gitImpl(repoDir, ['ls-files', '--others', '--exclude-standard'])
+  return String(untracked)
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((file) => paths.has(file))
+}
+
+/**
+ * 把挡住切分支的未跟踪文件挪进 `.audit/archive/<时间戳>-<原分支>/`。
+ * 只移动，不改内容；目标批次已存在就加序号，不覆盖上一次归档。
+ */
+async function archiveUntracked({ repoDir, files, branch, at }) {
+  const base = `${archiveStamp(at)}-${branchSlug(branch)}`
+  let batch = base
+  for (let index = 2; ; index += 1) {
+    try {
+      await stat(join(repoDir, '.audit', 'archive', batch))
+      batch = `${base}-${index}`
+    } catch {
+      break
+    }
+  }
+  const moved = []
+  for (const file of files) {
+    const relative = file.startsWith('.audit/') ? file.slice('.audit/'.length) : file
+    const target = `.audit/archive/${batch}/${relative}`
+    await mkdir(dirname(join(repoDir, target)), { recursive: true })
+    await rename(join(repoDir, file), join(repoDir, target))
+    moved.push({ from: file, to: target })
+  }
+  return moved
 }
 
 /** 预览只起一次：补证据用掉以后，合并阶段复用同一套，合完再销毁。 */
@@ -205,20 +257,47 @@ export function createTicketPipeline({
     const originalBranch = await gitImpl(repoDir, ['branch', '--show-current']).catch(() => '')
     let switched = false
     if (originalBranch !== ticketBranch) {
+      let archived = []
       try {
+        const conflicts = await untrackedOverlaps({ gitImpl, repoDir, branch: ticketBranch })
+        if (conflicts.length > 0) {
+          archived = await archiveUntracked({
+            repoDir,
+            files: conflicts,
+            branch: originalBranch,
+            at: clock(),
+          })
+          log({
+            level: 'info',
+            msg: '切票分支前归档了未跟踪文件',
+            owner,
+            repo,
+            ticket: ticket.number,
+            branch: ticketBranch,
+            files: archived.map((row) => row.to),
+          })
+        }
         await gitImpl(repoDir, ['checkout', ticketBranch])
         switched = true
       } catch (error) {
         log({
           level: 'error',
-          msg: '切不到票分支，跳过流水线',
+          msg: '切不到票分支',
           owner,
           repo,
           ticket: ticket.number,
           branch: ticketBranch,
+          reason: 'branch_conflict',
+          archived: archived.map((row) => row.to),
           error: errorText(error),
         })
-        return { ticket: ticket.number, skipped: 'branch-busy', reason: errorText(error) }
+        return {
+          ticket: ticket.number,
+          ok: false,
+          reason: 'branch_conflict',
+          problems: [errorText(error)],
+          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+        }
       }
     }
 

@@ -48,10 +48,11 @@ ts	phase	decision	why	evidence	result
 最后一行只写一行 JSON：
 
 ```
-AFK_VERDICT {"ok":true,"evidence":[".audit/screenshots/before.png",".audit/screenshots/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}
+AFK_VERDICT {"ok":true,"evidence":[".audit/evidence/<票号>/<验证者>/before.png",".audit/evidence/<票号>/<验证者>/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}
 ```
 
 - `ok` 是这次验证的结论。判不过写 `false`，原因写进 `problems`。
-- `evidence` 写相对仓库根目录的路径。调度器会检查文件在不在；截图或 trace 不存在就判 fail。
+- `evidence` 写相对仓库根目录的路径，放在派活说明里的证据目录，格式 `.audit/evidence/<票号>/<验证者>/`。调度器会检查文件在不在；截图或 trace 不存在就判 fail。
+- 截图和 trace 不放共享的 `.audit/screenshots/`，同名文件跨票、跨验证者会互相覆盖。
 - 跑了测试才写 `tests`，一条测试一项，`result` 写 `pass` 或 `fail`。
 - 不改代码，不提交，不推分支。发现问题只报给实现者。
