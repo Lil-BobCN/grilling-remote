@@ -13,6 +13,7 @@ import { runFixerAudit, runReviewAudit, runVerifyAudit } from './audit-agents.mj
 import {
   mergeTicket,
   readTrail,
+  resolveMaxFixRounds,
   serializeTrail,
 } from './evidence.mjs'
 import { git } from './git.mjs'
@@ -152,6 +153,7 @@ function parseMergerVerdict(result) {
  * @param {object} options.runner 验证、评审和默认解冲突用的 agent runner
  * @param {Function} [options.previewFor] 按票返回预览实现；返回 null 表示没有预览
  * @param {Function} [options.ensureEvidence] 默认 `ensureEvidenceBeforeMerge`
+ * @param {number} [options.maxFixRounds] 评审修复轮次上限，默认读环境变量 `AFK_MAX_FIX_ROUNDS`，再回落 4
  * @param {Function} [options.fixer] 评审没过时的修复实现，默认 `runFixerAudit`
  * @param {Function} [options.merge] 默认 `mergeTicket`
  * @returns {(context: {gh: object, owner: string, repo: string, parents: Array, repoDir: string}) => Promise<object>}
@@ -164,6 +166,7 @@ export function createTicketPipeline({
   log = logLine,
   agentsDir,
   ensureEvidence = ensureEvidenceBeforeMerge,
+  maxFixRounds = resolveMaxFixRounds(),
   fixer: fixerOverride,
   merge = mergeTicket,
   readTrailImpl = readTrail,
@@ -314,6 +317,7 @@ export function createTicketPipeline({
         now: clock(),
         fixer,
         onReviewRound: reviewProgress,
+        maxFixRounds,
       })
       if (!ensured.ok) {
         const reason = ensured.reason || 'evidence_not_ready'

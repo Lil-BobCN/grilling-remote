@@ -28,6 +28,7 @@ import {
   readTrail,
   mergeTicket,
   missingEvidenceAxes,
+  resolveMaxFixRounds,
   riskLevel,
   serializeTrail,
   verifyPlan,
@@ -239,8 +240,9 @@ async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
  * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
  * 按 fresh 验证者 id 的差额补跑；高风险票还要求一条指向当前 head 的 interrogate pass。
  *
- * 评审或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；最多两轮
- * （跨调度轮次按票分支上的修复提交累计）。每次修完 head 变了，验证、standard/spec
+ * 评审或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；默认最多四轮
+ * （`maxFixRounds` 或环境变量 `AFK_MAX_FIX_ROUNDS` 可改，跨调度轮次按票分支上的修复
+ * 提交累计）。每次修完 head 变了，验证、standard/spec
  * 和 interrogate 都重跑；复验也没过时，复验问题同样交给下一轮 fixer，不提前停。
  * 每轮结果交给 `onReviewRound`，调度器用它写进度行。
  * 修不过或没注入 fixer 就销毁预览、发「出事」、返回 evidence_not_ready。
@@ -260,7 +262,7 @@ export async function ensureEvidenceBeforeMerge({
   now,
   fixer,
   onReviewRound,
-  maxFixRounds = 2,
+  maxFixRounds = resolveMaxFixRounds(),
 } = {}) {
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)

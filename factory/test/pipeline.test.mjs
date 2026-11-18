@@ -586,12 +586,12 @@ test('fixer 第 1 轮后复验失败：复验问题交给第 2 轮 fixer，通�
   assert.match(repair[1].body, /lint 路径规则/)
 })
 
-test('fixer 两轮复验都失败：发出事、不合并，fixer 不再多跑', async (t) => {
+test('fixer 四轮复验都失败：发出事、不合并，fixer 不再多跑', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)
   const runner = scriptedRunner({
     reviews: ['fail'],
-    verifies: ['pass', 'fail', 'fail', 'fail'],
+    verifies: ['pass', 'fail', 'fail', 'fail', 'fail', 'fail'],
   })
   const notifier = fakeNotifier()
   const pipeline = createTicketPipeline({
@@ -615,10 +615,10 @@ test('fixer 两轮复验都失败：发出事、不合并，fixer 不再多跑',
   assert.match(first.runs[0].problems.join('；'), /lint 路径规则/)
   assert.equal(
     runner.calls.filter((call) => call.name.startsWith('fix-')).length,
-    2,
-    '复验失败最多修两轮，不无限重跑',
+    4,
+    '复验失败最多修四轮，不无限重跑',
   )
-  assert.ok(notifier.calls.some((event) => event.event === '出事'), '两轮都失败要发出事通知')
+  assert.ok(notifier.calls.some((event) => event.event === '出事'), '四轮都失败要发出事通知')
   assert.equal(issueOf(fake, ticket.number).state, 'open')
   assert.ok(
     !(await readTrail({ repoDir, ticket: ticket.number })).some(
@@ -632,15 +632,15 @@ test('fixer 两轮复验都失败：发出事、不合并，fixer 不再多跑',
   assert.equal(second.runs[0].ok, false)
   assert.equal(
     runner.calls.filter((call) => call.name.startsWith('fix-')).length,
-    2,
+    4,
     '轮次用完以后不再起 fixer',
   )
 })
 
-test('fixer 两轮仍没过：发出事、不合并，第三圈不再修，进度行让停滞检测看得到', async (t) => {
+test('fixer 四轮仍没过：发出事、不合并，下一圈不再修，进度行让停滞检测看得到', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)
-  const runner = scriptedRunner({ reviews: ['fail', 'fail', 'fail', 'fail'] })
+  const runner = scriptedRunner({ reviews: ['fail', 'fail', 'fail', 'fail', 'fail', 'fail'] })
   const notifier = fakeNotifier()
   const pipeline = createTicketPipeline({
     runner,
@@ -662,10 +662,10 @@ test('fixer 两轮仍没过：发出事、不合并，第三圈不再修，进�
   assert.match(first.runs[0].problems.join('；'), /连接池/)
   assert.equal(
     runner.calls.filter((call) => call.name.startsWith('fix-')).length,
-    2,
-    'fixer 最多跑两轮',
+    4,
+    'fixer 默认最多跑四轮',
   )
-  assert.equal(runner.calls.filter((call) => call.name.startsWith('review-')).length, 3)
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('review-')).length, 5)
   assert.ok(notifier.calls.some((event) => event.event === '出事'), '修不过要发出事通知')
   assert.equal(issueOf(fake, ticket.number).state, 'open')
   assert.ok(
@@ -677,10 +677,10 @@ test('fixer 两轮仍没过：发出事、不合并，第三圈不再修，进�
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
   const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
-  assert.equal(progress.length, 3)
+  assert.equal(progress.length, 5)
   assert.deepEqual(
     progress.map((comment) => /轮次：(\d+)/.exec(comment.body)?.[1]),
-    ['2', '3', '4'],
+    ['2', '3', '4', '5', '6'],
   )
   assert.equal(stallHits({ comments }).some((hit) => hit.reason === '三圈没进展'), true)
 
@@ -694,9 +694,83 @@ test('fixer 两轮仍没过：发出事、不合并，第三圈不再修，进�
   assert.equal(second.runs[0].ok, false)
   assert.equal(
     runner.calls.filter((call) => call.name.startsWith('fix-')).length,
-    2,
+    4,
     '轮次用完以后不再起 fixer',
   )
+})
+
+test('maxFixRounds 由管线传入：配 1 轮就只修一轮，修不过发出事、不合并', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const runner = scriptedRunner({ reviews: ['fail', 'fail'] })
+  const notifier = fakeNotifier()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier,
+    log: () => {},
+    maxFixRounds: 1,
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].ok, false)
+  assert.equal(result.runs[0].reason, 'evidence_not_ready')
+  assert.equal(
+    runner.calls.filter((call) => call.name.startsWith('fix-')).length,
+    1,
+    '管线要把 maxFixRounds 传给 ensureEvidenceBeforeMerge',
+  )
+  assert.ok(notifier.calls.some((event) => event.event === '出事'))
+  assert.equal(issueOf(fake, ticket.number).state, 'open')
+  assert.ok(
+    !(await readTrail({ repoDir, ticket: ticket.number })).some(
+      (row) => row.phase === 'merge' && row.result === 'pass',
+    ),
+  )
+})
+
+test('环境变量 AFK_MAX_FIX_ROUNDS 覆盖管线默认轮次', async (t) => {
+  const saved = process.env.AFK_MAX_FIX_ROUNDS
+  process.env.AFK_MAX_FIX_ROUNDS = '1'
+  try {
+    const { fake, gh, parent, ticket } = await setupGithub(t)
+    const { repoDir } = await makeRepoFixture(t, ticket.number)
+    const runner = scriptedRunner({ reviews: ['fail', 'fail'] })
+    const notifier = fakeNotifier()
+    const pipeline = createTicketPipeline({
+      runner,
+      previewFor: () => null,
+      notifier,
+      log: () => {},
+    })
+
+    const result = await pipeline({
+      gh,
+      owner: OWNER,
+      repo: REPO,
+      parents: [parentSnapshot({ parent, ticket })],
+      repoDir,
+    })
+
+    assert.equal(result.runs[0].ok, false)
+    assert.equal(
+      runner.calls.filter((call) => call.name.startsWith('fix-')).length,
+      1,
+      '环境变量要把默认轮次改成 1',
+    )
+    assert.ok(notifier.calls.some((event) => event.event === '出事'))
+    assert.equal(issueOf(fake, ticket.number).state, 'open')
+  } finally {
+    if (saved === undefined) delete process.env.AFK_MAX_FIX_ROUNDS
+    else process.env.AFK_MAX_FIX_ROUNDS = saved
+  }
 })
 
 test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify 行', async (t) => {
@@ -806,12 +880,12 @@ test('高风险 interrogate 判不过：fixer 修完重新验证、standard/spec
   assert.match(repair[0], /轮次：2/)
 })
 
-test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再重跑同一 head 的 interrogate', async (t) => {
+test('interrogate 四轮仍没过：发出事、不合并；轮次用完不再重跑同一 head 的 interrogate', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)
   const head = await addMigrationCommit(repoDir, ticket.number)
   await seedCompleteTrail({ repoDir, ticketNumber: ticket.number, head, verifiers: ['v1', 'v2'] })
-  const runner = interrogateRunner({ interrogate: ['fail', 'fail', 'fail', 'fail'] })
+  const runner = interrogateRunner({ interrogate: ['fail', 'fail', 'fail', 'fail', 'fail'] })
   const notifier = fakeNotifier()
   const pipeline = createTicketPipeline({
     runner,
@@ -834,13 +908,13 @@ test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再�
   assert.match(first.runs[0].problems.join('；'), /到店取名额/)
   assert.equal(
     runner.calls.filter((call) => call.name.startsWith('fix-')).length,
-    2,
-    'fixer 最多跑两轮',
+    4,
+    'fixer 默认最多跑四轮',
   )
   assert.equal(
     runner.calls.filter((call) => call.name.endsWith('-interrogate')).length,
-    3,
-    '初始一次加两轮修复各一次',
+    5,
+    '初始一次加四轮修复各一次',
   )
   assert.ok(notifier.calls.some((event) => event.event === '出事'), '修不过要发出事通知')
   assert.equal(issueOf(fake, ticket.number).state, 'open')
@@ -853,10 +927,10 @@ test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再�
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
   const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
-  assert.equal(progress.length, 3)
+  assert.equal(progress.length, 5)
   assert.deepEqual(
     progress.map((comment) => /轮次：(\d+)/.exec(comment.body)?.[1]),
-    ['2', '3', '4'],
+    ['2', '3', '4', '5', '6'],
   )
   assert.equal(stallHits({ comments }).some((hit) => hit.reason === '三圈没进展'), true)
 
@@ -867,8 +941,8 @@ test('interrogate 两轮仍没过：发出事、不合并；轮次用完不再�
   assert.equal(second.runs[0].reason, 'evidence_not_ready')
   assert.match(second.runs[0].problems.join('；'), /修复轮次已用完/)
   assert.equal(runner.calls.length, before, '同一 head、轮次用完，不再跑 agent')
-  assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 2)
-  assert.equal(runner.calls.filter((call) => call.name.endsWith('-interrogate')).length, 3)
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 4)
+  assert.equal(runner.calls.filter((call) => call.name.endsWith('-interrogate')).length, 5)
 })
 
 test('未跟踪证据挡住切票分支：先归档再切，不返回 branch-busy', async (t) => {

@@ -21,6 +21,21 @@ import { progressLine } from './progress.mjs'
 export const TRAIL_COLUMNS = ['ts', 'phase', 'decision', 'why', 'evidence', 'result']
 export const TRAIL_HEADER = TRAIL_COLUMNS.join('\t')
 
+/** 修复轮次上限默认值：真实缺陷曾要修到第 4 轮。 */
+export const DEFAULT_MAX_FIX_ROUNDS = 4
+
+/**
+ * 解析修复轮次上限。调用方传值优先，没传看环境变量 AFK_MAX_FIX_ROUNDS；
+ * 不是大于等于 1 的整数就回落默认 4。
+ */
+export function resolveMaxFixRounds(value = process.env.AFK_MAX_FIX_ROUNDS) {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    return DEFAULT_MAX_FIX_ROUNDS
+  }
+  const rounds = Number(value)
+  return Number.isInteger(rounds) && rounds >= 1 ? rounds : DEFAULT_MAX_FIX_ROUNDS
+}
+
 const SHA_RE = /[0-9a-f]{7,40}/gi
 const VERIFIER_RE = /(?:^|\s)verifier=([^\s,;]+)/i
 const MEDIA_EXTENSIONS = new Set([
