@@ -136,6 +136,13 @@ export function latestRound(comments = []) {
   return round
 }
 
+/** 部署成功后写在父工单的交付地址评论；没有代码包时省掉那一行。 */
+function deliveryComment({ address, version, codeZipUrl }) {
+  const lines = [`交付地址：https://${address}/`, `版本：${version}`]
+  if (codeZipUrl) lines.push(`代码包：${codeZipUrl}`)
+  return lines.join('\n')
+}
+
 /** 合并后清理绑定在需求分支上的 worktree。当前目录不删。 */
 export async function cleanupRequirement({ repoDir, reqBranch }) {
   const output = await git(repoDir, ['worktree', 'list', '--porcelain']).catch(() => '')
@@ -401,6 +408,23 @@ export async function runFinish(options, deps = {}) {
       })
     } catch (error) {
       deployed.warning = [deployed.warning, `父工单进度评论没写成：${errorText(error)}`]
+        .filter(Boolean)
+        .join('；')
+    }
+
+    try {
+      await ensureCommentOnce(gh, {
+        owner,
+        repo,
+        number: parentIssue.number,
+        body: deliveryComment({
+          address: deployed.address,
+          version,
+          codeZipUrl: deployed.codeZipUrl,
+        }),
+      })
+    } catch (error) {
+      deployed.warning = [deployed.warning, `父工单交付地址评论没写成：${errorText(error)}`]
         .filter(Boolean)
         .join('；')
     }
