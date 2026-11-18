@@ -37,6 +37,27 @@ function toolList(value) {
   return rows.map((item) => String(item).trim()).filter(Boolean)
 }
 
+/**
+ * 认证、额度失败的特征串。`unrecognized_model` 只是警告，每次调用都有，不能算。
+ * 真实 `claude -p` 的错误可能落在 stdout，也可能落在 stderr，两边都查。
+ */
+const AUTH_FAILURE_PATTERNS = [
+  /API Error: 401\b/,
+  /API Error: 402\b/,
+  /API Error: 403\b/,
+  /用户额度不足/,
+  /Insufficient Balance/,
+]
+
+function authFailureMessage(stdout, stderr) {
+  for (const line of `${stdout}\n${stderr}`.split('\n')) {
+    if (AUTH_FAILURE_PATTERNS.some((pattern) => pattern.test(line))) {
+      return line.trim()
+    }
+  }
+  return ''
+}
+
 export function defaultExec(command, args, { cwd, env, onStart } = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -112,11 +133,15 @@ export function createAgentRunner({
     ]
     const result = await exec(command, args, { cwd, env })
     const code = Number.isInteger(result?.code) ? result.code : 1
+    const stdout = String(result?.stdout || '')
+    const stderr = String(result?.stderr || '')
+    const authMessage = authFailureMessage(stdout, stderr)
     return {
       ok: code === 0,
       code,
-      stdout: String(result?.stdout || ''),
-      stderr: String(result?.stderr || ''),
+      stdout,
+      stderr,
+      ...(authMessage ? { authFailure: true, authMessage } : {}),
       briefPath,
       command,
       args,
