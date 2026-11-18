@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -225,6 +225,77 @@ test('review CLI 注入假 runner，--mode spec 只写 spec 行', async () => {
     assert.equal(output.ok, true)
     const rows = await readTrail({ repoDir: dir, ticket: 59 })
     assert.deepEqual(rows.map((row) => row.decision), ['spec'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('验证证据按票和验证者分目录，跨票同名不覆盖', async () => {
+  const dir = await makeRepo()
+  const shared = '.audit/screenshots/order-delivery.png'
+  const calls = []
+  const writer = (content) => ({
+    async run(options) {
+      calls.push(options)
+      await mkdir(join(dir, '.audit', 'screenshots'), { recursive: true })
+      await writeFile(join(dir, shared), content)
+      return {
+        ok: true,
+        code: 0,
+        stdout: verdictLine({ ok: true, evidence: [shared], problems: [] }),
+        stderr: '',
+      }
+    },
+  })
+  try {
+    const first = await runVerifyAudit({
+      repoDir: dir,
+      ticket: 70,
+      branch: 'HEAD',
+      verifierId: 'v1',
+      runner: writer('票 70 v1'),
+      now: NOW,
+    })
+    assert.equal(first.ok, true, JSON.stringify(first.problems))
+    assert.equal(first.evidence[0], '.audit/evidence/70/v1/screenshots/order-delivery.png')
+
+    const other = await runVerifyAudit({
+      repoDir: dir,
+      ticket: 70,
+      branch: 'HEAD',
+      verifierId: 'v2',
+      runner: writer('票 70 v2'),
+      now: NOW,
+    })
+    assert.equal(other.evidence[0], '.audit/evidence/70/v2/screenshots/order-delivery.png')
+
+    const next = await runVerifyAudit({
+      repoDir: dir,
+      ticket: 71,
+      branch: 'HEAD',
+      verifierId: 'v1',
+      runner: writer('票 71 v1'),
+      now: NOW,
+    })
+    assert.equal(next.evidence[0], '.audit/evidence/71/v1/screenshots/order-delivery.png')
+
+    assert.match(calls.at(-1).brief, /\.audit\/evidence\/71\/v1/)
+    assert.equal(
+      await readFile(join(dir, first.evidence[0]), 'utf8'),
+      '票 70 v1',
+      '后一张票不能覆盖前一张票的证据',
+    )
+    assert.equal(
+      await readFile(join(dir, other.evidence[0]), 'utf8'),
+      '票 70 v2',
+      '另一个验证者不能覆盖同名证据',
+    )
+    const rows = await readTrail({ repoDir: dir, ticket: 70 })
+    assert.equal(
+      rows.find((row) => row.phase === 'verify' && row.why.includes('verifier=v2')).evidence,
+      other.evidence[0],
+      'trail 要写挪动后的路径',
+    )
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
