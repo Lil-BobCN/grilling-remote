@@ -21,6 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
@@ -212,6 +213,7 @@ export async function run(
     join(homedir(), '.afkfactory', 'scheduler', 'runs.jsonl')
   const maxActive = Number(process.env.MAX_ACTIVE) || 5
   const timeoutMs = Number(process.env.AFK_IGNITE_TIMEOUT_MS) || 120000
+  const maxFixRounds = resolveMaxFixRounds(process.env.AFK_MAX_FIX_ROUNDS)
 
   if (dryRun) {
     const now = clock ? clock() : new Date()
@@ -255,6 +257,7 @@ export async function run(
       }),
       notifier: notify,
       log: configOverrides.log || logLine,
+      maxFixRounds,
     })
 
   const igniteFn =

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { git } from '../lib/git.mjs'
 import {
+  DEFAULT_MAX_FIX_ROUNDS,
   appendMergeRow,
   appendTrail,
   assessMerge,
@@ -13,6 +14,7 @@ import {
   freshVerifiers,
   missingEvidenceAxes,
   readTrail,
+  resolveMaxFixRounds,
   riskLevel,
   verifyPlan,
 } from '../lib/evidence.mjs'
@@ -47,6 +49,32 @@ function row(overrides = {}) {
     ...overrides,
   }
 }
+
+test('修复轮次上限默认 4，可传值或由 AFK_MAX_FIX_ROUNDS 覆盖，非法值回落默认', () => {
+  const saved = process.env.AFK_MAX_FIX_ROUNDS
+  try {
+    assert.equal(DEFAULT_MAX_FIX_ROUNDS, 4)
+
+    delete process.env.AFK_MAX_FIX_ROUNDS
+    assert.equal(resolveMaxFixRounds(), 4, '没配就用默认 4')
+    assert.equal(resolveMaxFixRounds(6), 6, '调用方传值优先')
+    assert.equal(resolveMaxFixRounds('3'), 3, '数字字符串也认')
+
+    for (const bad of ['', '  ', 'abc', '0', '-1', '2.5', null]) {
+      assert.equal(resolveMaxFixRounds(bad), 4, `非法值 ${JSON.stringify(bad)} 要回落默认 4`)
+    }
+
+    process.env.AFK_MAX_FIX_ROUNDS = '5'
+    assert.equal(resolveMaxFixRounds(), 5, '环境变量能覆盖默认')
+    assert.equal(resolveMaxFixRounds(2), 2, '调用方传值优先于环境变量')
+
+    process.env.AFK_MAX_FIX_ROUNDS = 'abc'
+    assert.equal(resolveMaxFixRounds(), 4, '环境变量非法也回落默认 4')
+  } finally {
+    if (saved === undefined) delete process.env.AFK_MAX_FIX_ROUNDS
+    else process.env.AFK_MAX_FIX_ROUNDS = saved
+  }
+})
 
 test('readTrail 容错 BOM、CRLF 和空行', async () => {
   const dir = await makeRepo()
