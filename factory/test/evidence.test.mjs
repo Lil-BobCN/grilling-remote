@@ -517,9 +517,84 @@ test('合并成功后把需求分支推到 origin，远端头部等于合并结�
     })
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.deepEqual(calls, [
+      { repoDir: dir, owner: 'acme', repo: 'demo', branch: 'ticket/2' },
       { repoDir: dir, owner: 'acme', repo: 'demo', branch: 'req/order-1' },
     ])
     assert.equal(await git(bare, ['rev-parse', 'req/order-1']), result.headSha)
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('合并前先把票分支推到 origin，本地新提交跟着上去', async () => {
+  const fixture = await mergeFixture()
+  const { dir, bare, rows, codeSha, gh, ticket, preMergeSha } = fixture
+  const calls = []
+  try {
+    // 模拟 fixer、证据提交只留在本地：票分支 ahead 一个只改 .audit 的提交。
+    await git(dir, ['checkout', 'ticket/2'])
+    await appendTrail({
+      repoDir: dir,
+      ticket: 2,
+      ...trailRow('verify', 'fixer 后复验', `验证 head ${codeSha}`, `.audit/screenshots/after.png sha=${codeSha}`),
+    })
+    const aheadSha = await commitAll(dir, 'FACTORY: 本地证据提交')
+
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      verifier: async () => ({ ok: true }),
+      push: async ({ repoDir, branch }) => {
+        calls.push({ branch, reqHead: await git(repoDir, ['rev-parse', 'req/order-1']) })
+        await git(repoDir, ['push', 'origin', branch])
+        return { branch }
+      },
+      github: gh,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.deepEqual(calls.map((call) => call.branch), ['ticket/2', 'req/order-1'])
+    assert.equal(calls[0].reqHead, preMergeSha, '推票分支时还没合并')
+    assert.equal(await git(bare, ['rev-parse', 'ticket/2']), aheadSha, '本地新提交已推到 origin')
+    assert.equal(await git(bare, ['rev-parse', 'req/order-1']), result.headSha)
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('票分支推送失败时返回 push_failed，本轮不合并', async () => {
+  const fixture = await mergeFixture()
+  const { dir, rows, gh, ticket, preMergeSha } = fixture
+  const calls = []
+  try {
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      verifier: async () => ({ ok: true }),
+      push: async ({ branch }) => {
+        calls.push(branch)
+        if (branch === 'ticket/2') throw new Error('remote rejected: deny')
+        return { branch }
+      },
+      github: gh,
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'push_failed')
+    assert.match(result.error, /remote rejected/)
+    assert.deepEqual(calls, ['ticket/2'], '票分支推不上去就停下，不碰需求分支')
+
+    assert.equal(await git(dir, ['rev-parse', 'req/order-1']), preMergeSha, '本轮不合并')
+    const issue = await gh.getIssue({ owner: 'acme', repo: 'demo', number: 2 })
+    assert.equal(issue.state, 'open')
+    assert.ok(issue.labels.map((label) => label.name).includes('Sandcastle'))
+    const comments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 2 })
+    assert.ok(!comments.some((row) => row.body.includes('四样证据')))
   } finally {
     await teardownFixture(fixture)
   }
@@ -536,8 +611,9 @@ test('需求分支推送失败时不关票，返回 push_failed，本地合并�
       ticket,
       trail: rows,
       verifier: async () => ({ ok: true }),
-      push: async () => {
-        throw new Error('remote rejected: deny')
+      push: async ({ branch }) => {
+        if (branch === 'req/order-1') throw new Error('remote rejected: deny')
+        return { branch }
       },
       github: gh,
     })

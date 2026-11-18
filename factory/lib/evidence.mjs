@@ -876,7 +876,7 @@ export async function assessMerge({ repoDir, ticketBranch, reqBranch, ticket, tr
  * - `verifier({ repoDir, headSha, ticket }) => {ok|pass, problems?, evidence?}`
  * - `review({ repoDir, headSha, ticket, mode }) => {ok|pass, decision?, evidence?}`
  * - `merger({ repoDir, files, ticket, ticketBranch, reqBranch }) => {ok}`
- * - `push({ repoDir, owner, repo, branch }) => void`，推需求分支；默认带 `GITHUB_TOKEN` 推 origin
+ * - `push({ repoDir, owner, repo, branch }) => void`，合并前推票分支、合并后推需求分支；默认带 `GITHUB_TOKEN` 推 origin
  * - `preview.start({ repoDir, ticket, ticketBranch, headSha, risk }) => {ok, address, url}`
  * - `preview.stop({ address, ticket, repoDir }) => {ok}`
  * - `notifier.send(event)` 见 `docs/通知.md` 第五节
@@ -1009,6 +1009,15 @@ export async function mergeTicket({
   let mergedSha = ''
   let originalBranch = ''
   try {
+    // 票分支上的 fixer、证据提交只留在本地时，PR 头还是旧提交。
+    // 合进需求分支前先推票分支；推失败本轮不合，下一轮重试。
+    const pushTicket = typeof push === 'function' ? push : defaultPushBranch
+    try {
+      await pushTicket({ repoDir, owner, repo, branch: ticketBranch })
+    } catch (error) {
+      return { ok: false, reason: 'push_failed', error: errorText(error), headSha: ticketHead }
+    }
+
     originalBranch = await git(repoDir, ['branch', '--show-current']).catch(() => '')
     try {
       await git(repoDir, ['checkout', reqBranch])
