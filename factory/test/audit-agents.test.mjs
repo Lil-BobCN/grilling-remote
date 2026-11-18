@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { runReviewAudit, runVerifyAudit, parseAuditVerdict } from '../lib/audit-agents.mjs'
+import { runFixerAudit, runReviewAudit, runVerifyAudit, parseAuditVerdict } from '../lib/audit-agents.mjs'
 import { NO_WRITE_TOOLS, REVIEW_TOOLS, VERIFY_TOOLS } from '../lib/agent-runner.mjs'
 import { readTrail } from '../lib/evidence.mjs'
 import { git } from '../lib/git.mjs'
@@ -296,6 +296,67 @@ test('验证证据按票和验证者分目录，跨票同名不覆盖', async ()
       other.evidence[0],
       'trail 要写挪动后的路径',
     )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+function writingRunner(write) {
+  return {
+    calls: [],
+    async run(options) {
+      this.calls.push(options)
+      await write(options)
+      return { ok: true, code: 0, stdout: 'AFK_FIX: done\n', stderr: '' }
+    },
+  }
+}
+
+test('fixer 提交只含源码，不带 .sandcastle 和 .factory-tmp 临时文件', async () => {
+  const dir = await makeRepo()
+  try {
+    const runner = writingRunner(async ({ cwd }) => {
+      await mkdir(join(cwd, 'src'), { recursive: true })
+      await writeFile(join(cwd, 'src', 'app.mjs'), 'export const APP = 2\n')
+      await mkdir(join(cwd, '.sandcastle'), { recursive: true })
+      await writeFile(join(cwd, '.sandcastle', 'prompt-x.md'), '临时提示词\n')
+      await mkdir(join(cwd, '.factory-tmp'), { recursive: true })
+      await writeFile(join(cwd, '.factory-tmp', 'x'), '临时文件\n')
+    })
+    const result = await runFixerAudit({ repoDir: dir, ticket: 60, branch: 'HEAD', round: 1, runner })
+    assert.equal(result.ok, true, result.problems.join('；'))
+    assert.equal(result.changed, true)
+    assert.equal(await git(dir, ['log', '-1', '--format=%s']), 'FACTORY: 评审修复 #60 第1轮')
+    const files = (await git(dir, ['show', '--name-only', '--format=', 'HEAD']))
+      .split(/\r?\n/)
+      .filter(Boolean)
+    assert.deepEqual(files, ['src/app.mjs'])
+    assert.equal(await readFile(join(dir, '.sandcastle', 'prompt-x.md'), 'utf8'), '临时提示词\n')
+    assert.equal(await readFile(join(dir, '.factory-tmp', 'x'), 'utf8'), '临时文件\n')
+    const status = await git(dir, ['status', '--porcelain'])
+    assert.match(status, /\?\? \.factory-tmp\//)
+    assert.match(status, /\?\? \.sandcastle\//)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('工作区只有临时文件时 fixer 不提交', async () => {
+  const dir = await makeRepo()
+  try {
+    const runner = writingRunner(async ({ cwd }) => {
+      await mkdir(join(cwd, '.sandcastle'), { recursive: true })
+      await writeFile(join(cwd, '.sandcastle', 'prompt-x.md'), '临时提示词\n')
+      await mkdir(join(cwd, '.factory-tmp'), { recursive: true })
+      await writeFile(join(cwd, '.factory-tmp', 'x'), '临时文件\n')
+    })
+    const head = await git(dir, ['rev-parse', 'HEAD'])
+    const result = await runFixerAudit({ repoDir: dir, ticket: 61, branch: 'HEAD', round: 1, runner })
+    assert.equal(result.changed, false)
+    assert.equal(result.headSha, head)
+    assert.equal(result.ok, false)
+    assert.match(result.problems.join('；'), /没改出提交/)
+    assert.equal(await git(dir, ['rev-parse', 'HEAD']), head)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
