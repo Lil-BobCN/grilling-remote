@@ -76,6 +76,9 @@ class Base(unittest.TestCase):
     def merged_tickets(self, ticket, pr=187):
         return {ticket: {"state": "进行中", "pr": {"number": pr, "state": "merged"}}}
 
+    def tickets_with(self, ticket, state, pr=187):
+        return {ticket: {"state": "进行中", "pr": {"number": pr, "state": state}}}
+
 
 class TestPrepareAndRevoke(Base):
     def test_prepare_creates_waiting_record(self):
@@ -280,6 +283,119 @@ class TestMergeTrigger(Base):
         signal = [s for s in view["signals"] if s["key"] == "close-missing"][0]
         self.assertEqual(signal["count"], 1)
         self.assertIn("ticket:" + ticket, signal["targets"])
+
+
+class TestGithubFallback(Base):
+    """orca 的 linkedPR 状态未知或过旧时，用 GitHub 的 PR 状态兜底。"""
+
+    def test_unknown_state_with_merged_pr_closes_ticket(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        watcher = self.watcher(lambda pr: {"state": "MERGED", "headRefOid": SHA})
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "closed")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "已展开")
+
+    def test_stale_open_state_with_merged_pr_closes_ticket(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        watcher = self.watcher(lambda pr: {"state": "MERGED", "headRefOid": SHA})
+
+        watcher.check(self.tickets_with(ticket, "open"))
+
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "closed")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "已展开")
+
+    def test_unknown_state_with_closed_pr_expires_record(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        watcher = self.watcher(lambda pr: {"state": "CLOSED", "headRefOid": SHA})
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+
+        record = self.store.state["close_records"][record_id]
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "open")
+        self.assertEqual(record["status"], "过期")
+        self.assertEqual(record["last_check"]["result"], "closed_without_merge")
+
+    def test_unknown_state_with_sha_mismatch_expires_record(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        watcher = self.watcher(lambda pr: {"state": "MERGED", "headRefOid": OTHER_SHA})
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+
+        record = self.store.state["close_records"][record_id]
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "open")
+        self.assertEqual(record["status"], "过期")
+        self.assertEqual(record["last_check"]["result"], "sha_mismatch")
+
+    def test_unknown_state_with_open_pr_keeps_waiting(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        called = []
+        watcher = self.watcher(
+            lambda pr: called.append(pr) or {"state": "OPEN", "headRefOid": SHA})
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+
+        self.assertEqual(called, [187])
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "open")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "等合并")
+
+    def test_unknown_state_gh_error_retries_without_expiring(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+        attempts = {"n": 0}
+
+        def flaky(pr):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise DtError("gh 超时")
+            if attempts["n"] == 2:
+                return {"state": "OPEN", "headRefOid": SHA}
+            return {"state": "MERGED", "headRefOid": SHA}
+
+        watcher = self.watcher(flaky)
+        watcher.check(self.tickets_with(ticket, "unknown"))
+        record = self.store.state["close_records"][record_id]
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "open")
+        self.assertEqual(record["status"], "等合并")
+        self.assertEqual(record["verify"], "无法核对")
+        self.assertEqual(record["last_check"]["result"], "gh_unavailable")
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+        record = self.store.state["close_records"][record_id]
+        self.assertIsNone(record["verify"])
+        self.assertEqual(record["last_check"]["result"], "waiting_merge")
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "closed")
+        self.assertEqual(
+            self.store.state["close_records"][record_id]["status"], "已展开")
+
+    def test_fallback_respects_retry_seconds(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        self.prepare(ticket)
+        called = []
+        watcher = CloseWatcher(
+            self.store, "Example/repo", lock=self.lock,
+            pr_head=lambda pr: called.append(pr) or {"state": "OPEN", "headRefOid": SHA},
+            retry_seconds=3600, write_retry_seconds=0)
+
+        watcher.check(self.tickets_with(ticket, "unknown"))
+        watcher.check(self.tickets_with(ticket, "unknown"))
+
+        self.assertEqual(called, [187])
 
 
 class TestIssueCloseGate(Base):
