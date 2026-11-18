@@ -564,6 +564,66 @@ test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge
   }
 })
 
+test('部署成功后父工单写一条交付地址、版本和代码包', async () => {
+  const { exitCode, parent, fake, dir } = await runFinishFlow()
+  try {
+    assert.equal(exitCode, 0)
+    const issue = fake.state.issues
+      .get(`${OWNER}/${REPO}`)
+      .find((row) => row.number === parent.number)
+    const delivery = issue.comments.filter((row) => row.body.startsWith('交付地址：'))
+    assert.deepEqual(
+      delivery.map((row) => row.body),
+      [
+        [
+          '交付地址：https://acme-shop.afkfactory.space/',
+          '版本：merge-1',
+          '代码包：https://afkfactory.space/downloads/acme-shop.afkfactory.space-merge-1.zip',
+        ].join('\n'),
+      ],
+    )
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('同一版本重复跑，交付地址评论只有一条', async () => {
+  const { fake, gh, parent, child } = await setupFinishGithub()
+  const dir = await finishRepo(child.number)
+  const options = {
+    owner: OWNER,
+    repo: REPO,
+    parent: String(parent.number),
+    'repo-dir': dir,
+    'req-branch': 'req/order-1',
+    main: 'main',
+    product: 'shop',
+  }
+  const deps = finishDeps(gh, [], [], [], undefined, [])
+  // 两次跑合并到同一个 SHA，模拟同一版本重跑；假 GitHub 每次会新开 PR，
+  // 不固定就会得到 merge-2。
+  const sameShaGh = Object.create(gh)
+  sameShaGh.mergePull = async () => ({ merged: true, sha: 'merge-1' })
+  deps.gh = sameShaGh
+  try {
+    const first = await runFinish(options, deps)
+    const second = await runFinish(options, deps)
+    assert.equal(first.exitCode, 0, JSON.stringify(first.output))
+    assert.equal(second.exitCode, 0, JSON.stringify(second.output))
+    assert.equal(second.output.deploy.ok, true)
+
+    const issue = fake.state.issues
+      .get(`${OWNER}/${REPO}`)
+      .find((row) => row.number === parent.number)
+    const delivery = issue.comments.filter((row) => row.body.startsWith('交付地址：'))
+    assert.equal(delivery.length, 1, JSON.stringify(delivery.map((row) => row.body)))
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('软件简称取 --product 或仓名后缀，拼不出就拒绝部署', () => {
   assert.equal(productFromRepo({ repo: 'acme-shop', customer: 'acme' }), 'shop')
   assert.equal(productFromRepo({ repo: 'acme/acme-shop', customer: 'acme' }), 'shop')
@@ -726,7 +786,7 @@ exit 1
 })
 
 test('finish 部署失败时 CLI 退出非零，结果里带 deploy 失败，不发代码 zip', async () => {
-  const { output, exitCode, deployCalls, zipCalls, fake, dir } = await runFinishFlow(
+  const { output, exitCode, deployCalls, zipCalls, parent, fake, dir } = await runFinishFlow(
     {},
     {},
     { ok: false, reason: '部署失败', tried: '第 1 次：502；第 2 次：502' },
@@ -738,6 +798,14 @@ test('finish 部署失败时 CLI 退出非零，结果里带 deploy 失败，不
     assert.equal(output.ok, true)
     assert.equal(output.deploy.ok, false)
     assert.equal(output.deploy.reason, '部署失败')
+    const issue = fake.state.issues
+      .get(`${OWNER}/${REPO}`)
+      .find((row) => row.number === parent.number)
+    assert.equal(
+      issue.comments.filter((row) => row.body.startsWith('交付地址：')).length,
+      0,
+      '部署失败不该写交付地址评论',
+    )
   } finally {
     await fake.close()
     await rm(dir, { recursive: true, force: true })
