@@ -6,7 +6,12 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { runDeploy, publishZipWithDefaults } from '../bin/deploy.mjs'
+import {
+  markDeliveredWithDefaults,
+  publishZipWithDefaults,
+  runDeploy,
+  scpTransfer,
+} from '../bin/deploy.mjs'
 import { productFromRepo, runFinish } from '../bin/finish.mjs'
 import {
   DEFAULT_DELIVERY_TRIES,
@@ -269,6 +274,123 @@ test('代码 zip 从 git archive 生成，传到下载目录并给出 URL', asyn
     } finally {
       await rm(outDir, { recursive: true, force: true })
     }
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+function commandRecorder() {
+  const calls = []
+  const fn = async (command, args) => {
+    calls.push([command, args])
+    return ''
+  }
+  fn.calls = calls
+  return fn
+}
+
+async function withEnv(env, fn) {
+  const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]))
+  try {
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    return await fn()
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
+
+test('设了 AFK_SSH_KEY 时 scp 和 ssh 都带 -i，没设时参数不变', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-deploy-key-'))
+  try {
+    const key = join(dir, 'id_ed25519_test')
+    await writeFile(key, 'test-key\n')
+
+    const withKey = commandRecorder()
+    await withEnv({ AFK_SERVER: 'dev@example.invalid', AFK_SSH_KEY: key }, async () => {
+      await scpTransfer({ tar: '/tmp/image.tar', remote: '/tmp/image-remote.tar', run: withKey })
+      await markDeliveredWithDefaults({
+        orderId: 'o-0001',
+        address: 'acme-shop.afkfactory.space',
+        run: withKey,
+      })
+    })
+
+    assert.deepEqual(withKey.calls[0], [
+      'scp',
+      ['-i', key, '/tmp/image.tar', 'dev@example.invalid:/tmp/image-remote.tar'],
+    ])
+    assert.deepEqual(withKey.calls[1], [
+      'ssh',
+      [
+        '-i',
+        key,
+        'dev@example.invalid',
+        'sudo',
+        '-n',
+        '/usr/local/sbin/afk-uploads',
+        'mark-delivered',
+        'o-0001',
+        'acme-shop.afkfactory.space',
+      ],
+    ])
+
+    const withoutKey = commandRecorder()
+    await withEnv({ AFK_SERVER: 'dev@example.invalid', AFK_SSH_KEY: undefined }, async () => {
+      await scpTransfer({ tar: '/tmp/image.tar', remote: '/tmp/image-remote.tar', run: withoutKey })
+      await markDeliveredWithDefaults({
+        orderId: 'o-0001',
+        address: 'acme-shop.afkfactory.space',
+        run: withoutKey,
+      })
+    })
+
+    assert.deepEqual(withoutKey.calls[0], [
+      'scp',
+      ['/tmp/image.tar', 'dev@example.invalid:/tmp/image-remote.tar'],
+    ])
+    assert.deepEqual(withoutKey.calls[1], [
+      'ssh',
+      [
+        'dev@example.invalid',
+        'sudo',
+        '-n',
+        '/usr/local/sbin/afk-uploads',
+        'mark-delivered',
+        'o-0001',
+        'acme-shop.afkfactory.space',
+      ],
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('AFK_SSH_KEY 指向的私钥不存在时明确报错，不静默失败', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-deploy-key-missing-'))
+  try {
+    const missing = join(dir, 'id_ed25519_missing')
+    const calls = commandRecorder()
+    await withEnv({ AFK_SERVER: 'dev@example.invalid', AFK_SSH_KEY: missing }, async () => {
+      await assert.rejects(
+        scpTransfer({ tar: '/tmp/image.tar', remote: '/tmp/image-remote.tar', run: calls }),
+        /AFK_SSH_KEY 指向的私钥不存在/,
+      )
+      await assert.rejects(
+        markDeliveredWithDefaults({
+          orderId: 'o-0001',
+          address: 'acme-shop.afkfactory.space',
+          run: calls,
+        }),
+        /AFK_SSH_KEY 指向的私钥不存在/,
+      )
+    })
+    assert.equal(calls.calls.length, 0, 'key 不存在时不该真的去跑 scp/ssh')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
