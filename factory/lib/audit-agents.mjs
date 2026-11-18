@@ -185,6 +185,21 @@ function testPassed(row) {
   return false
 }
 
+/**
+ * 认证失败不是评审结论：不写 fail 行，交给调用方止损。
+ * 真实 runner 的识别在 I-0194；这里只认 runner 结果上的 `authFailure` 标记。
+ */
+function authFailureOf(run, label) {
+  if (!run?.authFailure) return null
+  const message = String(run.authMessage || '').trim() || tail(run.stderr || run.stdout) || '未给出原因'
+  return {
+    ok: false,
+    authFailure: true,
+    authMessage: String(run.authMessage || ''),
+    problems: [`${label} agent 认证失败：${message}`],
+  }
+}
+
 function testCommand(row) {
   if (typeof row === 'string') return row
   return String(row?.command || row?.cmd || '').trim()
@@ -254,6 +269,9 @@ export async function runVerifyAudit({
     allowedTools: VERIFY_TOOLS,
     brief: verifyBrief({ ticket, branch, headSha, before, instructions: text, extraBrief, evidenceDir }),
   })
+
+  const authFailure = authFailureOf(run, '验证')
+  if (authFailure) return { ...authFailure, headSha, evidence: [], rows: [] }
 
   const verdict = run?.ok
     ? parseAuditVerdict(run.stdout)
@@ -364,6 +382,11 @@ export async function runReviewAudit({
     brief: reviewBrief({ ticket, branch, headSha, mode, instructions: text, extraBrief }),
   })
 
+  const authFailure = authFailureOf(run, '评审')
+  if (authFailure) {
+    return { ...authFailure, headSha, evidence: [], decision: decisions.join('、'), rows: [] }
+  }
+
   const verdict = run?.ok
     ? parseAuditVerdict(run.stdout)
     : { found: false, ok: false, problems: [`评审 agent 退出码 ${run?.code ?? 1}：${tail(run?.stderr || run?.stdout)}`], evidence: [] }
@@ -450,6 +473,9 @@ export async function runFixerAudit({
     allowedTools: FIXER_TOOLS,
     brief: fixerBrief({ ticket, branch, headSha, round, findings, instructions: text }),
   })
+
+  const authFailure = authFailureOf(run, '修复')
+  if (authFailure) return { ...authFailure, changed: false, headSha }
 
   const problems = []
   if (!run?.ok) {

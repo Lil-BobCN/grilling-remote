@@ -235,6 +235,11 @@ async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
   }
 }
 
+/** 审计 agent 报认证失败时的问题行；调用方据此停下整条管线。 */
+function authProblems(audit) {
+  return audit?.problems?.length ? audit.problems : ['认证失败']
+}
+
 /**
  * 合并前补齐四样证据：缺 verify 或 review 就先起预览，跑对应的 agent 写 trail，
  * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
@@ -320,6 +325,14 @@ export async function ensureEvidenceBeforeMerge({
       ? `预览：${started.url}（用户名 ${started.user}，密码 ${started.password}）`
       : ''
   const problems = []
+  let authProblem = null
+  let authStage = ''
+  const stopOnAuth = (audit, stage) => {
+    if (!audit?.authFailure) return false
+    authProblem = authProblems(audit)
+    authStage = stage
+    return true
+  }
   let interrogateFailed = false
   try {
     if (verifyRuns > 0) {
@@ -334,13 +347,14 @@ export async function ensureEvidenceBeforeMerge({
           extraBrief,
           now,
         })
+        if (stopOnAuth(audit, 'verify')) break
         if (!audit.ok) {
           problems.push(...(audit.problems.length ? audit.problems : ['验证没过']))
           break
         }
       }
     }
-    if (gaps.includes('review') || interrogateGap) {
+    if (!authProblem && (gaps.includes('review') || interrogateGap)) {
       const runReviewRound = async ({ standards }) => {
         const roundProblems = []
         if (standards) {
@@ -353,6 +367,7 @@ export async function ensureEvidenceBeforeMerge({
             extraBrief,
             now,
           })
+          if (stopOnAuth(audit, 'review')) return []
           if (!audit.ok) roundProblems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
         }
         if (wantsInterrogate) {
@@ -365,6 +380,7 @@ export async function ensureEvidenceBeforeMerge({
             extraBrief,
             now,
           })
+          if (stopOnAuth(audit, 'review')) return []
           interrogateFailed = !audit.ok
           if (!audit.ok) {
             roundProblems.push(
@@ -380,6 +396,7 @@ export async function ensureEvidenceBeforeMerge({
         const fixedHead = await git(repoDir, ['rev-parse', branch])
         if (!plan) {
           const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
+          if (stopOnAuth(audit, 'verify')) return []
           return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
         }
         const trail = await readTrail({ repoDir, ticket: ticketNumber })
@@ -396,6 +413,7 @@ export async function ensureEvidenceBeforeMerge({
             extraBrief,
             now,
           })
+          if (stopOnAuth(audit, 'verify')) break
           if (!audit.ok) {
             found.push(...(audit.problems.length ? audit.problems : ['验证没过']))
             break
@@ -406,15 +424,19 @@ export async function ensureEvidenceBeforeMerge({
 
       let round = 1
       let failed = await runReviewRound({ standards: gaps.includes('review') })
-      await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
-      if (failed.length && typeof fixer === 'function') {
+      if (!authProblem) {
+        await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
+      }
+      if (!authProblem && failed.length && typeof fixer === 'function') {
         let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
         while (failed.length && used < maxFixRounds) {
           used += 1
           const fixed = await fixer({ repoDir, branch, findings: failed, round: used })
+          if (stopOnAuth(fixed, 'review')) break
           if (!fixed?.ok) break
           round += 1
           const verifyProblems = await reverifyAfterFix()
+          if (authProblem) break
           if (verifyProblems.length) {
             // 复验问题和评审问题一样，继续交给下一轮 fixer，轮次用完才停。
             failed = verifyProblems
@@ -422,16 +444,29 @@ export async function ensureEvidenceBeforeMerge({
             continue
           }
           failed = await runReviewRound({ standards: true })
+          if (authProblem) break
           await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
         }
       }
-      if (failed.length) problems.push(...failed)
+      if (!authProblem && failed.length) problems.push(...failed)
     }
   } catch (error) {
     problems.push(errorText(error))
   }
 
   rows = await readTrail({ repoDir, ticket: ticketNumber })
+  if (authProblem) {
+    if (started?.ok) {
+      await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})
+    }
+    return {
+      ok: false,
+      reason: 'auth_failed',
+      stage: authStage,
+      missing: auditGaps(rows, { interrogate: wantsInterrogate && interrogateFailed }),
+      problems: authProblem,
+    }
+  }
   if (problems.length) {
     if (started?.ok) {
       await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})

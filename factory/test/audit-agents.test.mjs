@@ -25,13 +25,13 @@ async function makeRepo() {
   return dir
 }
 
-function fakeRunner(stdout, { ok = true, stderr = '' } = {}) {
+function fakeRunner(stdout, { ok = true, stderr = '', authFailure = false, authMessage = '' } = {}) {
   const calls = []
   return {
     calls,
     async run(options) {
       calls.push(options)
-      return { ok, code: ok ? 0 : 1, stdout, stderr }
+      return { ok, code: ok ? 0 : 1, stdout, stderr, ...(authFailure ? { authFailure: true, authMessage } : {}) }
     },
   }
 }
@@ -178,6 +178,48 @@ test('评审判不过时两行都写 fail', async () => {
     const rows = await readTrail({ repoDir: dir, ticket: 57 })
     assert.deepEqual(rows.map((row) => row.result), ['fail', 'fail'])
     assert.match(rows[0].evidence, /漏了错误处理/)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('验证 agent 认证失败：返回 authFailure，不写普通 fail 行', async () => {
+  const dir = await makeRepo()
+  try {
+    const runner = fakeRunner('', {
+      ok: false,
+      stderr: 'API Error: 403',
+      authFailure: true,
+      authMessage: 'API Error: 403',
+    })
+    const result = await runVerifyAudit({ repoDir: dir, ticket: 62, branch: 'HEAD', runner, now: NOW })
+    assert.equal(result.ok, false)
+    assert.equal(result.authFailure, true)
+    assert.equal(result.authMessage, 'API Error: 403')
+    assert.match(result.problems.join('；'), /认证失败/)
+    assert.match(result.problems.join('；'), /403/)
+    assert.deepEqual(result.rows, [])
+    assert.deepEqual(await readTrail({ repoDir: dir, ticket: 62 }), [])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('评审 agent 认证失败：返回 authFailure，不写成评审 fail 行', async () => {
+  const dir = await makeRepo()
+  try {
+    const runner = fakeRunner('', {
+      ok: false,
+      stderr: 'API Error: 401',
+      authFailure: true,
+      authMessage: 'API Error: 401',
+    })
+    const result = await runReviewAudit({ repoDir: dir, ticket: 63, branch: 'HEAD', runner, now: NOW })
+    assert.equal(result.ok, false)
+    assert.equal(result.authFailure, true)
+    assert.match(result.problems.join('；'), /认证失败/)
+    assert.deepEqual(result.rows, [])
+    assert.deepEqual(await readTrail({ repoDir: dir, ticket: 63 }), [])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
