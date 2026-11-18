@@ -50,6 +50,65 @@ test('退出码非 0 返回 ok:false，保留 stderr', async () => {
   assert.equal(result.command, 'fake-claude')
 })
 
+test('认证和额度失败带 authFailure 和原因，stdout、stderr 都认', async () => {
+  const cases = [
+    {
+      name: '401',
+      stdout: '',
+      stderr: 'API Error: 401 {"error":{"type":"authentication_error"}}',
+      expect: /API Error: 401/,
+    },
+    {
+      name: '402',
+      stdout: '',
+      stderr: 'API Error: 402 {"error":{"type":"payment_required"}}',
+      expect: /API Error: 402/,
+    },
+    {
+      name: '403',
+      stdout: 'API Error: 403 {"error":{"type":"permission_error"}}',
+      stderr: '',
+      expect: /API Error: 403/,
+    },
+    {
+      name: '用户额度不足',
+      stdout: '用户额度不足，请充值后重试',
+      stderr: '',
+      expect: /用户额度不足/,
+    },
+    {
+      name: 'Insufficient Balance',
+      stdout: '',
+      stderr: 'API Error: 400 {"error":{"message":"Insufficient Balance"}}',
+      expect: /Insufficient Balance/,
+    },
+  ]
+
+  for (const item of cases) {
+    const runner = createAgentRunner({
+      exec: async () => ({ code: 1, stdout: item.stdout, stderr: item.stderr }),
+    })
+    const result = await runner.run({ brief: '验证这张票' })
+    assert.equal(result.ok, false, item.name)
+    assert.equal(result.authFailure, true, item.name)
+    assert.match(result.authMessage, item.expect, item.name)
+  }
+})
+
+test('只有 unrecognized_model 警告时不带 authFailure', async () => {
+  const runner = createAgentRunner({
+    exec: async () => ({
+      code: 0,
+      stdout: 'unrecognized_model: fake-model\n验证通过',
+      stderr: '',
+    }),
+  })
+  const result = await runner.run({ brief: '验证这张票' })
+  assert.equal(result.ok, true)
+  assert.equal(result.authFailure, undefined)
+  assert.equal(result.authMessage, undefined)
+})
+
 test('空 brief 直接报错，不跑命令', async () => {
   let called = false
   const runner = createAgentRunner({
