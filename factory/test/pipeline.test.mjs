@@ -116,11 +116,12 @@ async function setupGithub(t) {
   return { fake, gh, parent, ticket }
 }
 
-function parentSnapshot({ parent, ticket }) {
+function parentSnapshot({ parent, ticket, labels = parent.labels || [] }) {
   return {
     number: parent.number,
     title: parent.title,
     body: parent.body,
+    labels: labels.map((name) => ({ name })),
     comments: [],
     subIssues: [
       {
@@ -931,6 +932,43 @@ test('父工单已有别的 needs-info 时，认证失败仍发一次通知', as
     1,
     '别的流程打的 needs-info 不能挡住认证失败通知',
   )
+})
+
+test('父工单带 needs-info：连续两轮不调 runner，摘掉标签后下一轮恢复', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  await gh.addLabels({ owner: OWNER, repo: REPO, number: parent.number, labels: ['needs-info'] })
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const runner = fakeRunner()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+  const blocked = parentSnapshot({
+    parent,
+    ticket,
+    labels: ['状态:开发中', 'needs-info'],
+  })
+  const context = { gh, owner: OWNER, repo: REPO, repoDir }
+
+  for (const round of [1, 2]) {
+    const result = await pipeline({ ...context, parents: [blocked] })
+    assert.deepEqual(
+      result.runs.map((run) => run.skipped),
+      ['needs-info'],
+      `第 ${round} 轮要跳过：${JSON.stringify(result.runs)}`,
+    )
+  }
+  assert.equal(runner.calls.length, 0, '父工单带 needs-info 时两轮都不调 runner')
+  assert.equal(issueOf(fake, ticket.number).state, 'open')
+
+  await gh.removeLabel({ owner: OWNER, repo: REPO, number: parent.number, name: 'needs-info' })
+  const resumed = await pipeline({ ...context, parents: [parentSnapshot({ parent, ticket })] })
+
+  assert.equal(resumed.runs[0].ok, true, JSON.stringify(resumed.runs[0]))
+  assert.ok(runner.calls.length > 0, '摘标签后下一轮重新调用 runner')
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
 })
 
 test('高风险 interrogate 判不过：fixer 修完重新验证、standard/spec 和 interrogate 后合分支', async (t) => {

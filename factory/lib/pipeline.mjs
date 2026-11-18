@@ -242,6 +242,8 @@ export function createTicketPipeline({
     if (ticket.state === 'closed') return null
     if (hasLabel(ticket, PENDING_LABEL)) return null
     if (!hasLabel(ticket, SANDBOX_LABEL)) return null
+    // 父工单挂着 needs-info：这一轮不碰 runner，运营者摘掉标签后下一轮自然恢复。
+    if (hasLabel(parent, NEEDS_INFO_LABEL)) return { ticket: ticket.number, skipped: 'needs-info' }
 
     const comments = await gh.listComments({ owner, repo, number: ticket.number })
     if (!firstLine(comments.at(-1)?.body).startsWith('点火完成')) return null
