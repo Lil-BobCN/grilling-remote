@@ -614,6 +614,7 @@ cmd_init() {
     DB_USER=$DB_NAME
     DB_PASSWORD=$(random_hex 24)
     APP_KEY=$(random_hex 32)
+    ADMIN_PASSWORD=$(random_hex 24)
     APP_NETWORK="${NETWORK_PREFIX}${DB_NAME}"
     APP_UID=${AFK_APP_UID:-1000}
     APP_GID=${AFK_APP_GID:-1000}
@@ -631,10 +632,18 @@ DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 APP_KEY=$APP_KEY
+ADMIN_PASSWORD=$ADMIN_PASSWORD
 EOF
     chmod 600 "$env"
     chown_if_root root:root "$env"
     log "写 .env（600 root），端口 $PORT"
+  fi
+
+  # 旧版 .env 没有后台口令，应用启动会失败；缺了就补，已有值不动。
+  if [[ -z $(env_get "$env" ADMIN_PASSWORD) ]]; then
+    env_set "$env" ADMIN_PASSWORD "$(random_hex 24)"
+    chown_if_root root:root "$env"
+    log "补上后台口令 ADMIN_PASSWORD，写在 $env"
   fi
 
   local data_dir="$dir/data"
@@ -799,6 +808,7 @@ cmd_status() {
     code=$(curl -s -o /dev/null --max-time 3 -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || true)
     [[ -n $code ]] || code='无应答'
     log "成品 $(basename "$dir")  端口 $PORT  镜像 $IMAGE  容器 $running/$total  本机 HTTP $code"
+    log "  后台口令在 $dir/.env 的 ADMIN_PASSWORD（600 root，用 sudo 查看）"
     if [[ $check -eq 1 ]]; then
       [[ $running -ge 1 ]] || failed=1
       [[ $code != '无应答' ]] || failed=1
