@@ -52,8 +52,6 @@ class CloseWatcher:
                 self._mark(record, status="过期", check="closed_without_merge",
                            detail=f"PR #{record['pr']} 已关闭但没有合并")
                 continue
-            if pr_state != "merged":
-                continue
             now = time.time()
             if self._retry_at.get(record["id"], 0) > now:
                 continue
@@ -67,6 +65,9 @@ class CloseWatcher:
                     self._mark(record, verify="无法核对", check="gh_unavailable",
                                detail=str(exc))
                 continue
+            if pr_state != "merged":
+                # orca 状态未知或是旧 open：以 GitHub 为准，下一轮等 retry_seconds
+                self._retry_at[record["id"]] = now + self.retry_seconds
             gh_state = str(data.get("state") or "").upper()
             if gh_state == "CLOSED":
                 self._mark(record, status="过期", check="closed_without_merge",
