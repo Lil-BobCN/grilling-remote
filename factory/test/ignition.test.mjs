@@ -411,6 +411,74 @@ test('点火成功先 push 票分支，PR head 用 push 的分支', async (t) =>
   assert.deepEqual(done.afkResult, { commits: [{ sha: 'abc123' }, { sha: 'def456' }], branch })
 })
 
+test('本地需求分支有未推提交时先推送，点火不重置掉', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  await mkdir(join(fixture.root, 'repos'), { recursive: true })
+  await git(fixture.root, ['clone', fixture.bare, repoDir])
+  await git(repoDir, ['checkout', REQ_BRANCH])
+  await writeFile(join(repoDir, 'merged.txt'), '上一张票的合并\n')
+  await commitAll(repoDir, 'FACTORY: 合并 #10')
+  const localHead = await git(repoDir, ['rev-parse', 'HEAD'])
+  await git(repoDir, ['branch', `ticket/${ticket.number}`, localHead])
+  assert.notEqual(await git(fixture.bare, ['rev-parse', REQ_BRANCH]), localHead)
+
+  const runner = fakeRunner()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(
+    await git(fixture.bare, ['rev-parse', REQ_BRANCH]),
+    localHead,
+    '未推提交要先推到 origin',
+  )
+  assert.equal(
+    await git(repoDir, ['rev-parse', REQ_BRANCH]),
+    localHead,
+    '点火不能重置本地需求分支',
+  )
+  assert.equal(runner.calls.length, 1)
+})
+
+test('本地需求分支未推提交且推送失败时，点火报错且不重置', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  await mkdir(join(fixture.root, 'repos'), { recursive: true })
+  await git(fixture.root, ['clone', fixture.bare, repoDir])
+  await git(repoDir, ['checkout', REQ_BRANCH])
+  await writeFile(join(repoDir, 'merged.txt'), '上一张票的合并\n')
+  await commitAll(repoDir, 'FACTORY: 合并 #10')
+  const localHead = await git(repoDir, ['rev-parse', 'HEAD'])
+
+  const runner = fakeRunner()
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: async () => {
+      throw new Error('deny')
+    },
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, false)
+  assert.match(String(result.error), /没推到 origin/)
+  assert.match(String(result.error), /deny/)
+  assert.equal(await git(repoDir, ['rev-parse', REQ_BRANCH]), localHead, '不能静默重置')
+  assert.equal(runner.calls.length, 0)
+})
+
 test('gh pr create 退出码 1 但 stdout 有 PR 地址：点火算完成，不重复开 PR', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)

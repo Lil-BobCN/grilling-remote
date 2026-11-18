@@ -63,6 +63,25 @@ export async function push(dir, { remote = 'origin', branch = 'main', setUpstrea
   return git(dir, args, { timeoutMs: 120000 })
 }
 
+/** GitHub 的 https 地址才加 token 认证头；本地路径和 ssh 地址保持原样。 */
+export function gitAuthEnv(url, token) {
+  if (!token || !/^https:\/\/(www\.)?github\.com\//i.test(String(url || ''))) return {}
+  const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
+  return {
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+  }
+}
+
+/** 推到 origin。不传 url 就读仓库自己的 origin 地址，用来判断要不要带 token。 */
+export async function pushOrigin(dir, branch, { token = '', url = '', timeoutMs = 120000 } = {}) {
+  const remoteUrl = url || (await git(dir, ['remote', 'get-url', 'origin']).catch(() => ''))
+  const env = gitAuthEnv(remoteUrl, token)
+  await git(dir, ['push', 'origin', branch], { timeoutMs, env })
+  return { branch }
+}
+
 export async function currentBranch(dir) {
   return git(dir, ['branch', '--show-current'])
 }

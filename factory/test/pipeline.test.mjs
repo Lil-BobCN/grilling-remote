@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
-import { commitAll, git, initRepo } from '../lib/git.mjs'
+import { commitAll, git, initBareRepo, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
 import { freshVerifiers, mergeTicket, readTrail } from '../lib/evidence.mjs'
@@ -51,6 +51,11 @@ async function makeRepoFixture(t, ticketNumber) {
   await writeFile(join(repoDir, 'src', 'app.mjs'), 'export const APP = 2\n')
   await commitAll(repoDir, 'FACTORY: 票实现')
   await git(repoDir, ['checkout', REQ_BRANCH])
+
+  const bare = join(root, 'remote.git')
+  await initBareRepo(bare)
+  await git(repoDir, ['remote', 'add', 'origin', bare])
+  await git(repoDir, ['push', 'origin', 'main', REQ_BRANCH, `ticket/${ticketNumber}`])
   return { root, repoDir }
 }
 
