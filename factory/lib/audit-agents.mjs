@@ -21,6 +21,17 @@ import { git } from './git.mjs'
 export const AGENTS_DIR = fileURLToPath(new URL('../agents/', import.meta.url))
 export const FIX_COMMIT_PREFIX = 'FACTORY: 评审修复'
 
+/**
+ * fixer 提交不碰的临时目录：`.audit/` 是证据，`.sandcastle/` 放提示词和工作树，
+ * `.factory-tmp/` 是 agent 自己写的中间文件。它们只留在工作区，不进提交。
+ */
+const FIXER_TEMP_DIRS = ['.audit', '.sandcastle', '.factory-tmp']
+
+function isFixerTempPath(path) {
+  const clean = String(path || '').replace(/^"|"$/g, '')
+  return FIXER_TEMP_DIRS.some((dir) => clean === dir || clean.startsWith(`${dir}/`))
+}
+
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
 }
@@ -451,10 +462,16 @@ export async function runFixerAudit({
     const codeChanges = status
       .split(/\r?\n/)
       .filter((line) => line.trim())
-      .filter((line) => !line.slice(3).startsWith('.audit/'))
+      .filter((line) => !isFixerTempPath(line.slice(3).split(' -> ').at(-1)))
     if (codeChanges.length) {
       // 只提交代码改动；trail 还留在工作树里，等合并阶段按原有路径提交。
-      await git(repoDir, ['add', '-A', '--', '.', ':(exclude).audit'])
+      await git(repoDir, [
+        'add',
+        '-A',
+        '--',
+        '.',
+        ...FIXER_TEMP_DIRS.map((dir) => `:(exclude)${dir}`),
+      ])
       const staged = await git(repoDir, ['diff', '--cached', '--name-only'])
       if (staged) {
         await git(repoDir, ['commit', '-m', `${FIX_COMMIT_PREFIX} #${ticket} 第${round}轮`])
