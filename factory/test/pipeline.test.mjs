@@ -813,6 +813,126 @@ test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify
   assert.equal((await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length, verifyRows)
 })
 
+/** 评审认证失败：验证正常，评审返回 403，fixer 不该被调用。 */
+function authFailRunner() {
+  const calls = []
+  return {
+    calls,
+    async run(args) {
+      calls.push(args)
+      if (args.name.startsWith('review-')) {
+        return {
+          ok: false,
+          code: 1,
+          stdout: '',
+          stderr: 'API Error: 403',
+          authFailure: true,
+          authMessage: 'API Error: 403',
+        }
+      }
+      return {
+        ok: true,
+        code: 0,
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}\n',
+        stderr: '',
+      }
+    },
+  }
+}
+
+test('评审认证失败：管线返回 auth_failed，父工单打 needs-info 写卡住进度，只发一次通知', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const runner = authFailRunner()
+  const notifier = fakeNotifier()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier,
+    log: () => {},
+  })
+  const context = {
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  }
+
+  const first = await pipeline(context)
+
+  assert.equal(first.runs[0].ok, false)
+  assert.equal(first.runs[0].reason, 'auth_failed')
+  assert.ok(issueOf(fake, parent.number).labels.includes('needs-info'), '父工单要打 needs-info')
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  assert.equal(progress.length, 1, '认证失败要写一条进度')
+  assert.match(progress[0], /卡住：是/)
+  assert.match(progress[0], /细阶段：评审/)
+  assert.match(progress[0], /认证失败/)
+  const incidents = notifier.calls.filter((event) => event.event === '出事')
+  assert.equal(incidents.length, 1, '认证失败要发一次出事通知')
+  assert.equal(incidents[0].data.reason, '认证失败')
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 0, '不调用 fixer')
+  assert.equal(
+    (await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'review').length,
+    0,
+    '认证失败不能写成评审 fail 行',
+  )
+  assert.equal(issueOf(fake, ticket.number).state, 'open')
+
+  // 下一轮调度会读到刚写的进度行，轮次随之变化；进度和通知都不能再写。
+  const refreshedComments = (
+    await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
+  ).map((comment) => ({ id: comment.id, body: comment.body, created_at: comment.created_at }))
+  const second = await pipeline({
+    ...context,
+    parents: [{ ...parentSnapshot({ parent, ticket }), comments: refreshedComments }],
+  })
+
+  assert.equal(second.runs[0].ok, false)
+  assert.equal(second.runs[0].reason, 'auth_failed')
+  assert.equal(
+    notifier.calls.filter((event) => event.event === '出事').length,
+    1,
+    '同一张父工单认证失败只通知一次',
+  )
+  assert.equal(
+    commentsOf(fake, parent.number).filter((body) => body.includes('卡住：是')).length,
+    1,
+    '进度行不重复写',
+  )
+  assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 0)
+})
+
+test('父工单已有别的 needs-info 时，认证失败仍发一次通知', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  await gh.addLabels({ owner: OWNER, repo: REPO, number: parent.number, labels: ['needs-info'] })
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const notifier = fakeNotifier()
+  const pipeline = createTicketPipeline({
+    runner: authFailRunner(),
+    previewFor: () => null,
+    notifier,
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].reason, 'auth_failed')
+  assert.equal(
+    notifier.calls.filter((event) => event.event === '出事').length,
+    1,
+    '别的流程打的 needs-info 不能挡住认证失败通知',
+  )
+})
+
 test('高风险 interrogate 判不过：fixer 修完重新验证、standard/spec 和 interrogate 后合分支', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)

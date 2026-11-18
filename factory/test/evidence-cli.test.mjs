@@ -243,6 +243,107 @@ test('证据不齐且 agent 判不过：销毁预览，发出事，返回 eviden
   }
 })
 
+test('评审 agent 认证失败：返回 auth_failed，不调用 fixer，不发出事通知', async () => {
+  const dir = await makeRepo()
+  try {
+    const calls = []
+    const runner = {
+      async run(options) {
+        calls.push(options)
+        if (options.name.startsWith('review-')) {
+          return {
+            ok: false,
+            code: 1,
+            stdout: '',
+            stderr: 'API Error: 403',
+            authFailure: true,
+            authMessage: 'API Error: 403',
+          }
+        }
+        return { ok: true, code: 0, stdout: verdict(true), stderr: '' }
+      },
+    }
+    const fixerCalls = []
+    const notifier = fakeNotifier()
+
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner,
+      preview: fakePreview(),
+      notifier,
+      now: NOW,
+      fixer: async (args) => {
+        fixerCalls.push(args)
+        return { ok: true }
+      },
+    })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'auth_failed')
+    assert.equal(result.stage, 'review')
+    assert.match(result.problems.join('；'), /认证失败/)
+    assert.match(result.problems.join('；'), /403/)
+    assert.equal(fixerCalls.length, 0, '认证失败不能交给 fixer')
+    assert.equal(calls.filter((call) => call.name.startsWith('fix-')).length, 0)
+    assert.equal(calls.filter((call) => call.name.startsWith('review-')).length, 1)
+
+    const rows = await readTrail({ repoDir: dir, ticket: 51 })
+    assert.equal(rows.filter((row) => row.phase === 'review').length, 0, '认证失败不能写成评审 fail 行')
+    assert.equal(notifier.sent.length, 0, '通知由管线发，这里不重复发')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('验证 agent 认证失败：不再跑评审，返回 auth_failed', async () => {
+  const dir = await makeRepo()
+  try {
+    const calls = []
+    const runner = {
+      async run(options) {
+        calls.push(options)
+        return {
+          ok: false,
+          code: 1,
+          stdout: '',
+          stderr: 'API Error: 402',
+          authFailure: true,
+          authMessage: 'API Error: 402',
+        }
+      },
+    }
+    const fixerCalls = []
+
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner,
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      fixer: async (args) => {
+        fixerCalls.push(args)
+        return { ok: true }
+      },
+    })
+
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'auth_failed')
+    assert.equal(result.stage, 'verify')
+    assert.equal(calls.length, 1, '验证认证失败后同一轮不再跑评审')
+    assert.equal(calls[0].name.startsWith('verify-'), true)
+    assert.equal(fixerCalls.length, 0)
+    assert.deepEqual(await readTrail({ repoDir: dir, ticket: 51 }), [])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('没有预览行就不起预览；已有验证时只跑评审', async () => {
   const dir = await makeRepo()
   try {

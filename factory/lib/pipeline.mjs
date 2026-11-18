@@ -18,10 +18,11 @@ import {
 } from './evidence.mjs'
 import { git } from './git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from './ignition.mjs'
+import { ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { previewNeeded } from './preview.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
-import { hasLabel } from './scheduler.mjs'
+import { hasLabel, NEEDS_INFO_LABEL } from './scheduler.mjs'
 
 export const SANDBOX_LABEL = 'Sandcastle'
 export const PENDING_LABEL = '状态:待验收'
@@ -146,6 +147,56 @@ function parseMergerVerdict(result) {
   const text = line.slice('AFK_VERDICT:'.length).trim()
   if (/^merged\b/i.test(text)) return { ok: true, decision: text }
   return { ok: false, problems: [text || '合并者判不过'] }
+}
+
+/**
+ * 认证失败：管线停下。父工单打 `needs-info`、写「卡住：是」进度、发一次出事通知。
+ * 已经写过认证失败的进度行就不再写、不再通知；同一轮不再跑任何 agent。
+ */
+async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, problems, stage, now }) {
+  const current = await gh.getIssue({ owner, repo, number: parent.number })
+  if (!hasLabel(current, NEEDS_INFO_LABEL)) {
+    await ensureLabel(gh, { owner, repo, name: NEEDS_INFO_LABEL })
+    await gh.addLabels({ owner, repo, number: parent.number, labels: [NEEDS_INFO_LABEL] })
+  }
+  const comments = await gh.listComments({ owner, repo, number: parent.number })
+  const already = comments.some((comment) =>
+    String(comment?.body || '')
+      .split(/\r?\n/)
+      .some((line) => {
+        const parsed = parseProgress(line)
+        return Boolean(parsed?.stuck && parsed.note.startsWith('认证失败'))
+      }),
+  )
+  if (already) return
+  const note = `认证失败：${problems[0] || 'agent 认证失败'}`.replace(/\s+/g, ' ').slice(0, 160)
+  const body = progressLine({
+    path: ticket.path,
+    tier: '开发中',
+    step: stage === 'verify' ? '验证' : '评审',
+    round: ticket.round,
+    stuck: true,
+    note,
+  })
+  await gh.createComment({ owner, repo, number: parent.number, body })
+  if (typeof notifier?.send !== 'function') return
+  try {
+    await notifier.send({
+      v: 1,
+      key: `#${parent.number}:出事:认证失败`,
+      event: '出事',
+      occurred_at: (now instanceof Date ? now : new Date(now ?? Date.now())).toISOString(),
+      link: ticket.htmlUrl || '',
+      data: {
+        customer: ticket.customer,
+        requirement: ticket.requirement,
+        reason: '认证失败',
+        tried: note,
+      },
+    })
+  } catch {
+    // 通知失败不改变判断。
+  }
 }
 
 /**
@@ -321,6 +372,30 @@ export function createTicketPipeline({
       })
       if (!ensured.ok) {
         const reason = ensured.reason || 'evidence_not_ready'
+        if (reason === 'auth_failed') {
+          try {
+            await stopForAuthFailure({
+              gh,
+              notifier,
+              owner,
+              repo,
+              parent,
+              ticket: ticketInfo,
+              problems: ensured.problems || [],
+              stage: ensured.stage || '',
+              now: clock(),
+            })
+          } catch (error) {
+            log({
+              level: 'error',
+              msg: '认证失败后写 needs-info 失败',
+              owner,
+              repo,
+              ticket: ticket.number,
+              error: errorText(error),
+            })
+          }
+        }
         log({
           level: 'error',
           msg: '证据补齐失败',
