@@ -13,10 +13,12 @@
  *   - load / 部署 / 回滚：ssh 到服务器 sudo -n afk-product ...；
  *   - 健康：https://<地址>/，AFK_HEALTH_URL 可覆盖；
  *   - 邮件：ssh 到服务器 sudo -n afk-uploads send-delivery-mail ...；
+ *   - ssh/scp 统一读 AFK_SSH_KEY：设了就带 `-i`，不依赖 ssh-agent；文件不存在直接报错。
  *   - 通知：factory/lib/notify.mjs。
  * 所有外部命令都能注入，测试不跑 Docker、SSH 和邮件。
  */
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,16 +57,27 @@ function serverTarget() {
   return server
 }
 
+/**
+ * ssh / scp 的公共参数。设了 AFK_SSH_KEY 就显式带 `-i`，不靠 ssh-agent；
+ * 设了但文件不在，直接报错，不让命令退回 agent 再报 Permission denied。
+ */
+function sshKeyArgs() {
+  const key = String(process.env.AFK_SSH_KEY || '').trim()
+  if (!key) return []
+  if (!existsSync(key)) throw new Error(`AFK_SSH_KEY 指向的私钥不存在：${key}`)
+  return ['-i', key]
+}
+
 function helperCommand() {
   if (process.env.AFK_HELPER?.trim()) return process.env.AFK_HELPER.trim().split(/\s+/)
-  return ['ssh', serverTarget(), 'sudo', '-n', '/usr/local/sbin/afk-product']
+  return ['ssh', ...sshKeyArgs(), serverTarget(), 'sudo', '-n', '/usr/local/sbin/afk-product']
 }
 
 function uploadsCommand() {
   if (process.env.AFK_UPLOADS_HELPER?.trim()) {
     return process.env.AFK_UPLOADS_HELPER.trim().split(/\s+/)
   }
-  return ['ssh', serverTarget(), 'sudo', '-n', '/usr/local/sbin/afk-uploads']
+  return ['ssh', ...sshKeyArgs(), serverTarget(), 'sudo', '-n', '/usr/local/sbin/afk-uploads']
 }
 
 async function run(command, args, options = {}) {
@@ -93,8 +106,9 @@ async function dockerBuildImage({ repoDir, version, platform = 'linux/amd64', im
   return { tar, image: tag }
 }
 
-async function scpTransfer({ tar, remote }) {
-  await run('scp', [tar, `${serverTarget()}:${remote}`])
+/** 默认的传输实现：scp 到 AFK_SERVER，设了 AFK_SSH_KEY 就带 `-i`。 */
+export async function scpTransfer({ tar, remote, run: execute = run } = {}) {
+  await execute('scp', [...sshKeyArgs(), tar, `${serverTarget()}:${remote}`])
   return remote
 }
 
@@ -102,7 +116,7 @@ async function sshLoadImage({ tar }) {
   const output = await runHelper(['product-load', tar])
   // load 成功就删服务器上的临时 tar；删不掉只算警告，不影响部署。
   if (!process.env.AFK_HELPER?.trim()) {
-    await run('ssh', [serverTarget(), 'rm', '-f', tar]).catch(() => {})
+    await run('ssh', [...sshKeyArgs(), serverTarget(), 'rm', '-f', tar]).catch(() => {})
   }
   return output
 }
@@ -126,15 +140,15 @@ async function sshSendDeliveryMail({ orderId, address, tries }) {
   return run(command, args)
 }
 
-async function sshMarkDelivered({ orderId, address }) {
+async function sshMarkDelivered({ orderId, address, run: execute = run }) {
   const [command, ...prefix] = uploadsCommand()
-  return run(command, [...prefix, 'mark-delivered', orderId, address])
+  return execute(command, [...prefix, 'mark-delivered', orderId, address])
 }
 
 /** 默认实现的 mark-delivered：ssh 到服务器调 `afk-uploads mark-delivered`。 */
-export async function markDeliveredWithDefaults({ orderId, address } = {}) {
+export async function markDeliveredWithDefaults({ orderId, address, run: execute } = {}) {
   if (!orderId || !address) throw new Error('mark-delivered 缺订单号或地址')
-  await sshMarkDelivered({ orderId, address })
+  await sshMarkDelivered({ orderId, address, run: execute })
   return { ok: true, orderId, address }
 }
 
