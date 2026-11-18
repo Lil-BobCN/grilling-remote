@@ -13,7 +13,7 @@
  */
 import { appendFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { GitError, git, mergeNoFf } from './git.mjs'
+import { GitError, git, mergeNoFf, pushOrigin } from './git.mjs'
 import { ensureLabel } from './issues.mjs'
 import { previewNeeded } from './preview.mjs'
 import { progressLine } from './progress.mjs'
@@ -751,6 +751,13 @@ function issueLink(ticket) {
   return ''
 }
 
+/** 默认推需求分支：读环境里的 token，仓库自己的 origin 决定要不要带认证头。 */
+function defaultPushBranch({ repoDir, branch }) {
+  return pushOrigin(repoDir, branch, {
+    token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '',
+  })
+}
+
 function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview, interrogateRow }) {
   const verify = rows.find((row) => row.phase === 'verify' && row.result === 'pass')
   const test = rows.find((row) => row.phase === 'test' && row.result === 'pass')
@@ -854,6 +861,7 @@ export async function assessMerge({ repoDir, ticketBranch, reqBranch, ticket, tr
  * - `verifier({ repoDir, headSha, ticket }) => {ok|pass, problems?, evidence?}`
  * - `review({ repoDir, headSha, ticket, mode }) => {ok|pass, decision?, evidence?}`
  * - `merger({ repoDir, files, ticket, ticketBranch, reqBranch }) => {ok}`
+ * - `push({ repoDir, owner, repo, branch }) => void`，推需求分支；默认带 `GITHUB_TOKEN` 推 origin
  * - `preview.start({ repoDir, ticket, ticketBranch, headSha, risk }) => {ok, address, url}`
  * - `preview.stop({ address, ticket, repoDir }) => {ok}`
  * - `notifier.send(event)` 见 `docs/通知.md` 第五节
@@ -868,6 +876,7 @@ export async function mergeTicket({
   verifier,
   review,
   merger,
+  push,
   preview,
   notifier,
   github,
@@ -1089,6 +1098,22 @@ export async function mergeTicket({
       await git(repoDir, ['commit', '-m', `FACTORY: 合并后复验记录 #${ticket.number}`])
     }
     const finalHead = await revParse(repoDir, 'HEAD')
+
+    // 合并只在本地完成时，下一张票点火会把需求分支重置回 origin。
+    // 先推，推成功才关票；推失败保留本地合并且不关票。
+    const pushReq = typeof push === 'function' ? push : defaultPushBranch
+    try {
+      await pushReq({ repoDir, owner, repo, branch: reqBranch })
+    } catch (error) {
+      return {
+        ok: false,
+        reason: 'push_failed',
+        error: errorText(error),
+        headSha: finalHead,
+        mergedSha,
+        originalBranch,
+      }
+    }
 
     if (gh && owner && repo) {
       try {

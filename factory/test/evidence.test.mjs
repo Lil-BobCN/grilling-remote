@@ -368,6 +368,12 @@ async function mergeFixture({
     await writeFile(join(dir, '.audit', 'screenshots', 'after.png'), 'png')
   }
 
+  const remoteRoot = await mkdtemp(join(tmpdir(), 'afk-evidence-remote-'))
+  const bare = join(remoteRoot, 'remote.git')
+  await git(remoteRoot, ['init', '--bare', bare])
+  await git(dir, ['remote', 'add', 'origin', bare])
+  await git(dir, ['push', 'origin', 'main', 'req/order-1', 'ticket/2'])
+
   const fake = await startFakeGithub({
     repos: [{ owner: 'acme', name: 'demo' }],
     issues: [
@@ -388,12 +394,13 @@ async function mergeFixture({
     round: 1,
     htmlUrl: 'https://github.com/acme/demo/issues/2',
   }
-  return { dir, rows, codeSha, ticketHead, preMergeSha, fake, gh, ticket }
+  return { dir, bare, remoteRoot, rows, codeSha, ticketHead, preMergeSha, fake, gh, ticket }
 }
 
 async function teardownFixture(fixture) {
   await fixture.fake.close()
   await rm(fixture.dir, { recursive: true, force: true })
+  await rm(fixture.remoteRoot, { recursive: true, force: true })
 }
 
 test('证据齐时合进需求分支，写证据评论、加待验收、关票、摘 Sandcastle、父工单写进度', async () => {
@@ -456,6 +463,74 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     assert.equal(mergeRow.why, 'req/order-1')
     assert.equal(mergeRow.evidence, result.mergedSha)
     assert.equal(mergeRow.result, 'pass')
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('合并成功后把需求分支推到 origin，远端头部等于合并结果', async () => {
+  const fixture = await mergeFixture()
+  const { dir, bare, rows, gh, ticket } = fixture
+  const calls = []
+  try {
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      verifier: async () => ({ ok: true }),
+      push: async ({ repoDir, owner, repo, branch }) => {
+        calls.push({ repoDir, owner, repo, branch })
+        await git(repoDir, ['push', 'origin', branch])
+        return { branch }
+      },
+      github: gh,
+    })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.deepEqual(calls, [
+      { repoDir: dir, owner: 'acme', repo: 'demo', branch: 'req/order-1' },
+    ])
+    assert.equal(await git(bare, ['rev-parse', 'req/order-1']), result.headSha)
+  } finally {
+    await teardownFixture(fixture)
+  }
+})
+
+test('需求分支推送失败时不关票，返回 push_failed，本地合并保留', async () => {
+  const fixture = await mergeFixture()
+  const { dir, rows, gh, ticket, preMergeSha } = fixture
+  try {
+    const result = await mergeTicket({
+      repoDir: dir,
+      ticketBranch: 'ticket/2',
+      reqBranch: 'req/order-1',
+      ticket,
+      trail: rows,
+      verifier: async () => ({ ok: true }),
+      push: async () => {
+        throw new Error('remote rejected: deny')
+      },
+      github: gh,
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'push_failed')
+    assert.match(result.error, /remote rejected/)
+    assert.notEqual(result.headSha, preMergeSha)
+
+    const issue = await gh.getIssue({ owner: 'acme', repo: 'demo', number: 2 })
+    assert.equal(issue.state, 'open')
+    const names = issue.labels.map((label) => label.name)
+    assert.ok(names.includes('Sandcastle'))
+    assert.ok(!names.includes('状态:待验收'))
+    const comments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 2 })
+    assert.ok(!comments.some((row) => row.body.includes('四样证据')))
+
+    assert.equal(
+      await git(dir, ['rev-parse', 'req/order-1']),
+      result.headSha,
+      '本地合并保留，下次点火再推',
+    )
   } finally {
     await teardownFixture(fixture)
   }

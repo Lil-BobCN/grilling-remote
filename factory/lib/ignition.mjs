@@ -10,7 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
-import { git } from './git.mjs'
+import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
@@ -103,16 +103,6 @@ async function exists(path) {
   }
 }
 
-function gitAuthEnv(url, token) {
-  if (!token || !/^https:\/\/(www\.)?github\.com\//i.test(url)) return {}
-  const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
-  return {
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-    GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
-  }
-}
-
 async function runGit(args, { cwd, env } = {}) {
   return git(cwd || process.cwd(), args, { env, timeoutMs: 120000 })
 }
@@ -133,20 +123,49 @@ export function createGitPush() {
 }
 
 /** 客户仓 checkout：没有就 clone，有就 fetch，然后切到需求分支。 */
-async function ensureRepoCheckout({ config, owner, repo, reqBranch }) {
+async function ensureRepoCheckout({
+  config,
+  owner,
+  repo,
+  reqBranch,
+  pushBranch = createGitPush(),
+}) {
   const root = config.repoRoot || defaultRepoRoot()
   const repoDir = join(root, repo)
   const url = remoteUrlFor(config, owner, repo)
   const env = gitAuthEnv(url, config.token)
+  const remoteRef = `origin/${reqBranch}`
 
   if (await exists(join(repoDir, '.git'))) {
     await runGit(['fetch', 'origin'], { cwd: repoDir, env })
+
+    // 本地需求分支可能带着上一次合并但没推到 origin。
+    // 直接 checkout -B 会把它重置掉，所以先推；推不了就报错，不静默丢。
+    const localHead = await runGit(
+      ['rev-parse', '--verify', '--quiet', `refs/heads/${reqBranch}`],
+      { cwd: repoDir },
+    ).catch(() => '')
+    if (localHead) {
+      const ahead = Number(
+        (await runGit(['rev-list', '--count', `${remoteRef}..${reqBranch}`], {
+          cwd: repoDir,
+        }).catch(() => '0')) || 0,
+      )
+      if (ahead > 0) {
+        try {
+          await pushBranch({ config, repoDir, owner, repo, branch: reqBranch })
+        } catch (error) {
+          throw new Error(
+            `本地 ${reqBranch} 有 ${ahead} 个提交没推到 origin：${String(error?.message || error)}。没有重置本地分支，先解决推送再点火。`,
+          )
+        }
+      }
+    }
   } else {
     await mkdir(root, { recursive: true })
     await runGit(['clone', url, repoDir], { env })
   }
 
-  const remoteRef = `origin/${reqBranch}`
   const found = await runGit(['rev-parse', '--verify', '--quiet', `refs/remotes/${remoteRef}`], {
     cwd: repoDir,
   }).catch(() => '')
@@ -670,7 +689,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         }
       }
 
-      await ensureRepoCheckout({ config, owner, repo, reqBranch })
+      await ensureRepoCheckout({ config, owner, repo, reqBranch, pushBranch })
       await ensureSandcastleLabel({ gh, owner, repo, number: ticket.number })
       await setTicketInProgress({ gh, owner, repo, number: ticket.number })
 
