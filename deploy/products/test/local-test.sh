@@ -232,13 +232,16 @@ test_init() {
   assert_not_contains "$compose" '/var/run/docker.sock' "compose 不挂 Docker socket"
   assert_not_contains "$compose" 'network_mode: host' "compose 不用 host 网络"
 
-  local port db_name db_user db_pass app_key admin_pass image network
+  local port db_name db_user db_pass app_key admin_pass admin_path admin_phrase session_secret image network
   port=$(env_get "$env" PORT)
   db_name=$(env_get "$env" DB_NAME)
   db_user=$(env_get "$env" DB_USER)
   db_pass=$(env_get "$env" DB_PASSWORD)
   app_key=$(env_get "$env" APP_KEY)
   admin_pass=$(env_get "$env" ADMIN_PASSWORD)
+  admin_path=$(env_get "$env" ADMIN_PATH)
+  admin_phrase=$(env_get "$env" ADMIN_PASSPHRASE)
+  session_secret=$(env_get "$env" SESSION_SECRET)
   image=$(env_get "$env" IMAGE)
   network=$(env_get "$env" APP_NETWORK)
 
@@ -260,6 +263,21 @@ test_init() {
     ok "后台口令 ADMIN_PASSWORD 是随机 hex"
   else
     bad "后台口令 ADMIN_PASSWORD 缺失或格式不对（${admin_pass}）"
+  fi
+  if [[ $admin_path =~ ^/t/[0-9a-f]{24}$ ]]; then
+    ok "管理路径 ADMIN_PATH 是 /t/ 加随机 hex"
+  else
+    bad "管理路径 ADMIN_PATH 缺失或格式不对（${admin_path}）"
+  fi
+  if [[ $admin_phrase =~ ^[0-9a-f]{48}$ ]]; then
+    ok "管理口令 ADMIN_PASSPHRASE 是随机 hex"
+  else
+    bad "管理口令 ADMIN_PASSPHRASE 缺失或格式不对（${admin_phrase}）"
+  fi
+  if [[ $session_secret =~ ^[0-9a-f]{64}$ ]]; then
+    ok "会话密钥 SESSION_SECRET 是随机 hex"
+  else
+    bad "会话密钥 SESSION_SECRET 缺失或格式不对（${session_secret}）"
   fi
 
   assert_contains "$TMP/caddy/products/$ADDR.caddy" "$ADDR" "Caddy 路由写的是交付地址"
@@ -292,25 +310,44 @@ test_init() {
   fi
   assert_eq "$before" "$(cat "$env")" "重复 product-init 不改密钥、端口和镜像"
 
-  # 旧版 .env 没有 ADMIN_PASSWORD：再跑 init 要补上，其他键一个不动。
-  local before_legacy admin_filled after_without
-  grep -v '^ADMIN_PASSWORD=' "$env" >"$TMP/legacy.env"
+  # 旧版 .env 没有管理相关键：再跑 init 要补上，其他键一个不动。
+  local before_legacy after_without
+  grep -vE '^(ADMIN_PASSWORD|ADMIN_PATH|ADMIN_PASSPHRASE|SESSION_SECRET)=' "$env" >"$TMP/legacy.env"
   cat "$TMP/legacy.env" >"$env"
   rm -f "$TMP/legacy.env"
   before_legacy=$(cat "$env")
   if bash "$HELPER" product-init "$ADDR" --image "$APP_IMAGE" >/dev/null; then
-    ok "缺 ADMIN_PASSWORD 时 product-init 退出 0"
+    ok "缺管理相关键时 product-init 退出 0"
   else
-    bad "缺 ADMIN_PASSWORD 时 product-init 失败"
+    bad "缺管理相关键时 product-init 失败"
   fi
+  local admin_filled path_filled phrase_filled secret_filled
   admin_filled=$(env_get "$env" ADMIN_PASSWORD)
+  path_filled=$(env_get "$env" ADMIN_PATH)
+  phrase_filled=$(env_get "$env" ADMIN_PASSPHRASE)
+  secret_filled=$(env_get "$env" SESSION_SECRET)
   if [[ $admin_filled =~ ^[0-9a-f]{48}$ ]]; then
     ok "已有 .env 缺键时补上 ADMIN_PASSWORD"
   else
     bad "已有 .env 缺键时没补上 ADMIN_PASSWORD（${admin_filled}）"
   fi
-  after_without=$(grep -v '^ADMIN_PASSWORD=' "$env")
-  assert_eq "$before_legacy" "$after_without" "补 ADMIN_PASSWORD 不改其他键"
+  if [[ $path_filled =~ ^/t/[0-9a-f]{24}$ ]]; then
+    ok "已有 .env 缺键时补上 ADMIN_PATH"
+  else
+    bad "已有 .env 缺键时没补上 ADMIN_PATH（${path_filled}）"
+  fi
+  if [[ $phrase_filled =~ ^[0-9a-f]{48}$ ]]; then
+    ok "已有 .env 缺键时补上 ADMIN_PASSPHRASE"
+  else
+    bad "已有 .env 缺键时没补上 ADMIN_PASSPHRASE（${phrase_filled}）"
+  fi
+  if [[ $secret_filled =~ ^[0-9a-f]{64}$ ]]; then
+    ok "已有 .env 缺键时补上 SESSION_SECRET"
+  else
+    bad "已有 .env 缺键时没补上 SESSION_SECRET（${secret_filled}）"
+  fi
+  after_without=$(grep -vE '^(ADMIN_PASSWORD|ADMIN_PATH|ADMIN_PASSPHRASE|SESSION_SECRET)=' "$env")
+  assert_eq "$before_legacy" "$after_without" "补管理相关键不改其他键"
   assert_mode "$env" 600 "补键后 .env 还是 600"
 }
 
@@ -397,6 +434,12 @@ test_deploy() {
   assert_eq 101 "$(docker exec "$first_id" id -u)" "容器内 uid 是 101"
   assert_eq "$(env_get "$env" ADMIN_PASSWORD)" "$(docker exec "$first_id" printenv ADMIN_PASSWORD)" \
     "容器里能读到 ADMIN_PASSWORD"
+  assert_eq "$(env_get "$env" ADMIN_PATH)" "$(docker exec "$first_id" printenv ADMIN_PATH)" \
+    "容器里能读到 ADMIN_PATH"
+  assert_eq "$(env_get "$env" ADMIN_PASSPHRASE)" "$(docker exec "$first_id" printenv ADMIN_PASSPHRASE)" \
+    "容器里能读到 ADMIN_PASSPHRASE"
+  assert_eq "$(env_get "$env" SESSION_SECRET)" "$(docker exec "$first_id" printenv SESSION_SECRET)" \
+    "容器里能读到 SESSION_SECRET"
 
   if docker inspect -f '{{json .Mounts}}' "$first_id" | grep -q 'docker.sock'; then
     bad "容器挂了 Docker socket"
