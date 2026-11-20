@@ -68,6 +68,7 @@ test('--once 每张父工单打印一行 {repo,parent,decision,actions}', async 
     notifier,
     out: (line) => lines.push(JSON.parse(line)),
     clock: () => new Date('2026-11-17T10:00:00+08:00'),
+    jobsFile: join(dir, 'jobs.json'),
   })
 
   assert.equal(lines.length, 1)
@@ -179,7 +180,7 @@ async function ignitionScenario(t) {
     JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } }]),
   )
 
-  return { fake, gh, parent, child, customersPath }
+  return { fake, gh, parent, child, customersPath, jobsFile: join(dir, 'jobs.json') }
 }
 
 function issueRow(fake, number) {
@@ -197,7 +198,7 @@ function quietNotifier() {
 }
 
 test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转开发中', async (t) => {
-  const { fake, gh, parent, child, customersPath } = await ignitionScenario(t)
+  const { fake, gh, parent, child, customersPath, jobsFile } = await ignitionScenario(t)
   const { root, bare } = await repoFixture(t)
   const runnerCalls = []
   async function runner(args) {
@@ -227,6 +228,7 @@ test('默认注入 ignite：--once 自己点火，贴 Sandcastle，父工单转�
     clock: () => new Date('2026-11-17T10:00:00+08:00'),
     repoRoot: join(root, 'repos'),
     lockDir: join(root, 'locks'),
+    jobsFile,
     config: { remoteUrlFor: () => bare, log: () => {} },
   })
 

@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { createGithub } from '../lib/github.mjs'
+import { ensureLabel } from '../lib/issues.mjs'
+import { createJobStore, findJob } from '../lib/job.mjs'
 import {
   createDecompose,
   createFixTicket,
@@ -10,7 +16,8 @@ import {
   parseGateRows,
   ticketFromBranch,
 } from '../lib/scheduler-jobs.mjs'
-import { newTicketEvent } from '../lib/scheduler.mjs'
+import { newTicketEvent, runOnce, STATE_LABELS } from '../lib/scheduler.mjs'
+import { startFakeGithub } from './fake-github.mjs'
 
 const NOW = new Date('2026-11-17T10:00:00')
 const HEADER = 'ts\tphase\tdecision\twhy\tevidence\tresult'
@@ -325,4 +332,56 @@ test('newTicketEvent 只在已提交且没有评论时推一次', () => {
     newTicketEvent({ parent: { ...parent, labels: labels('状态:排队中') }, comments: [] }),
     null,
   )
+})
+
+test('createGapProposal 失败接上调度器：写 needs-info stop，下一轮不再跑', async (t) => {
+  const fake = await startFakeGithub({ repos: [{ owner: 'acme', name: 'acme-demo' }] })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  for (const [name, meta] of Object.entries(STATE_LABELS)) {
+    await ensureLabel(gh, { owner: 'acme', repo: 'acme-demo', name, ...meta })
+  }
+  for (const name of ['needs-info', 'Sandcastle', '大小:小需求', 'ready-for-agent', 'wayfinder:map', 'wayfinder:grilling']) {
+    await ensureLabel(gh, { owner: 'acme', repo: 'acme-demo', name })
+  }
+  const parent = await gh.createIssue({
+    owner: 'acme',
+    repo: 'acme-demo',
+    title: '要个预约取货',
+    body: '- 客户简称：acme\n- 需求名：yuyue-quhuo\n\n<!-- factory:order=o-0001 -->',
+    labels: ['状态:已提交'],
+  })
+  let runs = 0
+  const gapProposal = createGapProposal({
+    runner: {
+      async run() {
+        runs += 1
+        return { ok: false, code: 1, stdout: '', stderr: '403 没权限' }
+      },
+    },
+    agentsDir: AGENTS_DIR,
+    log: () => {},
+  })
+  const dir = await mkdtemp(join(tmpdir(), 'afk-jobs-integration-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const jobs = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await jobs.load()
+  const options = {
+    gh,
+    customers: [{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'acme-demo' } }],
+    notifier: { async send() { return { code: 0 } } },
+    gapProposal,
+    clock: () => NOW,
+    config: { owner: 'acme', maxActive: 5, lockDir: dir, jobs },
+  }
+
+  await runOnce(options)
+  const row = findJob(jobs.rowsFor({ owner: 'acme', repo: 'acme-demo', parent: parent.number }), {
+    action: 'needs-info',
+  })
+  assert.equal(row.stop, 'needs-info')
+  assert.match(row.reason, /403 没权限/)
+
+  await runOnce(options)
+  assert.equal(runs, 1, '停了线就不重跑补缺口')
 })
