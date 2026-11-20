@@ -1,4 +1,4 @@
-"""自动关票：看工作状态里的 PR，核对 SHA，展开待关票记录。"""
+"""自动关票：看工作状态里的候选 PR，按记录 SHA 核对，展开待关票记录。"""
 from __future__ import annotations
 
 import json
@@ -23,12 +23,38 @@ class CloseWatcher:
         self._retry_at = {}
 
     def check(self, tickets):
-        """tickets 来自 WorkStatePoller：{票号: {"pr": {...}}}。"""
+        """tickets 来自 WorkStatePoller：{票号: {"pr": {...}, "prs": [...]}}。"""
         if self.lock is not None:
             with self.lock:
                 self._check(tickets or {})
         else:
             self._check(tickets or {})
+
+    def _candidates(self, record, entry):
+        """记录 PR 加工作状态里的全部候选 PR，按号去重。
+
+        工作状态可能漏挂记录上的那条 PR，所以记录 PR 无条件补进来。
+        """
+        candidates = []
+        seen = set()
+
+        def add(pr):
+            if not isinstance(pr, dict):
+                return
+            try:
+                number = int(pr.get("number") or 0)
+            except (TypeError, ValueError):
+                return
+            if number <= 0 or number in seen:
+                return
+            seen.add(number)
+            candidates.append({"number": number, "state": pr.get("state")})
+
+        for pr in entry.get("prs") or []:
+            add(pr)
+        add(entry.get("pr"))
+        add({"number": record["pr"]})
+        return candidates
 
     def _check(self, tickets):
         state = self.store.state
@@ -42,51 +68,66 @@ class CloseWatcher:
             ticket = self.store.state["issues"].get(record["ticket"])
             if not ticket or ticket["state"] != "open":
                 continue
-            pr = (tickets.get(record["ticket"]) or {}).get("pr")
-            if not pr:
-                continue
-            if int(pr.get("number") or 0) != record["pr"]:
-                continue
-            pr_state = str(pr.get("state") or "").lower()
-            if pr_state == "closed":
-                self._mark(record, status="过期", check="closed_without_merge",
-                           detail=f"PR #{record['pr']} 已关闭但没有合并")
-                continue
+            candidates = self._candidates(record, tickets.get(record["ticket"]) or {})
             now = time.time()
             if self._retry_at.get(record["id"], 0) > now:
                 continue
-            try:
-                data = self.pr_head(record["pr"])
-            except Exception as exc:
-                self._retry_at[record["id"]] = now + self.retry_seconds
+            closed_record_pr = None
+            merged_heads = []
+            gh_unavailable = None
+            matched = False
+            for cand in candidates:
+                number = cand["number"]
+                # orca 说记录 PR 已关闭时不用再问 gh，保持旧路径
+                if number == record["pr"] and str(cand.get("state") or "").lower() == "closed":
+                    closed_record_pr = f"PR #{number} 已关闭但没有合并"
+                    continue
+                try:
+                    data = self.pr_head(number)
+                except Exception as exc:
+                    gh_unavailable = (number, exc)
+                    continue
+                gh_state = str(data.get("state") or "").upper()
+                if gh_state == "CLOSED":
+                    if number == record["pr"]:
+                        closed_record_pr = f"PR #{number} 在 GitHub 上是关闭未合并"
+                    continue
+                if gh_state != "MERGED":
+                    continue
+                head = data.get("headRefOid") or ""
+                if head != record["sha"]:
+                    merged_heads.append((number, head))
+                    continue
+                matched = True
+                if record.get("verify") == "无法核对":
+                    self._mark(record, verify=None, check="merged", detail="合并已核对")
+                self._close(record)
+                break
+            if matched:
+                continue
+            if gh_unavailable is not None:
+                number, exc = gh_unavailable
+                self._retry_at[record["id"]] = time.time() + self.retry_seconds
                 self.store._log(
-                    f"待关票记录 {record['id']} 核对 PR #{record['pr']} 失败：{exc}")
+                    f"待关票记录 {record['id']} 核对 PR #{number} 失败：{exc}")
                 if record.get("verify") != "无法核对":
                     self._mark(record, verify="无法核对", check="gh_unavailable",
                                detail=str(exc))
                 continue
-            if pr_state != "merged":
-                # orca 状态未知或是旧 open：以 GitHub 为准，下一轮等 retry_seconds
-                self._retry_at[record["id"]] = now + self.retry_seconds
-            gh_state = str(data.get("state") or "").upper()
-            if gh_state == "CLOSED":
+            if merged_heads:
+                detail = "；".join(
+                    f"PR #{n} head {h[:7] or '空'} 与记录 {record['sha'][:7]} 不一致"
+                    for n, h in merged_heads)
+                self._mark(record, status="过期", check="sha_mismatch", detail=detail)
+                continue
+            if closed_record_pr:
                 self._mark(record, status="过期", check="closed_without_merge",
-                           detail=f"PR #{record['pr']} 在 GitHub 上是关闭未合并")
+                           detail=closed_record_pr)
                 continue
-            if gh_state != "MERGED":
-                if record.get("verify") == "无法核对":
-                    self._mark(record, verify=None, check="waiting_merge",
-                               detail=f"PR #{record['pr']} 还没合并")
-                continue
-            head = data.get("headRefOid") or ""
-            if head != record["sha"]:
-                self._mark(
-                    record, status="过期", check="sha_mismatch",
-                    detail=(f"PR head {head[:7] or '空'} 与记录 {record['sha'][:7]} 不一致"))
-                continue
+            self._retry_at[record["id"]] = time.time() + self.retry_seconds
             if record.get("verify") == "无法核对":
-                self._mark(record, verify=None, check="merged", detail="合并已核对")
-            self._close(record)
+                self._mark(record, verify=None, check="waiting_merge",
+                           detail=f"PR #{record['pr']} 还没合并")
 
     def _mark(self, record, status=None, verify=UNSET, check=None, detail=None):
         board = Board(self.store)
