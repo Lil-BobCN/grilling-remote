@@ -11,7 +11,7 @@ import { createGithubApi } from '../lib/github-api.mjs'
 import { importOnce } from '../lib/import.mjs'
 import { recordUpload } from '../lib/orders.mjs'
 import { writeJsonAtomic } from '../lib/store.mjs'
-import { makeConfig, seedCustomer } from './helpers.mjs'
+import { login, makeConfig, seedCustomer, startServer } from './helpers.mjs'
 
 const execFileAsync = promisify(execFile)
 const SAMPLE = fileURLToPath(new URL('../../docs/回传样例/工作区/.scratch/xianguopu/', import.meta.url))
@@ -472,6 +472,96 @@ test('发过邮件后导入失败，重跑不重发', async (t) => {
     mailSender: async (mail) => sent.push(mail),
   })
   assert.equal(sent.length, 1)
+})
+
+test('导入失败把订单写成 import_failed 终态，订单接口给出原因和下一步', async (t) => {
+  const { config, customer, gh, bare } = await setup(t)
+  const order = await makeOrder(config, customer, { requirement: 'demo', product: 'demo' })
+  await makeUpload(config, { id: 'upload-order-failed', orders: [order], requirements: [{ name: 'demo' }] })
+  const failing = {
+    ...gh,
+    createIssue: async () => {
+      throw new Error('建单炸了')
+    },
+  }
+
+  await importOnce({ config, gh: failing, remoteUrlFor: () => bare })
+
+  const savedOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${order.id}.json`), 'utf8'),
+  )
+  assert.equal(savedOrder.import_status, 'import_failed')
+  assert.equal(savedOrder.import_failure.status, 'import_failed')
+  assert.match(savedOrder.import_failure.message, /建单炸了/)
+  assert.ok(savedOrder.import_failure.next_step)
+  assert.ok(savedOrder.import_failure.at)
+
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const response = await fetch(`${server.base}/app/api/orders/${order.id}`, {
+      headers: { Cookie: cookie },
+    })
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.order.import_status, 'import_failed')
+    assert.equal(body.order.import_failure.status, 'import_failed')
+    assert.match(body.order.import_failure.message, /建单炸了/)
+    assert.match(body.order.import_failure.next_step, /运营者/)
+  } finally {
+    await server.close()
+  }
+})
+
+test('多单里一单导入失败，其余继续，上传记 import_partial 和每单结果', async (t) => {
+  const { config, root, customer, fake, gh, bare } = await setup(t)
+  const secondBare = await initBareRepo(join(root, 'remote2.git'))
+  const broken = await makeOrder(config, customer, { requirement: 'demo', product: 'demo' })
+  const healthy = await makeOrder(config, customer, { requirement: 'kucun', product: 'kucun' })
+  const { dir } = await makeUpload(config, {
+    id: 'upload-partial',
+    orders: [broken, healthy],
+    requirements: [{ name: 'demo' }, { name: 'kucun' }],
+  })
+  const failing = {
+    ...gh,
+    createIssue: async (args) => {
+      if (args.repo === 'acme-demo') throw new Error('demo 仓建单炸了')
+      return gh.createIssue(args)
+    },
+  }
+
+  const result = await importOnce({
+    config,
+    gh: failing,
+    remoteUrlFor: ({ repo }) => (repo === 'acme-kucun' ? secondBare : bare),
+  })
+
+  assert.equal(result.uploads[0].status, 'import_partial')
+  const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  assert.equal(meta.status, 'import_partial')
+  assert.equal(meta.operator_alert.reason, 'import_partial')
+  assert.match(meta.operator_alert.message, /demo 仓建单炸了/)
+  const byOrder = new Map(meta.results.map((item) => [item.order_id, item]))
+  assert.equal(byOrder.get(broken.id).status, 'import_failed')
+  assert.equal(byOrder.get(healthy.id).status, 'imported')
+
+  const brokenOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${broken.id}.json`), 'utf8'),
+  )
+  assert.equal(brokenOrder.import_status, 'import_failed')
+  const healthyOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${healthy.id}.json`), 'utf8'),
+  )
+  assert.equal(healthyOrder.import_status, 'imported')
+  assert.ok(healthyOrder.issue)
+  assert.ok(fake.state.repos.has('acme/acme-kucun'))
+  const brokenIssues = await gh.listIssues({ owner: 'acme', repo: 'acme-demo', state: 'all' })
+  assert.equal(brokenIssues.length, 0)
+  assert.deepEqual(
+    meta.imported.map((item) => item.order_id),
+    [healthy.id],
+  )
 })
 
 test('导入时没配 GITHUB_OWNER 按失败报，不猜账号', async (t) => {

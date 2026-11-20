@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { FAILED_UPLOAD_STATUSES } from '../../backend/lib/protocol.mjs'
 import { logLine } from './log.mjs'
 import { notificationEvent } from './notify.mjs'
 
@@ -249,10 +250,8 @@ export async function pullInbox({
     const allowed =
       status === 'ready' ||
       status === 'imported' ||
-      status === 'validation_failed' ||
-      status === 'import_failed' ||
-      status === 'needs_operator' ||
-      (status === 'failed' && meta.operator_alert)
+      (FAILED_UPLOAD_STATUSES.includes(status) &&
+        (status !== 'failed' || meta.operator_alert))
     if (!allowed) continue
 
     const dir = join(inboxDir, id)

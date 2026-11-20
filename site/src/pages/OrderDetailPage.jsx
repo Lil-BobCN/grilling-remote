@@ -47,7 +47,7 @@ function AlertIcon() {
 }
 
 function stateTone(view) {
-  if (view.invalid) return 'warn'
+  if (view.invalid || view.importFailed) return 'warn'
   if (view.tierLabel === '已完成') return 'done'
   return 'active'
 }
@@ -219,6 +219,25 @@ function NowBlock({ view }) {
     return (
       <section className="order-now order-now-quiet">
         <p>{n.empty}</p>
+      </section>
+    )
+  }
+
+  if (view.importFailed) {
+    return (
+      <section className="order-now" data-tone="attention">
+        <div>
+          <h2>{n.importFailedTitle}</h2>
+          <p>{n.importFailedBody}</p>
+          {view.importFailure?.message ? (
+            <p className="order-now-note">
+              {n.importFailedReason(view.importFailure.message)}
+            </p>
+          ) : null}
+          <p className="order-now-note">
+            {view.importFailure?.next_step || n.importFailedNext}
+          </p>
+        </div>
       </section>
     )
   }

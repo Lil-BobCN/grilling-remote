@@ -159,22 +159,28 @@ export function buildOrderView(order, lang = 'zh') {
     )
     .sort((left, right) => timeValue(left.at) - timeValue(right.at))
 
+  const importFailed =
+    (order?.importStatus === 'import_failed' ||
+      order?.importStatus === 'needs_operator') &&
+    Boolean(order?.importFailure)
   const last = transitions[transitions.length - 1]
-  const invalid = last?.tier === '校验未通过'
-  const justRejected = last?.tier === '已驳回'
-  const tierLabel = !last
+  const invalid = !importFailed && last?.tier === '校验未通过'
+  const justRejected = !importFailed && last?.tier === '已驳回'
+  const tierLabel = importFailed
     ? '已收到'
-    : invalid
+    : !last
       ? '已收到'
-      : justRejected
-        ? '开发中'
-        : last.tier
+      : invalid
+        ? '已收到'
+        : justRejected
+          ? '开发中'
+          : last.tier
   const round = !last ? 1 : justRejected ? last.round + 1 : last.round
   const currentIndex = Math.max(
     0,
     TIERS.findIndex((tier) => tier.key === tierLabel),
   )
-  const states = markerStates(currentIndex, tierLabel, invalid)
+  const states = markerStates(currentIndex, tierLabel, invalid || importFailed)
   const lastAt = last?.at || ''
 
   // 已经走过的档取第一次到达；当前档取这一轮到达。
@@ -217,9 +223,11 @@ export function buildOrderView(order, lang = 'zh') {
     transitions,
     hasTransitions: transitions.length > 0,
     invalid,
+    importFailed,
+    importFailure: importFailed ? order.importFailure : null,
     justRejected,
     tierLabel,
-    tierName: tierName(lang, tierLabel),
+    tierName: importFailed ? tierName(lang, '导入失败') : tierName(lang, tierLabel),
     round,
     currentIndex,
     states,
@@ -251,6 +259,7 @@ export function buildOrderView(order, lang = 'zh') {
 function buildLede(view, lang) {
   const copy = (PROGRESS_COPY[lang] || PROGRESS_COPY.zh).lede
   if (!view.hasTransitions) return copy.noProgress
+  if (view.importFailed) return copy.importFailed
   if (view.invalid) return copy.invalid
   if (view.justRejected || (view.tierLabel === '开发中' && view.round > 1)) {
     return copy.round(view.round)
@@ -275,6 +284,7 @@ function buildLede(view, lang) {
 export function listSubline(view, lang) {
   const copy = (PROGRESS_COPY[lang] || PROGRESS_COPY.zh).subline
   if (!view.hasTransitions) return copy.none
+  if (view.importFailed) return copy.importFailed
   if (view.invalid) return copy.invalid
   if (view.justRejected) return copy.rejected
   if (view.tierLabel === '已完成') return copy.done
@@ -434,6 +444,7 @@ export function historyRounds(view) {
  */
 export function messagesDue(order, view, now = Date.now()) {
   if (!view || !view.hasTransitions) return null
+  if (view.importFailed) return null
   if (view.tierLabel === '已完成') return null
 
   const sent = Array.isArray(order?.messages) ? order.messages : []
@@ -481,6 +492,7 @@ export function stayDays(view, now = Date.now()) {
 /** 管理视图的「内部细阶段」。 */
 export function internalStage(view) {
   if (!view) return ''
+  if (view.importFailed) return '导入失败'
   if (view.invalid || view.tierLabel === '已收到') return '未建单'
   if (view.tierLabel === '安排中') return '排队中'
   if (view.tierLabel === '开发中') return '开发中'
@@ -491,6 +503,7 @@ export function internalStage(view) {
 
 /** 管理视图的细阶段小字：最后一条转档的细阶段和进度。 */
 export function latestSubline(view) {
+  if (view?.importFailed) return view.importFailure?.message || '导入失败'
   if (!view?.lastSub) return ''
   return view.lastProgress ? `${view.lastSub} ${view.lastProgress}` : view.lastSub
 }

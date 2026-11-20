@@ -754,6 +754,7 @@ export const zh = {
       },
       internal: {
         未建单: '还没建单',
+        导入失败: '导入失败',
         排队中: '排队中',
         开发中: '开发中',
         待验收: '待验收',
@@ -789,6 +790,10 @@ export const zh = {
         invalidFallback: '缺什么、怎么补，看我们发给你的消息。也可以微信问客服。',
         invalidNote: '补齐后重新上传，会接着这一单走，不用重新说需求。',
         reupload: '重新上传',
+        importFailedTitle: '导入没成功',
+        importFailedBody: '文件收到了，但服务器导入时出了错，还没有进开发。文件已经保存，不用重新上传。',
+        importFailedReason: (reason) => `原因：${reason}`,
+        importFailedNext: '运营者会处理导入问题，处理好后这单继续往前走。等得久了，直接微信问客服。',
         rejectedTitle: ['上一轮你说的问题，', { span: '这一轮', cls: 'order-nowrap' }, '在改'],
         rejectedBody: '开工后会从「开工」重新走，做完再给你试。',
         rejectedWorkingBody: '这一轮从「开工」重新走，做完再给你试。',
@@ -1026,10 +1031,12 @@ export const zh = {
     branches: {
       校验未通过: '校验未通过',
       已驳回: '已驳回',
+      导入失败: '导入失败',
     },
     lede: {
       noProgress: '还没收到这一单的进度记录。过一会儿再打开看看。',
       invalid: '文件收到了，还差一些东西才能建单。',
+      importFailed: '文件收到了，但导入时出了错。不用重新上传，我们在处理。',
       round: (n) => `现在是第 ${n} 轮。`,
       doing: (done, total) => `正在做第 ${done} 块，共 ${total} 块。做完会微信告诉你。`,
       trial: '地址和试用清单已经发给你。你试完说一声就行。',
@@ -1038,6 +1045,7 @@ export const zh = {
     subline: {
       none: '还没有进度记录',
       invalid: '还没建单，等你补齐',
+      importFailed: '导入失败，等运营者处理',
       rejected: '在改上一轮的问题',
       done: '要仓库找客服过户',
       trial: '等你试',

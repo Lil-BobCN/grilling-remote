@@ -12,6 +12,7 @@ import {
   makeWorkspace,
   makeZipFromEntries,
   readZip,
+  seedAdmin,
   seedCustomer,
   startServer,
   upload,
@@ -582,6 +583,26 @@ test('订单列表和详情只看自己的单', async () => {
 
     const missing = await fetch(`${server.base}/app/api/orders/o-9999`, { headers: { Cookie: cookie } })
     assert.equal(missing.status, 404)
+  } finally {
+    await server.close()
+  }
+})
+
+test('管理员账号没有客户档案时上传返回 422，不建死单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  await seedAdmin(config)
+  const server = await startServer(config)
+  try {
+    const admin = await login(server.base, 'admin@example.com', PASSWORD)
+    const workspace = await makeWorkspace()
+    const response = await upload(server.base, admin.cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /客户账号/)
+    assert.match(body.message, /显式映射/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+    assert.deepEqual(await readdir(config.uploadDir), [])
   } finally {
     await server.close()
   }

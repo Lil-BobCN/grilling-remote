@@ -10,7 +10,7 @@ import {
 } from '../progress.js'
 
 function stateTone(view) {
-  if (view.invalid) return 'warn'
+  if (view.invalid || view.importFailed) return 'warn'
   if (view.tierLabel === '已完成') return 'done'
   return 'active'
 }
