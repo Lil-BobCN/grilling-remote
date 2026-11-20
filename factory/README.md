@@ -99,6 +99,18 @@ node factory/bin/install-launchd.mjs --verify
 
 重装直接再跑一次安装。脚本先 `bootout` 旧任务，再 `bootstrap` 新 plist。
 
+卸载或回滚：先卸两个任务，再删 plist 和 wrapper。日志留在 `~/.afkfactory/logs`，方便查上次为什么退出。
+
+```bash
+launchctl bootout gui/$(id -u)/com.afkfactory.scheduler
+launchctl bootout gui/$(id -u)/com.afkfactory.pull-inbox
+rm -f ~/Library/LaunchAgents/com.afkfactory.scheduler.plist \
+      ~/Library/LaunchAgents/com.afkfactory.pull-inbox.plist
+rm -f ~/.afkfactory/bin/run-scheduler.sh ~/.afkfactory/bin/run-pull-inbox.sh
+```
+
+安装检查不过时，`install-launchd.mjs` 会自己 bootout 新任务；手工回滚就是上面四条。
+
 常驻只用 launchd 这一条路。不要再用 `nohup` 手工起一份调度器，两份同时跑会重复点火。
 
 两个 wrapper 都 source `~/.afkfactory/env`。env 文件路径可用 `AFK_ENV_FILE` 换。需要的键：
