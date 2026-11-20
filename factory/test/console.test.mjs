@@ -12,6 +12,7 @@ import {
   pickWaiting,
   proposalKind,
 } from '../lib/console.mjs'
+import { run as runConsoleCli } from '../bin/console.mjs'
 
 const HEADER = 'ts\tphase\tdecision\twhy\tevidence\tresult'
 
@@ -191,4 +192,15 @@ test('pickWaiting 按票号和类型找待办', () => {
   assert.equal(pickWaiting(rows, { owner: 'o', repo: 'r', ticket: 1, kind: 'gap' })?.kind, 'gap')
   assert.equal(pickWaiting(rows, { owner: 'o', repo: 'r', ticket: 51, kind: 'gate' })?.kind, 'gate')
   assert.equal(pickWaiting(rows, { owner: 'o', repo: 'r', ticket: 2, kind: 'gap' }), null)
+})
+
+test('console 不收 spec 类型，错误里列出三种可选类型', async () => {
+  await assert.rejects(
+    () =>
+      runConsoleCli(
+        ['show', '--owner', 'o', '--repo', 'r', '--ticket', '1', '--kind', 'spec'],
+        { gh: {}, out: () => {} },
+      ),
+    /--kind 只能是 gap、split、gate/,
+  )
 })

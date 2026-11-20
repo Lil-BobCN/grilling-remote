@@ -14,13 +14,12 @@ import { parseGateRows } from './scheduler-jobs.mjs'
 
 const execFileAsync = promisify(execFile)
 
-export const KINDS = ['gap', 'split', 'gate', 'spec']
+export const KINDS = ['gap', 'split', 'gate']
 
 const KIND_LABEL = {
   gap: '补缺口',
   split: '拆票',
   gate: 'gate',
-  spec: 'to-spec',
 }
 
 export async function runCommand(command, args, options = {}) {

@@ -4,7 +4,7 @@
  * `answer` 调现有 gap、tickets、gate CLI 写回。
  *
  *   node factory/bin/console.mjs list --owner <o> --repo <r> [--repo-dir <客户仓>] [--json]
- *   node factory/bin/console.mjs show --owner <o> --repo <r> --ticket <n> --kind <gap|split|gate|spec> [--repo-dir <客户仓>]
+ *   node factory/bin/console.mjs show --owner <o> --repo <r> --ticket <n> --kind <gap|split|gate> [--repo-dir <客户仓>]
  *   node factory/bin/console.mjs open --owner <o> --repo <r> --ticket <n> --kind <k> [--repo-dir <客户仓>] [--worktree <selector>]
  *   node factory/bin/console.mjs answer --kind <k> --owner <o> --repo <r> --ticket <n> \
  *     [--answer '<文本或 JSON>'] [--question '<gate 题>'] [--repo-dir <客户仓>] [--commit] [--push]
