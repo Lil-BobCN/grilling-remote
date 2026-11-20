@@ -56,7 +56,7 @@
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 
-容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。`GH_TOKEN` 也在这个文件里，用 fine-grained PAT（细粒度个人访问令牌），只选当前客户仓，Issues、Pull requests、Contents 读写。
+容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。onboarding 用 GitHub App 按当前客户仓换 1 小时 `GH_TOKEN`，权限是 Issues、Pull requests、Contents 读写，写进这个文件，权限 600。
 
 手工点火一张票：
 
@@ -101,7 +101,7 @@ node factory/bin/install-launchd.mjs --verify
 - `GITHUB_TOKEN`
 - `ANTHROPIC_MODEL`（或 `AFK_AGENT_MODEL`）
 
-`GITHUB_TOKEN` 用细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写。token 不写进 plist。
+控制面 `GITHUB_TOKEN` 用细粒度 PAT，只选需要的仓，Issues、Pull requests、Contents 读写；容器里的 `GH_TOKEN` 由 GitHub App 按仓换 1 小时 token，两者分开。token 不写进 plist。
 
 调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。运行中每轮看 `customers.json` 的 mtime，变了就重读并重新校验；形状不对当轮报错，不沿用旧表。
 

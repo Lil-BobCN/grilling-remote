@@ -26,6 +26,7 @@ import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
+import { createRepoEnv } from '../lib/repo-env.mjs'
 import { createJobStore, defaultJobsPath } from '../lib/job.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
@@ -311,6 +312,9 @@ export async function run(
         token,
         image: process.env.AFK_SANDCASTLE_IMAGE || '',
         timeoutMs,
+        repoEnv:
+          configOverrides.repoEnv ??
+          (process.env.GITHUB_APP_ID ? createRepoEnv({ env: process.env }) : null),
       },
       runner:
         runner ||
