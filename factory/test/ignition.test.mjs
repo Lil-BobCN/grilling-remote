@@ -947,6 +947,48 @@ test('sandcastle runner：首次装依赖、镜像取 .env、脚本不带宿主 
   assert.equal(run.options.env.HOME, '/Users/example')
 })
 
+test('sandcastle runner：run 结果带回 preservedWorktreePath', async (t) => {
+  const fixture = await runnerFixture(t)
+  await seedInstalledSandcastle(fixture.home)
+  const preserved = join(fixture.repoDir, '.sandcastle', 'worktrees', 'ticket-5')
+  const runner = createSandcastleRunner({
+    home: fixture.home,
+    env: { PATH: '/usr/bin', HOME: '/Users/example' },
+    exec: async (command, args, options = {}) => {
+      if (command.endsWith('/tsx')) {
+        options.onStart?.()
+        return {
+          code: 0,
+          stdout: `AFK_RESULT:${JSON.stringify({
+            commits: [{ sha: 'abc123' }],
+            branch: 'ticket/5',
+            preservedWorktreePath: preserved,
+          })}\n`,
+          stderr: '',
+        }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+    buildImage: async () => ({}),
+  })
+
+  const prepared = await runner.prepare({
+    repoDir: fixture.repoDir,
+    ticketBranch: 'ticket/5',
+    prompt: fixture.prompt,
+    envFile: join(fixture.repoDir, '.sandcastle', '.env'),
+  })
+  const result = await runner.run({
+    repoDir: fixture.repoDir,
+    ticketBranch: 'ticket/5',
+    prepared,
+  })
+
+  assert.equal(result.preservedWorktreePath, preserved)
+  const script = await readFile(prepared.scriptPath, 'utf8')
+  assert.match(script, /preservedWorktreePath/, '脚本要把 Sandcastle 的保留路径打出来')
+})
+
 test('sandcastle runner：依赖已装就不重装，镜像没配时用 sandcastle:<repo>', async (t) => {
   const fixture = await runnerFixture(t, { image: '' })
   await seedInstalledSandcastle(fixture.home)
