@@ -229,11 +229,6 @@ function NowBlock({ view }) {
         <div>
           <h2>{n.importFailedTitle}</h2>
           <p>{n.importFailedBody}</p>
-          {view.importFailure?.message ? (
-            <p className="order-now-note">
-              {n.importFailedReason(view.importFailure.message)}
-            </p>
-          ) : null}
           <p className="order-now-note">
             {view.importFailure?.next_step || n.importFailedNext}
           </p>

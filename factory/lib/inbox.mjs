@@ -260,7 +260,14 @@ export async function pullInbox({
     const previous = (await readJsonOrNull(archivePath)) || {}
 
     const zipPath = join(dir, 'package.zip')
-    const copyPackage = status === 'ready' || status === 'imported' || status === 'validation_failed'
+    // 失败终态也要把包存档：服务器 7 天后会删原包，本地只剩 meta 就补不回来。
+    const copyPackage =
+      status === 'ready' ||
+      status === 'imported' ||
+      status === 'validation_failed' ||
+      status === 'import_failed' ||
+      status === 'import_partial' ||
+      status === 'needs_operator'
     let complete = copyPackage ? await fileComplete(zipPath, meta) : false
     if (copyPackage && !complete) {
       const bytes = await remote.read(id, 'package.zip')

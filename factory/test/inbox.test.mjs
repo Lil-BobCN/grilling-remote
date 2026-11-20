@@ -322,6 +322,10 @@ test('import_partial 的上传存档，并把部分失败发给运营者', async
   assert.equal(notified.length, 1)
   assert.equal(notified[0].meta.status, 'import_partial')
   assert.equal(notified[0].alert.reason, 'import_partial')
+  assert.deepEqual(
+    await readFile(join(inboxDir, 'upload-partial', 'package.zip')),
+    zipBytes('upload-partial'),
+  )
   const archive = JSON.parse(
     await readFile(join(inboxDir, 'upload-partial', 'archived.json'), 'utf8'),
   )

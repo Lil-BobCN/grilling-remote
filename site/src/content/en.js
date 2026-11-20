@@ -928,7 +928,6 @@ export const en = {
         importFailedTitle: 'Import did not succeed',
         importFailedBody:
           'We received the files, but an error occurred while importing them, so work has not started. The files are saved; you do not need to upload again.',
-        importFailedReason: (reason) => `Reason: ${reason}`,
         importFailedNext:
           'Our team will fix the import and this order will continue. If it stays quiet for a long time, message support on WeChat.',
         rejectedTitle: 'This round fixes what you raised last round.',

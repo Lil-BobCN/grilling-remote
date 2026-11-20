@@ -564,6 +564,62 @@ test('多单里一单导入失败，其余继续，上传记 import_partial 和�
   )
 })
 
+test('多单都转运营者时，上传状态和告警原因一致', async (t) => {
+  const { config, customer, fake, gh, bare } = await setup(t)
+  const first = await makeOrder(config, customer, { requirement: 'demo', product: 'demo' })
+  const second = await makeOrder(config, customer, { requirement: 'kucun', product: 'kucun' })
+  const { dir } = await makeUpload(config, {
+    id: 'upload-deprecated-two',
+    orders: [first, second],
+    requirements: [
+      { name: 'demo', decisions: '- 已废：旧的送货方案' },
+      { name: 'kucun', decisions: '- 已被取代：旧库存方案' },
+    ],
+  })
+
+  const result = await importOnce({ config, gh, remoteUrlFor: () => bare })
+
+  assert.equal(result.uploads[0].status, 'needs_operator')
+  const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  assert.equal(meta.status, 'needs_operator')
+  assert.equal(meta.operator_alert.reason, 'needs_operator')
+  assert.deepEqual(
+    meta.results.map((item) => item.status),
+    ['needs_operator', 'needs_operator'],
+  )
+  assert.equal(fake.state.repos.size, 0)
+})
+
+test('整包导入失败时不覆盖校验未通过的单', async (t) => {
+  const { config, customer, gh, bare } = await setup(t)
+  config.githubOwner = ''
+  const invalid = await makeOrder(config, customer, {
+    requirement: 'demo',
+    product: 'demo',
+    passed: false,
+    missing: ['缺验收场景。'],
+  })
+  const passed = await makeOrder(config, customer, { requirement: 'kucun', product: 'kucun' })
+  await makeUpload(config, {
+    id: 'upload-owner-missing',
+    orders: [invalid, passed],
+    requirements: [{ name: 'demo', passed: false }, { name: 'kucun' }],
+  })
+
+  await importOnce({ config, gh, remoteUrlFor: () => bare })
+
+  const invalidOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${invalid.id}.json`), 'utf8'),
+  )
+  assert.equal(invalidOrder.import_status, '')
+  assert.equal(invalidOrder.import_failure, null)
+  assert.equal(invalidOrder.validation.passed, false)
+  const passedOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${passed.id}.json`), 'utf8'),
+  )
+  assert.equal(passedOrder.import_status, 'import_failed')
+})
+
 test('导入时没配 GITHUB_OWNER 按失败报，不猜账号', async (t) => {
   const { config, customer, gh, bare } = await setup(t)
   config.githubOwner = ''

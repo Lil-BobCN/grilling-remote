@@ -596,12 +596,7 @@ async function importUpload({
   const results = new Map()
   for (const order of uploadOrders) {
     if (order.validation?.passed === false) {
-      results.set(order.id, {
-        order_id: order.id,
-        requirement: order.requirement,
-        status: 'validation_failed',
-        at: stamp,
-      })
+      results.set(order.id, resultFor(order, 'validation_failed'))
     }
   }
   if (passedOrders.length === 0) {
@@ -626,23 +621,18 @@ async function importUpload({
   const failures = []
   const okIds = new Set()
 
+  function resultFor(order, status, extra = {}) {
+    return { order_id: order.id, requirement: order.requirement, status, at: stamp, ...extra }
+  }
+
   async function recordFailure(order, failure) {
-    await markOrderFailure(config, order, { ...failure, uploadId: meta.id, at: stamp })
-    results.set(order.id, {
-      order_id: order.id,
-      requirement: order.requirement,
-      status: failure.status,
-      reason: failure.reason,
-      message: failure.message,
-      at: stamp,
-    })
-    failures.push({
-      order_id: order.id,
-      requirement: order.requirement,
-      status: failure.status,
+    await tryMarkOrderFailure(config, order, { ...failure, uploadId: meta.id, at: stamp })
+    const entry = resultFor(order, failure.status, {
       reason: failure.reason,
       message: failure.message,
     })
+    results.set(order.id, entry)
+    failures.push(entry)
   }
 
   const attempts = [
@@ -703,12 +693,7 @@ async function importUpload({
           sha256: meta.sha256,
         })
       }
-      results.set(order.id, {
-        order_id: order.id,
-        requirement: order.requirement,
-        status: IMPORT_IMPORTED,
-        at: stamp,
-      })
+      results.set(order.id, resultFor(order, IMPORT_IMPORTED))
       okIds.add(order.id)
     } catch (error) {
       const failure = {
@@ -732,12 +717,7 @@ async function importUpload({
   // 已经有工单、这次没有重活要做的单，仍算导入成功。
   for (const order of passedOrders) {
     if (results.has(order.id)) continue
-    results.set(order.id, {
-      order_id: order.id,
-      requirement: order.requirement,
-      status: IMPORT_IMPORTED,
-      at: stamp,
-    })
+    results.set(order.id, resultFor(order, IMPORT_IMPORTED))
     okIds.add(order.id)
   }
 
@@ -779,7 +759,7 @@ async function importUpload({
         ? IMPORT_PARTIAL
         : failures.length === 1
           ? failures[0].reason
-          : IMPORT_FAILED
+          : status
     const message =
       failures.length === 1
         ? failures[0].message
@@ -802,7 +782,7 @@ async function importUpload({
   return next
 }
 
-async function markOrderFailure(config, order, failure) {
+async function tryMarkOrderFailure(config, order, failure) {
   try {
     await markImportFailure(config, order.id, failure)
   } catch (error) {
@@ -853,9 +833,10 @@ async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, specLock, 
       for (const id of Array.isArray(failed.orders) ? failed.orders : []) {
         const order = await readOrder(config, id)
         if (!order) continue
-        // 已经建好工单的单不回退，避免整包失败覆盖单票成功。
+        // 已经建好工单的单不回退；校验未通过的单保留原状态和缺口。
+        if (order.validation?.passed === false) continue
         if (order.issue || order.import_status === IMPORT_IMPORTED) continue
-        await markOrderFailure(config, order, {
+        await tryMarkOrderFailure(config, order, {
           status: IMPORT_FAILED,
           reason: failed.reason,
           message: failed.operator_alert.message,

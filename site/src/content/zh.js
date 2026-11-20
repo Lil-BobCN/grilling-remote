@@ -792,7 +792,6 @@ export const zh = {
         reupload: '重新上传',
         importFailedTitle: '导入没成功',
         importFailedBody: '文件收到了，但服务器导入时出了错，还没有进开发。文件已经保存，不用重新上传。',
-        importFailedReason: (reason) => `原因：${reason}`,
         importFailedNext: '运营者会处理导入问题，处理好后这单继续往前走。等得久了，直接微信问客服。',
         rejectedTitle: ['上一轮你说的问题，', { span: '这一轮', cls: 'order-nowrap' }, '在改'],
         rejectedBody: '开工后会从「开工」重新走，做完再给你试。',
