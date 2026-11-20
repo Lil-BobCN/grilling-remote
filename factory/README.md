@@ -56,7 +56,15 @@
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 
-容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。onboarding 用 GitHub App 按当前客户仓换 1 小时 `GH_TOKEN`，权限是 Issues、Pull requests、Contents 读写，写进这个文件，权限 600。
+容器凭证只从 `.sandcastle/.env` 转发，宿主环境变量不进容器。onboarding 用 GitHub App 按当前客户仓换 1 小时 `GH_TOKEN`，权限是 Issues、Pull requests、Contents、Workflows 读写，写进这个文件，权限 600。
+
+新客户仓第一次点火前跑一次 onboarding，生成或补齐 `.sandcastle/.env`：
+
+```sh
+node factory/bin/repo-env.mjs ensure --repo-dir <客户仓> --owner <owner> --repo <repo>
+```
+
+命令从 `~/.afkfactory/env` 读 App 配置，`AFK_ENV_FILE` 可以换文件路径。点火时还会再补一次过期 token 并检查缺键。
 
 手工点火一张票：
 
