@@ -11,6 +11,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
+import { eventKey } from '../../backend/lib/protocol.mjs'
 import { git } from './git.mjs'
 
 const execFileAsync = promisify(execFile)
@@ -100,8 +101,8 @@ function healthOk(result) {
   return true
 }
 
-function deployKey(orderId, event, version, at) {
-  return [orderId || '成品', event, version, at].filter(Boolean).join(':')
+function deployKey(orderId, event, version) {
+  return eventKey({ subject: orderId || '成品', event, scope: version })
 }
 
 /** 部署失败的「出事」通知。通知失败不影响已经做出的判断。 */
@@ -113,12 +114,13 @@ export async function notifyDeployFailure({
   reason = '部署失败',
   tried,
   link = '',
+  attempt = 1,
 } = {}) {
   if (typeof notifier?.send !== 'function') return
   try {
     await notifier.send({
       v: 1,
-      key: key || deployKey('', '出事', reason, new Date().toISOString()),
+      key: key || deployKey('', '出事', reason),
       event: '出事',
       occurred_at: new Date().toISOString(),
       link,
@@ -127,6 +129,7 @@ export async function notifyDeployFailure({
         requirement: requirement || '成品部署',
         reason,
         tried,
+        attempt,
       },
     })
   } catch {
@@ -139,7 +142,7 @@ async function notifyDeployDone({ notifier, key, customer, requirement, address,
   try {
     await notifier.send({
       v: 1,
-      key: key || deployKey('', '部署完成', version, ''),
+      key: key || deployKey('', '部署完成', version),
       event: '部署完成',
       occurred_at: new Date().toISOString(),
       link,
@@ -193,7 +196,7 @@ export async function deployProduct({
     const tried = `交付地址拼不出来：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId, '出事', '部署失败', new Date().toISOString()),
+      key: deployKey(orderId, '出事', '部署失败'),
       customer,
       requirement: requirement || product,
       tried,
@@ -266,7 +269,7 @@ export async function deployProduct({
 
       await notifyDeployDone({
         notifier,
-        key: deployKey(orderId, '部署完成', textVersion, ''),
+        key: deployKey(orderId, '部署完成', textVersion),
         customer,
         requirement: requirementName,
         address,
@@ -299,11 +302,12 @@ export async function deployProduct({
   const tried = failures.join('；')
   await notifyDeployFailure({
     notifier,
-    key: deployKey(orderId, '出事', '部署失败', new Date().toISOString()),
+    key: deployKey(orderId, '出事', '部署失败'),
     customer,
     requirement: requirementName,
     tried,
     link,
+    attempt: 2,
   })
   return { ok: false, reason: '部署失败', tried, address, version: textVersion, attempts: 2 }
 }
@@ -340,7 +344,7 @@ export async function rollbackProduct({
     const tried = `${stage}：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId || address, '出事', '回滚失败', new Date().toISOString()),
+      key: deployKey(orderId || address, '出事', '回滚失败'),
       customer: customer || address,
       requirement,
       reason: '回滚失败',

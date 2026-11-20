@@ -37,7 +37,7 @@ import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
 import { runHelper } from '../lib/helper.mjs'
 import { parentCustomer, parentRequirement } from '../lib/ignition.mjs'
-import { createNotifier } from '../lib/notify.mjs'
+import { createNotifier, notificationEvent } from '../lib/notify.mjs'
 import { previewNeeded, startPreview, stopPreview } from '../lib/preview.mjs'
 import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
 
@@ -203,23 +203,27 @@ function cachedPreview(preview) {
   }
 }
 
-async function notifyAuditIncident({ notifier, ticket, problems }) {
+async function notifyAuditIncident({ notifier, ticket, owner = '', repo = '', problems }) {
   if (typeof notifier?.send !== 'function') return
-  const at = new Date().toISOString()
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${ticket.number}:出事:验证评审修不过:${at}`,
-      event: '出事',
-      occurred_at: at,
-      link: ticket.htmlUrl || '',
-      data: {
-        customer: ticket.customer,
-        requirement: ticket.requirement,
-        reason: '验证评审修不过',
-        tried: problems.join('；') || '证据补齐失败',
-      },
-    })
+    await notifier.send(
+      notificationEvent({
+        owner,
+        repo,
+        subject: `#${ticket.number}`,
+        event: '出事',
+        scope: '验证评审修不过:证据补齐',
+        now: new Date(),
+        link: ticket.htmlUrl || '',
+        data: {
+          customer: ticket.customer,
+          requirement: ticket.requirement,
+          reason: '验证评审修不过',
+          tried: problems.join('；') || '证据补齐失败',
+          round: ticket.round ?? 1,
+        },
+      }),
+    )
   } catch {
     // 通知失败不改变判断。
   }
@@ -259,6 +263,8 @@ export async function ensureEvidenceBeforeMerge({
   repoDir,
   ticket,
   ticketNumber,
+  owner = '',
+  repo = '',
   branch,
   baseBranch,
   runner,
@@ -315,7 +321,7 @@ export async function ensureEvidenceBeforeMerge({
       .catch((error) => ({ ok: false, error: errorText(error) }))
     if (!started?.ok) {
       const problems = [`预览起不来：${started?.error || '未知原因'}`]
-      await notifyAuditIncident({ notifier, ticket, problems })
+      await notifyAuditIncident({ notifier, ticket, owner, repo, problems })
       return { ok: false, reason: 'evidence_not_ready', missing: gaps, problems }
     }
   }
@@ -471,7 +477,7 @@ export async function ensureEvidenceBeforeMerge({
     if (started?.ok) {
       await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})
     }
-    await notifyAuditIncident({ notifier, ticket, problems })
+    await notifyAuditIncident({ notifier, ticket, owner, repo, problems })
     return {
       ok: false,
       reason: 'evidence_not_ready',
@@ -577,6 +583,8 @@ async function runMerge(options, deps = {}) {
     repoDir,
     ticket,
     ticketNumber,
+    owner,
+    repo,
     branch: ticketBranch,
     baseBranch: reqBranch,
     runner,

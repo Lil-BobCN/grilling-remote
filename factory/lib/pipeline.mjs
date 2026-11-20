@@ -20,6 +20,7 @@ import { git } from './git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from './ignition.mjs'
 import { ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
+import { notificationEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
 import { hasLabel, NEEDS_INFO_LABEL } from './scheduler.mjs'
@@ -181,19 +182,24 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
   await gh.createComment({ owner, repo, number: parent.number, body })
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${parent.number}:出事:认证失败`,
-      event: '出事',
-      occurred_at: (now instanceof Date ? now : new Date(now ?? Date.now())).toISOString(),
-      link: ticket.htmlUrl || '',
-      data: {
-        customer: ticket.customer,
-        requirement: ticket.requirement,
-        reason: '认证失败',
-        tried: note,
-      },
-    })
+    await notifier.send(
+      notificationEvent({
+        owner,
+        repo,
+        subject: `#${parent.number}`,
+        event: '出事',
+        scope: '认证失败',
+        now: now instanceof Date ? now : new Date(now ?? Date.now()),
+        link: ticket.htmlUrl || '',
+        data: {
+          customer: ticket.customer,
+          requirement: ticket.requirement,
+          reason: '认证失败',
+          tried: note,
+          round: ticket.round,
+        },
+      }),
+    )
   } catch {
     // 通知失败不改变判断。
   }
@@ -362,6 +368,8 @@ export function createTicketPipeline({
         repoDir,
         ticket: ticketInfo,
         ticketNumber: ticket.number,
+        owner,
+        repo,
         branch: ticketBranch,
         baseBranch: reqBranch,
         runner,

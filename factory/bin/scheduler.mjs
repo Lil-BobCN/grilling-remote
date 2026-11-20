@@ -26,7 +26,7 @@ import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
-import { createJobStore, defaultJobsPath } from '../lib/job.mjs'
+import { createJobStore, defaultJobsPath, findJob } from '../lib/job.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
@@ -319,6 +319,7 @@ export async function run(
       const order = parentOrder(parent?.body)
       const branch = reqBranch || (order ? `req/${order}` : '')
       if (!branch) return { ok: false, reason: 'no-order' }
+      const finishJob = jobs ? findJob(jobs.all(), { action: 'finish' }) : null
       const result = await runFinish(
         {
           owner,
@@ -328,7 +329,7 @@ export async function run(
           main: 'main',
           'repo-dir': join(repoRoot, repo),
         },
-        { gh: client, notifier: notify },
+        { gh: client, notifier: notify, attempt: (finishJob?.attempt || 0) + 1 },
       )
       return { ...result.output, ok: result.exitCode === 0, exitCode: result.exitCode }
     })

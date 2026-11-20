@@ -31,6 +31,7 @@ import { createGithub } from '../lib/github.mjs'
 import { git, pushOrigin } from '../lib/git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.mjs'
 import { ensureCommentOnce } from '../lib/issues.mjs'
+import { eventKey } from '../../backend/lib/protocol.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { parseProgress, progressLine } from '../lib/progress.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
@@ -301,6 +302,7 @@ export async function runFinish(options, deps = {}) {
     mergePr,
     notifier,
     cleanup: cleanupRequirement,
+    attempt: deps.attempt ?? 1,
   })
 
   if (!result.ok || !result.mergeSha || options.noDeploy) {
@@ -320,7 +322,7 @@ export async function runFinish(options, deps = {}) {
     const error = `父工单正文缺 ${missing.join('、')}，不猜，没部署`
     await notifyDeployFailure({
       notifier,
-      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
       customer: customer || '未知客户',
       requirement: requirement || parentIssue?.title || '',
       tried: error,
@@ -335,7 +337,7 @@ export async function runFinish(options, deps = {}) {
     const error = `软件简称拼不出来：传 --product，或让仓名是 ${customer}-<软件简称>；不猜`
     await notifyDeployFailure({
       notifier,
-      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
       customer,
       requirement,
       tried: error,
@@ -364,7 +366,7 @@ export async function runFinish(options, deps = {}) {
     deployed = { ok: false, reason: '部署失败', error: errorText(error) }
     await notifyDeployFailure({
       notifier,
-      key: `#${parentIssue.number}:出事:部署失败:${new Date().toISOString()}`,
+      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
       customer,
       requirement,
       tried: `部署脚本抛错：${errorText(error)}`,

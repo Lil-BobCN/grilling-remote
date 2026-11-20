@@ -7,6 +7,7 @@
  */
 import { dirname } from 'node:path'
 import { git } from './git.mjs'
+import { notificationEvent } from './notify.mjs'
 import { hasLabel } from './scheduler.mjs'
 import { parentCustomer, parentRequirement } from './ignition.mjs'
 import {
@@ -312,24 +313,28 @@ function factsOf(parentIssue) {
   return { customer, requirement }
 }
 
-async function notifyIncident({ notifier, parentIssue, owner, repo, tag, tried }) {
+async function notifyIncident({ notifier, parentIssue, owner, repo, tag, tried, attempt = 1 }) {
   if (typeof notifier?.send !== 'function') return
-  const at = new Date()
   const facts = factsOf(parentIssue)
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${parentIssue.number}:出事:验证评审修不过:${tag}:${at.toISOString()}`,
-      event: '出事',
-      occurred_at: at.toISOString(),
-      link: issueLink(parentIssue, owner, repo),
-      data: {
-        customer: facts.customer,
-        requirement: facts.requirement,
-        reason: '验证评审修不过',
-        tried,
-      },
-    })
+    await notifier.send(
+      notificationEvent({
+        owner,
+        repo,
+        subject: `#${parentIssue.number}`,
+        event: '出事',
+        scope: `验证评审修不过:${tag}`,
+        now: new Date(),
+        link: issueLink(parentIssue, owner, repo),
+        data: {
+          customer: facts.customer,
+          requirement: facts.requirement,
+          reason: '验证评审修不过',
+          tried,
+          attempt,
+        },
+      }),
+    )
   } catch {
     // 通知失败不改变已经做出的判断。
   }
@@ -428,6 +433,7 @@ export async function finishRequirement({
   notifier,
   cleanup,
   small,
+  attempt = 1,
   maxFixRounds = resolveMaxFixRounds(),
 } = {}) {
   const parentIssue = parent?.parent
@@ -477,6 +483,7 @@ export async function finishRequirement({
         repo,
         tag: '收尾评审',
         tried: `收尾评审没过${findings.length ? `：${findings.join('；')}` : ''}`,
+        attempt,
       })
       return { ok: false, reason: 'review_failed', findings }
     }
@@ -502,6 +509,7 @@ export async function finishRequirement({
         repo,
         tag: '收尾评审',
         tried: `收尾评审两轮没过${findings.length ? `：${findings.join('；')}` : ''}${fixNote ? `。${fixNote}` : ''}`,
+        attempt,
       })
       return { ok: false, reason: 'review_failed', findings }
     }
@@ -590,6 +598,7 @@ export async function finishRequirement({
       repo,
       tag,
       tried: `${label}${problems.length ? `：${problems.join('；')}` : ''}${fixNote ? `。${fixNote}` : ''}`,
+      attempt,
     })
     return {
       ok: false,
@@ -614,14 +623,18 @@ export async function finishRequirement({
   const number = prNumber(pr)
   if (typeof notifier?.send === 'function') {
     try {
-      await notifier.send({
-        v: 1,
-        key: `#${parentIssue.number}:自己合并:PR-${number ?? '?'}`,
-        event: '自己合并',
-        occurred_at: new Date().toISOString(),
-        link: pr?.html_url || issueLink(parentIssue, owner, repo),
-        data: { customer: facts.customer, requirement: facts.requirement, pr: number },
-      })
+      await notifier.send(
+        notificationEvent({
+          owner,
+          repo,
+          subject: `#${parentIssue.number}`,
+          event: '自己合并',
+          scope: `PR-${number ?? '?'}`,
+          now: new Date(),
+          link: pr?.html_url || issueLink(parentIssue, owner, repo),
+          data: { customer: facts.customer, requirement: facts.requirement, pr: number },
+        }),
+      )
     } catch {
       // 合已经合了，通知失败不回滚。
     }

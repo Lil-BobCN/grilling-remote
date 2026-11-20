@@ -1464,18 +1464,21 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
   await jobs.startRound({ now: clock() })
   now += 11 * 60_000
   const notifier = fakeNotifier()
+  const config = {}
   const watchdog = createWatchdog({
     jobs,
     notifier,
     clock,
     stallMs: 10 * 60_000,
     log: () => {},
+    config,
   })
 
   const event = await watchdog.tick()
   assert.equal(event.event, '出事')
   assert.match(event.data.reason, /轮次超时/)
-  assert.match(event.key, /轮次超时/)
+  assert.equal(event.key, `调度器:出事:轮次超时:${jobs.heartbeat.roundStart}`)
+  assert.ok(config.notifiedKeys.has(event.key), '探活发送要留下 sent 记录')
   assert.equal(event.data.customer, '工厂')
   assert.match(event.link, /^file:\/\//, '出事通知必须带 link，否则真 notifier 拒收')
   assert.equal(notifier.calls.length, 1)
@@ -2015,7 +2018,7 @@ test('排队中三圈同进度：runOnce 推 needs-info 和出事，不点火，
   assert.equal(events.filter((event) => event.event === 'needs-info').length, 1)
   const incident = events.find((event) => event.event === '出事')
   assert.ok(incident, '没有发出事通知')
-  assert.equal(incident.key, `#${parent.number}:出事:三圈没进展`)
+  assert.equal(incident.key, `${OWNER}/${REPO}:#${parent.number}:出事:三圈没进展`)
   assert.equal(incident.data.reason, '三圈没进展')
   assert.match(incident.data.tried, /连续 3 轮/)
 
@@ -2041,7 +2044,7 @@ test('新单进队列：已提交且没有评论时推一次，同一轮再跑�
 
   const events = notifier.calls.filter((event) => event.event === '新单进队列')
   assert.equal(events.length, 1)
-  assert.equal(events[0].key, `#${parent.number}:新单进队列`)
+  assert.equal(events[0].key, `${OWNER}/${REPO}:#${parent.number}:新单进队列`)
   assert.equal(events[0].data.customer, 'acme')
   assert.equal(events[0].data.requirement, 'yuyue-quhuo')
   assert.equal(labelsOf(fake, OWNER, REPO, parent.number).length, 1)
@@ -2296,7 +2299,7 @@ test('地图重传评论 → 推重传地图已更新；同一日期不重复推
   assert.equal(events[0].data.customer, 'acme')
   assert.equal(events[0].data.requirement, 'yuyue-quhuo')
   assert.equal(events[0].link, `https://github.com/${OWNER}/${REPO}/issues/${map.number}`)
-  assert.equal(events[0].key, `#${map.number}:重传地图已更新:2026-11-17`)
+  assert.equal(events[0].key, `${OWNER}/${REPO}:#${map.number}:重传地图已更新:2026-11-17`)
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal(
@@ -2335,6 +2338,133 @@ test('地图没有重传评论不发；有两条时用最新日期', async (t) =
 
   const events = [...notifier.delivered.values()].filter((event) => event.event === '重传地图已更新')
   assert.equal(events.length, 1)
-  assert.equal(events[0].key, `#${updated.number}:重传地图已更新:2026-11-18`)
+  assert.equal(events[0].key, `${OWNER}/${REPO}:#${updated.number}:重传地图已更新:2026-11-18`)
   assert.equal(quiet.number < updated.number, true)
+})
+
+test('runOnce：两个客户仓都有父工单 #1，各自的该跑 to-spec 都能发', async (t) => {
+  const fake = await startFakeGithub({
+    repos: [
+      { owner: OWNER, name: 'shop-a' },
+      { owner: OWNER, name: 'shop-b' },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  await repoLabels(gh, OWNER, 'shop-a')
+  await repoLabels(gh, OWNER, 'shop-b')
+
+  for (const repo of ['shop-a', 'shop-b']) {
+    const created = await gh.createIssue({
+      owner: OWNER,
+      repo,
+      title: '要个预约取货',
+      body: parentBody(),
+      labels: ['状态:已提交'],
+    })
+    assert.equal(created.number, 1, '两个仓的父工单都是 #1')
+    await gh.createComment({ owner: OWNER, repo, number: 1, body: '点头：补缺口\n\n## 最终答案' })
+  }
+
+  const notifier = fakeNotifier()
+  await runOnce({
+    gh,
+    customers: customers([
+      { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'shop-a' } },
+      { id: 'c-0002', short_name: 'other', status: 'active', repos: { demo: 'shop-b' } },
+    ]),
+    notifier,
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 },
+  })
+
+  const keys = [...notifier.delivered.keys()].filter((key) => key.includes('该跑 to-spec')).sort()
+  assert.deepEqual(keys, [
+    'acme/shop-a:#1:该跑 to-spec:0',
+    'acme/shop-b:#1:该跑 to-spec:0',
+  ])
+  assert.equal(notifier.delivered.size, 2, '两条通知都送达，没有互相吞掉')
+})
+
+test('同一停滞连续 5 轮：needs-info key 稳定，轮次进 data，只送达一次', async () => {
+  const delivered = new Map()
+  const notifier = {
+    async send(event) {
+      if (!delivered.has(event.key)) delivered.set(event.key, event)
+      return { code: 0, stdout: '{}' }
+    },
+  }
+  const comments = [1, 2, 3].map((round) => ({
+    body: progressLine({ path: '其余', tier: '开发中', step: '开工', round, stuck: false }),
+  }))
+  const seen = []
+
+  for (let index = 0; index < 5; index += 1) {
+    const actions = routeParent({
+      parent: parent({ labels: labels('状态:排队中') }),
+      comments,
+      subIssues: [],
+      spec: null,
+      now: NOW,
+      owner: OWNER,
+      repo: REPO,
+    })
+    const incident = actions.find((action) => action.type === 'notify' && action.event === '出事')
+    const needsInfo = actions.find(
+      (action) => action.type === 'notify' && action.event === 'needs-info',
+    )
+    assert.ok(incident, '停滞要报一次出事')
+    assert.ok(needsInfo, '停滞要报一次 needs-info')
+    seen.push(needsInfo)
+    await notifier.send(incident)
+    await notifier.send(needsInfo)
+  }
+
+  assert.equal(new Set(seen.map((event) => event.key)).size, 1, '5 轮只有一个 needs-info key')
+  assert.equal(seen[0].key, 'acme/acme-demo:#42:needs-info:排队中')
+  assert.equal(seen[0].data.round, 3, '轮次放 data')
+  assert.equal(delivered.size, 2, '出事和 needs-info 各送达一次')
+  assert.ok(delivered.has('acme/acme-demo:#42:出事:三圈没进展'))
+})
+
+test('runOnce：重试到上限另发升级通知，key 与失败通知不同，attempt 进 data', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  const finish = async () => ({ ok: false, reason: 'review_failed', findings: ['差一处'] })
+  const jobsPath = await jobFile(t)
+  const clock = new Date(NOW)
+  const policy = { maxAttempts: 2, backoffBaseMs: 60_000 }
+  const notifier = fakeNotifier()
+  const run = async (store) =>
+    runOnce({
+      gh,
+      customers: customers(),
+      notifier,
+      finish,
+      clock: () => clock,
+      config: {
+        owner: OWNER,
+        lockDir: await lockDir(t),
+        maxActive: 5,
+        repoRoot: root,
+        jobs: store,
+        jobPolicy: policy,
+      },
+    })
+
+  await run(await loadStore(jobsPath))
+  clock.setTime(NOW.getTime() + 61_000)
+  await run(await loadStore(jobsPath))
+
+  const failureKey = `acme/acme-demo:#${parent.number}:出事:作业失败:finish`
+  const escalationKey = `acme/acme-demo:#${parent.number}:出事:作业失败:finish:升级`
+  assert.ok(notifier.delivered.has(failureKey), '失败通知 key 稳定')
+  assert.ok(notifier.delivered.has(escalationKey), '到上限另发升级')
+  assert.equal(notifier.delivered.size, 2, '失败和升级各只送达一次')
+  assert.equal(notifier.delivered.get(failureKey).data.attempt, 1)
+  assert.equal(notifier.delivered.get(escalationKey).data.attempt, 2)
+  assert.match(notifier.delivered.get(escalationKey).data.tried, /差一处/)
 })
