@@ -1,26 +1,22 @@
 /**
- * 客户仓工作区：客户仓副本、票分支、工作树、镜像的唯一 owner。
+ * 客户仓工作区：客户仓副本、票分支、工作树的唯一 owner。
  *
  * 点火、管线、收尾以后都从这里拿路径和资源，不再各自拼 worktree。
+ * 镜像构建归 `sandcastle-runner.mjs` 的 `defaultBuildImage`，这里不再另留接口。
  * 释放规则：
  * - 干净工作树直接删，删完跑 `git worktree prune`，`git worktree list` 不留登记。
  * - 只有未跟踪文件（截图、草稿）时，先挪进客户仓的 `.audit/archive/<时间>-<分支>/`，再删。
  * - 改了已跟踪文件的工作树保留，返回路径，等人工或下一轮处理。
  * - `abort` 是失败路径：未跟踪文件先归档，然后连脏工作树一起删。
  * - 被忽略的文件（node_modules、构建产物）不归档，随工作树删除。
- *
- * 镜像构建的 cwd 是客户仓，默认 build context 是客户仓里的 `.sandcastle`。
- * 需要仓根做 context 时显式传 `dockerfile`。
  */
 import { execFile } from 'node:child_process'
-import { mkdir, readdir, readFile, realpath, rename, stat } from 'node:fs/promises'
+import { mkdir, readdir, realpath, rename, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { parseEnvFile } from './config.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { acquireFileLock } from './lock.mjs'
-import { SANDCASTLE_VERSION } from './sandcastle-runner.mjs'
 
 const execFileAsync = promisify(execFile)
 const CONFIG_DIR = '.sandcastle'
@@ -482,59 +478,6 @@ export function createRepoWorkspace({
     }
   }
 
-  async function imageFromEnv(repoDir) {
-    try {
-      const file = join(repoDir, CONFIG_DIR, '.env')
-      const text = await readFile(file, 'utf8')
-      return String(parseEnvFile(text, { file }).SANDCASTLE_IMAGE || '').trim()
-    } catch {
-      return ''
-    }
-  }
-
-  /**
-   * 在客户仓里备镜像。cwd 是客户仓，默认 context 是 `<repoDir>/.sandcastle`。
-   * 返回实际用的镜像名和 `docker image inspect` 拿到的 ID。
-   */
-  async function image({ repoDir, image: requestedImage = '', dockerfile = '' } = {}) {
-    if (!repoDir) throw new Error('image 需要 repoDir')
-    const imageName =
-      String(requestedImage || '').trim() ||
-      (await imageFromEnv(repoDir)) ||
-      `sandcastle:${basename(repoDir)}`
-    const commandEnv = baseEnv(env)
-    const inspectArgs = ['image', 'inspect', '--format', '{{.Id}}', imageName]
-
-    const before = await exec('docker', inspectArgs, { cwd: repoDir, env: commandEnv })
-    const beforeId = String(before.stdout || '').trim()
-    if (before.code === 0 && beforeId) {
-      return { built: false, image: imageName, hash: beforeId }
-    }
-
-    const args = [
-      '--yes',
-      `@ai-hero/sandcastle@${SANDCASTLE_VERSION}`,
-      'docker',
-      'build-image',
-      '--image-name',
-      imageName,
-    ]
-    if (dockerfile) {
-      args.push('--dockerfile', isAbsolute(dockerfile) ? dockerfile : resolve(repoDir, dockerfile))
-    }
-    const built = await exec('npx', args, { cwd: repoDir, env: commandEnv })
-    if (built.code !== 0) {
-      throw new Error(`建镜像 ${imageName} 失败（退出码 ${built.code}）：${tail(built)}`)
-    }
-
-    const after = await exec('docker', inspectArgs, { cwd: repoDir, env: commandEnv })
-    const hash = String(after.stdout || '').trim()
-    if (after.code !== 0 || !hash) {
-      throw new Error(`建完镜像 ${imageName} 但 docker image inspect 取不到 ID：${tail(after)}`)
-    }
-    return { built: true, image: imageName, hash }
-  }
-
   async function listRepoDirs() {
     let entries
     try {
@@ -632,7 +575,7 @@ export function createRepoWorkspace({
     return result
   }
 
-  return { ensure, lock, prepareTicket, release, abort, sweep, image }
+  return { ensure, lock, prepareTicket, release, abort, sweep }
 }
 
 let sharedWorkspace = null
@@ -664,8 +607,4 @@ export function abort(args) {
 
 export function sweep(args) {
   return shared().sweep(args)
-}
-
-export function image(args) {
-  return shared().image(args)
 }

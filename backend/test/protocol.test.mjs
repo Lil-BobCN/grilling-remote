@@ -314,6 +314,15 @@ test('progressLine 生成调度器样例里的进度行', () => {
   )
 })
 
+test('progressLine 的 path 传 null 时不写路径，订单转档行格式不变', () => {
+  const line = progressLine({ path: null, tier: '已收到', step: '收包', round: 2 })
+  assert.equal(line, '进度 v1｜客户档：已收到｜细阶段：收包｜轮次：2｜卡住：否')
+  const parsed = parseProgress(line)
+  assert.equal(parsed.path, '其余')
+  assert.equal(parsed.tier, '已收到')
+  assert.equal(parsed.round, 2)
+})
+
 test('parseProgress 解析调度器样例进度行', () => {
   const parsed = parseProgress(PROGRESS_SAMPLE)
   assert.equal(parsed.line, PROGRESS_SAMPLE)

@@ -500,6 +500,14 @@ export function newTicketEvent({ parent, comments = [], owner, repo }) {
 }
 
 /**
+ * 等人待办的共用判据：点头：补缺口、父工单排队中、还没有 spec，就是该跑 to-spec。
+ * 通知按天去重，console 用来列待办，两边共用这一条。
+ */
+export function toSpecWaiting({ parent, latestGate } = {}) {
+  return latestGate?.kind === '点头：补缺口' && !parent?.spec && stateOf(parent) === '排队中'
+}
+
+/**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
  * 每 24 小时换一个新 scope，通知模块按 key 去重，同一事实同一天只送一次。
  * 给了 owner 和 repo 时 key 带仓库身份，两个客户仓同号不会相撞。
@@ -540,7 +548,7 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [], own
       gate: latestGate,
     }
   }
-  if (kind === '点头：补缺口' && !parent?.spec && state === '排队中') {
+  if (toSpecWaiting({ parent, latestGate })) {
     const days = daysBetween(at, now)
     if (days < 1) return null
     return {
@@ -646,12 +654,28 @@ function isDecisionIssue(issue) {
   return labelNames(issue).some((name) => name.startsWith(WAYFINDER_PREFIX)) && !isMapIssue(issue)
 }
 
-function isParentIssue(issue) {
+export function isParentIssue(issue) {
   return String(issue?.body || '').includes('<!-- factory:order=')
 }
 
-function isSpecIssue(issue) {
+export function isSpecIssue(issue) {
   return hasLabel(issue, 'ready-for-agent')
+}
+
+/**
+ * 父工单对应的 spec：标题或正文带需求名。
+ * 返回父工单事实和命中的 spec；没有 spec 时 `spec` 为 null。
+ */
+export function specForParent({ parent, specs = [] } = {}) {
+  const facts = parentFacts(parent)
+  const spec =
+    specs.find(
+      (candidate) =>
+        facts.requirement &&
+        (String(candidate.title || '').includes(facts.requirement) ||
+          String(candidate.body || '').includes(facts.requirement)),
+    ) || null
+  return { facts, spec }
 }
 
 function slimIssue(issue, extra = {}) {
@@ -727,14 +751,7 @@ export async function collectSnapshot({ gh, owner, repo }) {
       )
     }
 
-    const facts = parentFacts(parent)
-    const spec =
-      specs.find(
-        (candidate) =>
-          facts.requirement &&
-          (String(candidate.title || '').includes(facts.requirement) ||
-            String(candidate.body || '').includes(facts.requirement)),
-      ) || null
+    const { facts, spec } = specForParent({ parent, specs })
 
     parentRows.push(
       slimIssue(parent, {
@@ -1251,8 +1268,16 @@ function countTickets(body) {
   return (String(body || '').match(/^\s*-\s*\d+\.\s/gm) || []).length
 }
 
-function reminderEvent({ reminder, parent, owner, repo }) {
+function reminderEvent({ reminder, parent, owner, repo, repoRoot = '' }) {
   const facts = parentFacts(parent)
+  const kind =
+    reminder.event === '补缺口提案'
+      ? 'gap'
+      : reminder.event === '拆票提案'
+        ? 'split'
+        : reminder.event === '需要你答'
+          ? 'gate'
+          : ''
   const event = {
     v: 1,
     key: reminder.key,
@@ -1262,6 +1287,7 @@ function reminderEvent({ reminder, parent, owner, repo }) {
       customer: facts.customer,
       requirement: facts.requirement,
       days_waited: reminder.days_waited,
+      ...(kind ? { owner, repo, ticket: parent.number, kind } : {}),
     },
   }
   if (reminder.event === '补缺口提案') {
@@ -1273,6 +1299,7 @@ function reminderEvent({ reminder, parent, owner, repo }) {
   if (reminder.event === '需要你答') {
     event.data.question = reminder.item.question
     event.data.recommended = reminder.item.recommended
+    if (repoRoot) event.data.repo_dir = join(repoRoot, repo)
     if (reminder.item.link) event.link = reminder.item.link
   }
   return event
@@ -1966,7 +1993,13 @@ export async function runOnce({
           repo: row.repo,
         })
         if (!reminder) continue
-        const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
+        const event = reminderEvent({
+          reminder,
+          parent,
+          owner: row.owner,
+          repo: row.repo,
+          repoRoot: config.repoRoot || '',
+        })
         try {
           const result = await deliverEvent({ notifier, event, config, now: nowDate })
           report.notifications.push({

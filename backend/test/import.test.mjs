@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { addRemote, commitAll, initBareRepo, initRepo, push } from '../../factory/lib/git.mjs'
 import { startFakeGithub } from '../../factory/test/fake-github.mjs'
+import { run as runRetryCli } from '../bin/retry-import.mjs'
 import { createGithubApi } from '../lib/github-api.mjs'
 import { importOnce } from '../lib/import.mjs'
 import { recordUpload } from '../lib/orders.mjs'
+import { retryImport } from '../lib/retry-import.mjs'
 import { writeJsonAtomic } from '../lib/store.mjs'
 import { login, isolateVerifyPort, makeConfig, seedCustomer, startServer } from './helpers.mjs'
 
@@ -562,6 +564,129 @@ test('多单里一单导入失败，其余继续，上传记 import_partial 和�
   assert.deepEqual(
     meta.imported.map((item) => item.order_id),
     [healthy.id],
+  )
+})
+
+test('导入部分失败后按订单重试：状态改回 ready，审计留操作者和时间，下一轮导入成功', async (t) => {
+  const { config, root, customer, fake, gh, bare } = await setup(t)
+  const secondBare = await initBareRepo(join(root, 'remote2.git'))
+  const broken = await makeOrder(config, customer, { requirement: 'demo', product: 'demo' })
+  const healthy = await makeOrder(config, customer, { requirement: 'kucun', product: 'kucun' })
+  const { dir } = await makeUpload(config, {
+    id: 'upload-retry',
+    orders: [broken, healthy],
+    requirements: [{ name: 'demo' }, { name: 'kucun' }],
+  })
+  const failing = {
+    ...gh,
+    createIssue: async (args) => {
+      if (args.repo === 'acme-demo') throw new Error('demo 仓建单炸了')
+      return gh.createIssue(args)
+    },
+  }
+  const first = await importOnce({
+    config,
+    gh: failing,
+    remoteUrlFor: ({ repo }) => (repo === 'acme-kucun' ? secondBare : bare),
+  })
+  assert.equal(first.uploads[0].status, 'import_partial')
+
+  const at = new Date('2026-11-21T06:00:00.000Z')
+  const retried = await retryImport({
+    config,
+    orderId: broken.id,
+    operator: 'admin',
+    reason: '修好仓名后重跑',
+    now: at,
+  })
+  assert.equal(retried.status, 'ready')
+  const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  assert.equal(meta.status, 'ready')
+  assert.equal(meta.operator_alert, null)
+  assert.deepEqual(meta.retries, [
+    {
+      at: at.toISOString(),
+      operator: 'admin',
+      reason: '修好仓名后重跑',
+      from_status: 'import_partial',
+      target: `order:${broken.id}`,
+    },
+  ])
+
+  const second = await importOnce({
+    config,
+    gh,
+    remoteUrlFor: ({ repo }) => (repo === 'acme-kucun' ? secondBare : bare),
+  })
+  assert.equal(second.uploads[0].status, 'imported')
+  const brokenOrder = JSON.parse(
+    await readFile(join(config.dataDir, 'orders', `${broken.id}.json`), 'utf8'),
+  )
+  assert.equal(brokenOrder.import_status, 'imported')
+})
+
+test('对已导入的订单重试被拒绝，错误里写当前状态', async (t) => {
+  const { config, customer, fake, gh, bare } = await setup(t)
+  const order = await makeOrder(config, customer, { requirement: 'xianguopu' })
+  await makeUpload(config, {
+    id: 'upload-imported',
+    orders: [order],
+    requirements: [{ name: 'xianguopu', copySample: true }],
+  })
+  await importOnce({ config, gh, remoteUrlFor: () => bare })
+
+  await assert.rejects(
+    () => retryImport({ config, orderId: order.id, operator: 'admin' }),
+    /当前状态是 imported/,
+  )
+})
+
+test('按上传编号重试：只改状态和审计，不碰导入业务', async (t) => {
+  const { config, customer } = await setup(t)
+  const order = await makeOrder(config, customer, { requirement: 'demo', product: 'demo' })
+  const { dir, meta } = await makeUpload(config, {
+    id: 'upload-failed',
+    orders: [order],
+    requirements: [{ name: 'demo' }],
+  })
+  await writeJsonAtomic(join(dir, 'meta.json'), {
+    ...meta,
+    status: 'import_failed',
+    operator_alert: { reason: 'import_failed', message: '建单炸了' },
+  })
+
+  const result = await retryImport({
+    config,
+    uploadId: 'upload-failed',
+    operator: 'ops',
+    reason: '重试一次',
+  })
+  assert.equal(result.upload, 'upload-failed')
+  const saved = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  assert.equal(saved.status, 'ready')
+  assert.equal(saved.operator_alert, null)
+  assert.equal(saved.retries.length, 1)
+  assert.equal(saved.retries[0].target, 'upload:upload-failed')
+  assert.equal(saved.retries[0].from_status, 'import_failed')
+})
+
+test('订单和上传都找不到时给可执行的错', async (t) => {
+  const { config } = await setup(t)
+  await assert.rejects(
+    () => retryImport({ config, orderId: 'o-9999', operator: 'admin' }),
+    /找不到订单 o-9999/,
+  )
+  await assert.rejects(
+    () => retryImport({ config, uploadId: 'upload-missing', operator: 'admin' }),
+    /找不到上传记录 upload-missing/,
+  )
+})
+
+test('retry-import CLI 缺目标时按用法错误退出', async (t) => {
+  const { config } = await setup(t)
+  await assert.rejects(
+    () => runRetryCli([], { config, out: () => {} }),
+    (error) => error.exitCode === 2 && /--order 或 --upload/.test(error.message),
   )
 })
 

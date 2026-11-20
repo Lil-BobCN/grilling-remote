@@ -1,6 +1,7 @@
 import { readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { logLine } from './log.mjs'
+import { parseProgress, progressLine } from './protocol.mjs'
 import { gitSync, readJson, withFileLock, writeJsonAtomic } from './store.mjs'
 
 export const SYNC_ALERT_MS = 10 * 60 * 1000
@@ -152,26 +153,12 @@ export function nextOrderId(orders) {
   return `o-${String(max + 1).padStart(4, '0')}`
 }
 
-export function progressLine({ tier, step, round, stuck = false, note = '' }) {
-  const parts = [
-    '进度 v1',
-    `客户档：${tier}`,
-    `细阶段：${step}`,
-    `轮次：${round}`,
-    `卡住：${stuck ? '是' : '否'}`,
-  ]
-  if (note) parts.push(`备注：${note}`)
-  return parts.join('｜')
-}
-
 export function tierOf(line) {
-  const match = /客户档：([^｜]+)/.exec(line || '')
-  return match ? match[1].trim() : ''
+  return parseProgress(line)?.tier || ''
 }
 
 function roundOf(line) {
-  const match = /轮次：(\d+)/.exec(line || '')
-  return match ? Number(match[1]) : 1
+  return parseProgress(line)?.round || 1
 }
 
 export function publicOrder(order) {
@@ -238,11 +225,11 @@ export async function recordUpload(config, account, upload) {
     }
 
     const transitions = [...(previous.transitions || [])]
-    transitions.push({ at: now, line: progressLine({ tier: '已收到', step: '收包', round }) })
+    transitions.push({ at: now, line: progressLine({ path: null, tier: '已收到', step: '收包', round }) })
     if (upload.validation.passed) {
-      transitions.push({ at: now, line: progressLine({ tier: '已收到', step: '校验', round }) })
+      transitions.push({ at: now, line: progressLine({ path: null, tier: '已收到', step: '校验', round }) })
     } else {
-      transitions.push({ at: now, line: progressLine({ tier: '校验未通过', step: '等补传', round }) })
+      transitions.push({ at: now, line: progressLine({ path: null, tier: '校验未通过', step: '等补传', round }) })
     }
 
     const next = {
