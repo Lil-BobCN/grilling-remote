@@ -21,7 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
-import { ConfigError, loadConfig, readCustomersFile } from '../lib/config.mjs'
+import { ConfigError, createCustomersReader, loadConfig } from '../lib/config.mjs'
 import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
@@ -186,8 +186,10 @@ export async function run(
     runLog: injectedRunLog,
     ghRun: injectedGhRun,
     customers: injectedCustomers,
+    readFile: injectedReadFile,
     jobsFile: injectedJobsFile,
     jobs: injectedJobs,
+    intervalMs: injectedIntervalMs,
     config: configOverrides = {},
   } = {},
 ) {
@@ -200,7 +202,13 @@ export async function run(
   const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
   if (!owner) throw new Error('缺 --owner（或环境变量 GITHUB_OWNER）')
 
-  const customers = injectedCustomers ?? (await readCustomersFile(customersPath))
+  const loadCustomers =
+    injectedCustomers === undefined
+      ? createCustomersReader(customersPath, { readFile: injectedReadFile })
+      : typeof injectedCustomers === 'function'
+        ? injectedCustomers
+        : async () => injectedCustomers
+  const customers = await loadCustomers()
   const token = process.env.GITHUB_TOKEN || ''
   const client = gh || createGithub({ token })
   const notify = notifier || createNotifier({ home: process.env.NOTIFIER_HOME })
@@ -270,6 +278,7 @@ export async function run(
     decompose ||
     createDecompose({
       repoRoot,
+      gh: client,
       command: process.env.AFK_AGENT_COMMAND || 'claude',
     })
   const createFixTicketFn =
@@ -347,6 +356,9 @@ export async function run(
     config,
   }
 
+  // 每轮都走读取器：mtime 没变就复用，变了就重读并重新校验。
+  options.customers = loadCustomers
+
   if (once) {
     const report = await runOnceImpl(options)
     for (const line of parentLines(report)) out(JSON.stringify(line))
@@ -359,7 +371,7 @@ export async function run(
   }
 
   await runLoop({
-    intervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 30000,
+    intervalMs: injectedIntervalMs ?? (Number(process.env.SCHEDULER_INTERVAL_MS) || 30000),
     signal,
     run: runOnceImpl,
     onReport: async (report) => {
@@ -399,13 +411,7 @@ export async function start(
       file: loaded.envFile,
     })
   }
-  const customersPath = option(
-    argv,
-    '--customers',
-    process.env.CUSTOMERS_FILE || 'customers.json',
-  )
-  const customers = await readCustomersFile(customersPath, { readFile })
-  return run(argv, { ...runOptions, customers })
+  return run(argv, { ...runOptions, readFile })
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
