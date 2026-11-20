@@ -138,6 +138,104 @@ test('地图 Decisions so far 行首出现「已废」或「已被取代」时�
   assert.equal(result.small, false)
 })
 
+test('小需求用 YYYY-MM-DD：写法也能出父工单和日期', async () => {
+  const dir = await makeScratch({
+    '需求草稿.md': `# demo 需求草稿
+
+Status: 已问完
+
+## 1. 客户原话
+
+2026-11-15：我想要一个预约取货的小程序。
+
+## 3. 已经定下的
+
+- 到店取
+
+## 5. 以后再说
+
+- 无
+`,
+    '验收场景.md': '# 验收场景\n\n客户确认：2026-11-15\n\n- [ ] 能预约。\n',
+  })
+
+  const result = await renderParentIssue({
+    scratchDir: dir,
+    shortName: 'acme',
+    requirement: 'demo',
+    owner: 'acme',
+    repo: 'acme-demo',
+  })
+
+  assert.equal(result.title, '我想要一个预约取货的小程序。')
+  assert.match(
+    result.body,
+    /## 客户原话\n\n> 「我想要一个预约取货的小程序。」\n\n日期：2026-11-15/,
+  )
+})
+
+test('问答记录用 YYYY-MM-DD：写法也能出父工单和日期', async () => {
+  const dir = await makeScratch({
+    'map.md': `# demo 地图
+
+## 接下来
+
+## Decisions so far
+
+- [01 怎么取](issues/01.md)：到店取
+
+## Not yet specified
+
+## Out of scope
+
+无
+`,
+    '问答记录.md': `# 问答记录
+
+## 客户原话
+
+2026-11-15：想要预约取货。
+
+## 第1轮
+
+Q1：怎么取？
+
+客户：「到店取。」
+`,
+    '验收场景.md': '# 验收场景\n\n客户确认：2026-11-15\n\n- [ ] 能预约。\n',
+  })
+
+  const result = await renderParentIssue({
+    scratchDir: dir,
+    shortName: 'acme',
+    requirement: 'demo',
+    owner: 'acme',
+    repo: 'acme-demo',
+  })
+
+  assert.equal(result.title, '想要预约取货。')
+  assert.match(result.body, /## 客户原话\n\n> 「想要预约取货。」\n\n日期：2026-11-15/)
+})
+
+test('客户原话一节只有日期、没有原话时报错', async () => {
+  const dir = await makeScratch({
+    'map.md': '# demo 地图\n\n## 接下来\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n\n无\n',
+    '问答记录.md': '# 问答记录\n\n## 客户原话\n\n日期：2026-11-15\n',
+    '验收场景.md': '# 验收场景\n\n客户确认：2026-11-15\n\n- [ ] 能预约。\n',
+  })
+
+  await assert.rejects(
+    renderParentIssue({
+      scratchDir: dir,
+      shortName: 'acme',
+      requirement: 'demo',
+      owner: 'acme',
+      repo: 'acme-demo',
+    }),
+    /读不到客户原话/,
+  )
+})
+
 test('没有 map 也没有需求草稿时报错，不硬凑正文', async () => {
   const dir = await makeScratch({
     '验收场景.md': '# 验收场景\n\n客户确认：2026-11-15\n\n- [ ] 能预约。\n',

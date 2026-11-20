@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { customerQuoteFrom } from './protocol.mjs'
 
 async function text(path) {
   try {
@@ -42,7 +43,15 @@ function sectionBody(textValue, heading) {
 
 export async function validateRequirement(dir, { finished }) {
   const missing = []
-  const checks = { finished, kind: '', draftDone: false, acceptance: false, ticketsResolved: false, nextEmpty: false }
+  const checks = {
+    finished,
+    kind: '',
+    draftDone: false,
+    acceptance: false,
+    customerQuote: false,
+    ticketsResolved: false,
+    nextEmpty: false,
+  }
 
   if (!finished) {
     missing.push('上传页上的「已问完」还没勾。确认问完了，勾上再传一次。')
@@ -63,6 +72,14 @@ export async function validateRequirement(dir, { finished }) {
     if (!done) {
       missing.push('需求草稿还没写完。和 agent 说「继续」，把剩下的问题问完，它会改成「已问完」。')
     }
+    const questions = await text(join(dir, '问答记录.md'))
+    const quote = customerQuoteFrom({ questions, draft })
+    checks.customerQuote = Boolean(quote)
+    if (!quote) {
+      missing.push(
+        '缺客户原话。和 agent 说「继续」，让它按标准格式把客户第一次说明需求的话抄进 需求草稿.md 第 1 段。',
+      )
+    }
     return { passed: missing.length === 0, finished, missing, checks }
   }
 
@@ -73,6 +90,15 @@ export async function validateRequirement(dir, { finished }) {
   }
 
   checks.kind = 'map'
+
+  const questions = await text(join(dir, '问答记录.md'))
+  const quote = customerQuoteFrom({ questions })
+  checks.customerQuote = Boolean(quote)
+  if (!quote) {
+    missing.push(
+      '缺客户原话。和 agent 说「继续」，让它按标准格式把客户第一次说明需求的话抄进 问答记录.md 的「客户原话」一节。',
+    )
+  }
 
   const issuesDir = join(dir, 'issues')
   const resolved = []

@@ -13,6 +13,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { customerQuoteFrom } from './protocol.mjs'
 
 async function readOptional(path) {
   try {
@@ -123,50 +124,12 @@ function draftSection(draft, number, keywords) {
   return numberedBody(draft, number, keywords)
 }
 
-function firstDraftLine(body) {
-  const lines = (body || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-  for (const line of lines) {
-    if (/^日期[：:]/.test(line)) continue
-    let text = line.replace(/^[-*]\s+/, '').replace(/^>\s*/, '').trim()
-    if (!text) continue
-    const quoted = /「([\s\S]*?)」/.exec(text)
-    if (quoted) text = quoted[1].trim()
-    return text
-  }
-  return ''
-}
-
 function draftConclusions(draft) {
   const body = draftSection(draft, 3, ['已经定下的'])
   return bulletLines(body)
     .map((line) => stripTrailingRevision(stripBullet(line)))
     .filter(Boolean)
     .map((item) => `- ${item}`)
-}
-
-function customerQuote({ questions, draft }) {
-  let quote = ''
-  let date = ''
-
-  const section = sectionBody(questions, '客户原话')
-  if (section) {
-    const quoted = /「([\s\S]*?)」/.exec(section)
-    if (quoted) quote = quoted[1].trim()
-    const dateLine = /^日期[：:]\s*(.+)$/m.exec(section)
-    if (dateLine) date = dateLine[1].trim()
-  }
-
-  if (!quote && draft) {
-    const body = draftSection(draft, 1, ['客户原话'])
-    quote = firstDraftLine(body)
-    const dateLine = /^日期[：:]\s*(.+)$/m.exec(body || '')
-    if (dateLine) date = dateLine[1].trim()
-  }
-
-  return { quote, date }
 }
 
 /**
@@ -189,7 +152,7 @@ export async function renderParentIssue({ scratchDir, shortName, requirement, ow
   }
 
   const small = draft !== null
-  const { quote, date } = customerQuote({ questions, draft })
+  const { quote = '', date = '' } = customerQuoteFrom({ questions, draft }) || {}
   if (!quote) {
     throw new Error(`需求目录 ${scratchDir} 里读不到客户原话，不硬凑父工单`)
   }
