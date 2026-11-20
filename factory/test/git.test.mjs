@@ -5,9 +5,11 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   addRemote,
+  branchExists,
   commitAll,
   createWorktree,
   currentBranch,
+  git,
   initBareRepo,
   initRepo,
   isBranchCheckedOut,
@@ -52,4 +54,17 @@ test('分支被工作树占着时能查出来', async (t) => {
   await commitAll(repo, '第一笔')
   assert.equal(await isBranchCheckedOut(repo, 'main'), true)
   assert.equal(await isBranchCheckedOut(repo, 'missing'), false)
+})
+
+test('branchExists 对存在和不存在的分支都返回正确结果', async (t) => {
+  const root = await tempDir(t)
+  const repo = join(root, 'repo')
+  await initRepo(repo)
+  await writeFile(join(repo, 'a.txt'), 'one\n')
+  await commitAll(repo, '第一笔')
+  await git(repo, ['branch', 'feature'])
+
+  assert.equal(await branchExists(repo, 'main'), true)
+  assert.equal(await branchExists(repo, 'feature'), true)
+  assert.equal(await branchExists(repo, 'missing'), false)
 })

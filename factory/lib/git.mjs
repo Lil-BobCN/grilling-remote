@@ -87,10 +87,14 @@ export async function currentBranch(dir) {
 }
 
 export async function branchExists(dir, branch) {
-  const result = await execFileAsync('git', ['-C', dir, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
-    timeout: 15000,
-  }).catch((error) => error)
-  return result.code === 0
+  try {
+    await execFileAsync('git', ['-C', dir, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+      timeout: 15000,
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function isBranchCheckedOut(dir, branch) {
