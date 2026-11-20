@@ -7,7 +7,6 @@ import {
   abort,
   createRepoWorkspace,
   ensure,
-  image,
   lock,
   parseWorktreeList,
   prepareTicket,
@@ -97,8 +96,8 @@ function fakeExec({ images = [], ps = '', failBuild = false } = {}) {
   }
 }
 
-test('模块导出七个命名接口', () => {
-  for (const fn of [ensure, lock, prepareTicket, release, abort, sweep, image]) {
+test('模块导出六个命名接口', () => {
+  for (const fn of [ensure, lock, prepareTicket, release, abort, sweep]) {
     assert.equal(typeof fn, 'function')
   }
 })
@@ -273,67 +272,6 @@ test('lock 同一仓只能拿一把，释放后能再拿', async (t) => {
   const third = await ws.lock({ owner: 'acme', repo: 'demo' })
   assert.equal(third.skipped, false)
   await third.release()
-})
-
-test('image 在客户仓里建镜像，返回实际镜像和 ID', async (t) => {
-  const root = await tempRoot(t)
-  const stub = fakeExec()
-  const ws = workspaceFor(root, { exec: stub.exec })
-  const repoDir = join(root, 'repos', 'demo')
-  await mkdir(join(repoDir, '.sandcastle'), { recursive: true })
-
-  const result = await ws.image({ repoDir, image: 'sandcastle:demo' })
-  assert.equal(result.image, 'sandcastle:demo')
-  assert.equal(result.hash, 'sha256:abc123')
-  assert.equal(result.built, true)
-
-  const build = stub.calls.find((call) => call.command === 'npx')
-  assert.ok(build)
-  assert.deepEqual(build.args, [
-    '--yes',
-    '@ai-hero/sandcastle@0.12.0',
-    'docker',
-    'build-image',
-    '--image-name',
-    'sandcastle:demo',
-  ])
-  assert.equal(build.options.cwd, repoDir)
-  assert.ok(!build.args.includes('--dockerfile'), '默认 context 是客户仓里的 .sandcastle')
-
-  const again = await ws.image({ repoDir, image: 'sandcastle:demo' })
-  assert.equal(again.built, false)
-  assert.equal(again.hash, 'sha256:abc123')
-})
-
-test('image 读 .sandcastle/.env 的镜像名，显式 Dockerfile 时带绝对路径', async (t) => {
-  const root = await tempRoot(t)
-  const stub = fakeExec()
-  const ws = workspaceFor(root, { exec: stub.exec })
-  const repoDir = join(root, 'repos', 'demo')
-  await mkdir(join(repoDir, '.sandcastle'), { recursive: true })
-  await writeFile(join(repoDir, '.sandcastle', '.env'), 'SANDCASTLE_IMAGE=sandcastle:from-env\n')
-
-  const result = await ws.image({ repoDir, dockerfile: '.sandcastle/Dockerfile.custom' })
-  assert.equal(result.image, 'sandcastle:from-env')
-  const build = stub.calls.find((call) => call.command === 'npx')
-  assert.deepEqual(build.args.slice(-2), [
-    '--dockerfile',
-    join(repoDir, '.sandcastle', 'Dockerfile.custom'),
-  ])
-  assert.equal(build.options.cwd, repoDir)
-})
-
-test('image 建镜像失败时报退出码和输出', async (t) => {
-  const root = await tempRoot(t)
-  const stub = fakeExec({ failBuild: true })
-  const ws = workspaceFor(root, { exec: stub.exec })
-  const repoDir = join(root, 'repos', 'demo')
-  await mkdir(join(repoDir, '.sandcastle'), { recursive: true })
-
-  await assert.rejects(
-    () => ws.image({ repoDir, image: 'sandcastle:demo' }),
-    /建镜像 sandcastle:demo 失败.*No \.sandcastle\/ found/,
-  )
 })
 
 test('sweep 列出并清理孤儿容器和工作树', async (t) => {
