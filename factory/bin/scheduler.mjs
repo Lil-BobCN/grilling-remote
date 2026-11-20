@@ -16,11 +16,12 @@
  * 每轮把 `{ts, executed, errors}` 追加到 `AFK_SCHEDULER_LOG`（默认 `~/.afkfactory/scheduler/runs.jsonl`）。
  * 测试可以注入 `gh`、`notifier`、`ignite`、`runner`、`openPr` 和 `config`。
  */
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { ConfigError, loadConfig, readCustomersFile } from '../lib/config.mjs'
 import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
@@ -183,6 +184,7 @@ export async function run(
     lockDir: injectedLockDir,
     runLog: injectedRunLog,
     ghRun: injectedGhRun,
+    customers: injectedCustomers,
     config: configOverrides = {},
   } = {},
 ) {
@@ -195,7 +197,7 @@ export async function run(
   const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
   if (!owner) throw new Error('缺 --owner（或环境变量 GITHUB_OWNER）')
 
-  const customers = JSON.parse(await readFile(customersPath, 'utf8'))
+  const customers = injectedCustomers ?? (await readCustomersFile(customersPath))
   const token = process.env.GITHUB_TOKEN || ''
   const client = gh || createGithub({ token })
   const notify = notifier || createNotifier({ home: process.env.NOTIFIER_HOME })
@@ -336,8 +338,45 @@ export async function run(
   return null
 }
 
+/** 把 env 文件里缺的键补进进程环境，模型始终显式设成解析后的值。 */
+function applyConfigEnv(loaded) {
+  for (const [key, value] of Object.entries(loaded.values)) {
+    if (process.env[key] === undefined || process.env[key] === '') {
+      process.env[key] = String(value)
+    }
+  }
+  if (loaded.model?.name) process.env.ANTHROPIC_MODEL = loaded.model.name
+}
+
+/**
+ * 命令行启动：先读 env 文件并自检，再进调度循环。
+ * 缺 token、helper、模型或 customers 形状不对时，在这里失败退出。
+ */
+export async function start(
+  argv = process.argv.slice(2),
+  { env = process.env, envFile, probeModel, readFile, ...runOptions } = {},
+) {
+  const loaded = await loadConfig({ env, envFile, probeModel, readFile })
+  applyConfigEnv(loaded)
+  const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
+  if (!owner) {
+    const target = loaded.found ? `${loaded.envFile} 里也没有` : `${loaded.envFile} 不存在`
+    throw new ConfigError(`缺 GITHUB_OWNER：--owner 和进程环境都没有，${target}`, {
+      key: 'GITHUB_OWNER',
+      file: loaded.envFile,
+    })
+  }
+  const customersPath = option(
+    argv,
+    '--customers',
+    process.env.CUSTOMERS_FILE || 'customers.json',
+  )
+  const customers = await readCustomersFile(customersPath, { readFile })
+  return run(argv, { ...runOptions, customers })
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  run().catch((error) => {
+  start().catch((error) => {
     console.error(error.message)
     process.exit(1)
   })
