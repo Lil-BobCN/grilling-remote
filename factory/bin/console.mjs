@@ -9,6 +9,9 @@
  *   node factory/bin/console.mjs answer --kind <k> --owner <o> --repo <r> --ticket <n> \
  *     [--answer '<文本或 JSON>'] [--question '<gate 题>'] [--repo-dir <客户仓>] [--commit] [--push]
  */
+import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   answerWaiting,
@@ -17,6 +20,7 @@ import {
   pickWaiting,
   KINDS,
 } from '../lib/console.mjs'
+import { parseEnvFile } from '../lib/config.mjs'
 import { createGithub } from '../lib/github.mjs'
 
 function option(argv, name) {
@@ -52,6 +56,24 @@ function parseAnswer(text) {
   return raw
 }
 
+async function githubToken() {
+  const direct = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  if (direct) return direct
+  const file = process.env.AFK_ENV_FILE || join(homedir(), '.afkfactory', 'env')
+  try {
+    return parseEnvFile(await readFile(file, 'utf8'), { file }).GITHUB_TOKEN || ''
+  } catch (error) {
+    if (error?.code === 'ENOENT') return ''
+    throw error
+  }
+}
+
+async function clientFor() {
+  const token = await githubToken()
+  if (!token) throw new Error('缺 GITHUB_TOKEN：进程环境和 ~/.afkfactory/env 都没有')
+  return createGithub({ token })
+}
+
 function printEntry(entry, out) {
   out(`${entry.kind} #${entry.ticket} ${entry.title}`)
   if (entry.url) out(`  ${entry.url}`)
@@ -68,7 +90,7 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
 
   if (command === 'list') {
     const repoDir = option(rest, '--repo-dir') || ''
-    const client = gh || createGithub({ token: process.env.GITHUB_TOKEN || '' })
+    const client = gh || await clientFor()
     const rows = await listWaiting({ gh: client, owner, repo, repoDir })
     if (rest.includes('--json')) {
       for (const row of rows) out(JSON.stringify(row))
@@ -86,7 +108,7 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
     const kind = kindOf(rest)
     const ticket = Number(required(rest, '--ticket'))
     const repoDir = option(rest, '--repo-dir') || ''
-    const client = gh || createGithub({ token: process.env.GITHUB_TOKEN || '' })
+    const client = gh || await clientFor()
     const rows = await listWaiting({ gh: client, owner, repo, repoDir, kinds: [kind] })
     const entry = pickWaiting(rows, { owner, repo, ticket, kind })
     if (!entry) {
@@ -112,7 +134,7 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
     const kind = kindOf(rest)
     const ticket = Number(required(rest, '--ticket'))
     const repoDir = option(rest, '--repo-dir') || ''
-    const client = gh || createGithub({ token: process.env.GITHUB_TOKEN || '' })
+    const client = gh || await clientFor()
     const rows = await listWaiting({ gh: client, owner, repo, repoDir, kinds: [kind] })
     const entry = pickWaiting(rows, { owner, repo, ticket, kind })
     if (!entry) {
