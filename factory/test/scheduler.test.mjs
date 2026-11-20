@@ -11,6 +11,7 @@ import { progressLine } from '../lib/progress.mjs'
 import { createFixTicket as createFixTicketJob } from '../lib/scheduler-jobs.mjs'
 import {
   STATE_LABELS,
+  StepTimeoutError,
   collectRepos,
   collectSnapshot,
   createWatchdog,
@@ -1229,7 +1230,7 @@ test('runOnce：执行动作超时也记 attempt，下一轮退避不重发', as
   let calls = 0
   const finish = () => {
     calls += 1
-    return new Promise(() => {})
+    throw new StepTimeoutError('执行父工单 #42 的动作', 20)
   }
   const jobs = await loadStore(await jobFile(t))
   const config = {
@@ -1238,7 +1239,6 @@ test('runOnce：执行动作超时也记 attempt，下一轮退避不重发', as
     maxActive: 5,
     repoRoot: root,
     jobs,
-    stepTimeoutMs: 20,
     jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
   }
 
@@ -1398,13 +1398,14 @@ test('runOnce：单步超时只记错误，这一轮照样结束', async (t) => 
   const { gh } = await setupRepo(t)
   await createParent(gh)
   const jobs = await loadStore(await jobFile(t))
-  const hanging = () => new Promise(() => {})
+  // 直接抛超时错误，等价于这一步到了超时点；不跟真实计时器赛跑。
+  const timedOut = () => Promise.reject(new StepTimeoutError('跑流水线', 30))
 
   const report = await runOnce({
     gh,
     customers: customers(),
     notifier: fakeNotifier(),
-    ticketPipeline: hanging,
+    ticketPipeline: timedOut,
     clock: () => NOW,
     config: {
       owner: OWNER,
@@ -1412,7 +1413,6 @@ test('runOnce：单步超时只记错误，这一轮照样结束', async (t) => 
       maxActive: 5,
       repoRoot: join(tmpdir(), 'afk-no-such-repos'),
       jobs,
-      stepTimeoutMs: 30,
     },
   })
 
@@ -1424,8 +1424,9 @@ test('runOnce：慢管线在步超时以内跑完，不误判成卡住', async (
   const { gh } = await setupRepo(t)
   await createParent(gh)
   const jobs = await loadStore(await jobFile(t))
+  // 用一串微任务模拟长管线，不依赖真实时间窗口。
   const slow = async () => {
-    await new Promise((done) => setTimeout(done, 40))
+    for (let index = 0; index < 200; index += 1) await Promise.resolve()
     return { runs: [] }
   }
 
@@ -1441,7 +1442,6 @@ test('runOnce：慢管线在步超时以内跑完，不误判成卡住', async (
       maxActive: 5,
       repoRoot: join(tmpdir(), 'afk-no-such-repos'),
       jobs,
-      stepTimeoutMs: 500,
     },
   })
   assert.equal(report.errors.length, 0)
@@ -1489,50 +1489,128 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
 test('runJobStep 在长步骤里按时写心跳', async () => {
   let beats = 0
+  let heartbeat = null
+  const timers = {
+    setInterval(fn) {
+      heartbeat = fn
+      return 1
+    },
+    clearInterval() {
+      heartbeat = null
+    },
+  }
   const jobs = {
     async beat() {
       beats += 1
     },
   }
-  await runJobStep({
+  let release
+  const running = runJobStep({
     jobs,
-    config: { jobHeartbeatMs: 10, stepTimeoutMs: 500 },
+    config: { jobHeartbeatMs: 10, stepTimeoutMs: 0, timers },
     label: '长步骤',
-    task: () => new Promise((done) => setTimeout(done, 45)),
+    task: () =>
+      new Promise((done) => {
+        release = done
+      }),
   })
-  assert.ok(beats >= 2, `45 毫秒的步骤里至少写两次心跳，实际 ${beats} 次`)
+  await Promise.resolve()
+  assert.equal(typeof heartbeat, 'function')
+  heartbeat()
+  heartbeat()
+  release()
+  await running
+  assert.equal(beats, 2, '任务运行期间按心跳间隔写')
+  assert.equal(heartbeat, null, '步骤结束清掉心跳定时器')
+})
+
+test('runJobStep 到点抛 StepTimeoutError，并清掉定时器', async () => {
+  let fire = null
+  let cleared = 0
+  const timers = {
+    setTimeout(fn) {
+      fire = fn
+      return 7
+    },
+    clearTimeout() {
+      cleared += 1
+    },
+    setInterval() {
+      return 8
+    },
+    clearInterval() {},
+  }
+  const running = runJobStep({
+    config: { stepTimeoutMs: 50, jobHeartbeatMs: 0, timers },
+    label: '读快照',
+    task: () => new Promise(() => {}),
+  })
+  await Promise.resolve()
+  assert.equal(typeof fire, 'function')
+  fire()
+  await assert.rejects(running, /读快照超时：50 毫秒没跑完/)
+  assert.equal(cleared, 1, '超时后清掉计时器')
 })
 
 test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
   const jobs = await loadStore(await jobFile(t))
   const notifier = fakeNotifier()
   const controller = new AbortController()
-  const config = { jobs, notifier, roundTimeoutMs: 20, watchdogIntervalMs: 10 }
+  let now = NOW.getTime()
+  const clock = () => new Date(now)
+  let intervalFn = null
+  const timers = {
+    setInterval(fn) {
+      intervalFn = fn
+      return 1
+    },
+    clearInterval() {
+      intervalFn = null
+    },
+  }
+  let markStarted
+  const started = new Promise((resolve) => {
+    markStarted = resolve
+  })
+  const config = {
+    jobs,
+    notifier,
+    roundTimeoutMs: 20,
+    watchdogIntervalMs: 10,
+    timers,
+  }
   const loop = runLoop({
-    intervalMs: 10,
+    intervalMs: 1000,
     signal: controller.signal,
+    clock,
     log: () => {},
     run: async () => {
-      await jobs.startRound({ now: new Date() })
+      await jobs.startRound({ now: clock() })
+      markStarted()
       await new Promise((resolve) =>
         controller.signal.addEventListener('abort', resolve, { once: true }),
       )
-      return { now: new Date().toISOString(), repos: [], errors: [] }
+      return { now: clock().toISOString(), repos: [], errors: [] }
     },
     onReport: async () => {},
     config,
   })
 
-  for (let index = 0; index < 100 && notifier.calls.length === 0; index += 1) {
-    await new Promise((done) => setTimeout(done, 10))
+  await started
+  assert.equal(typeof intervalFn, 'function', 'runLoop 自己起了看门狗')
+  now += 21
+  intervalFn()
+  for (let index = 0; index < 20 && notifier.calls.length === 0; index += 1) {
+    await Promise.resolve()
   }
-  controller.abort()
-  await loop
-
   assert.equal(notifier.calls.length, 1, '同一轮只发一次')
   assert.equal(notifier.calls[0].event, '出事')
   assert.match(notifier.calls[0].data.reason, /轮次超时/)
   assert.match(notifier.calls[0].link, /^file:\/\//)
+
+  controller.abort()
+  await loop
+  assert.equal(intervalFn, null, '轮次结束后看门狗停掉')
 })
 
 test('runLoop 启动和停掉看门狗', async () => {

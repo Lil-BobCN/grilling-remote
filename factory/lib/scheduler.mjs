@@ -1269,27 +1269,33 @@ export async function runJobStep({ jobs, clock = () => new Date(), config = {}, 
   const timeoutMs = config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
   const heartbeatMs = config.jobHeartbeatMs ?? DEFAULT_HEARTBEAT_MS
   const log = config.log || logLine
+  // 计时器可注入：测试用确定性触发，不跟真实时间赛跑。
+  const timers = config.timers || {}
+  const interval = timers.setInterval || setInterval
+  const clearIntervalFn = timers.clearInterval || clearInterval
+  const timeout = timers.setTimeout || setTimeout
+  const clearTimeoutFn = timers.clearTimeout || clearTimeout
   let beatTimer = null
   let timeoutTimer = null
   if (jobs && heartbeatMs > 0) {
-    beatTimer = setInterval(() => {
+    beatTimer = interval(() => {
       jobs.beat({ now: clock() }).catch((error) => {
         log({ level: 'error', msg: '写作业心跳失败', error: error.message })
       })
     }, heartbeatMs)
-    beatTimer.unref?.()
+    beatTimer?.unref?.()
   }
   const work = Promise.resolve().then(task)
   try {
     if (timeoutMs <= 0) return await work
     const limit = new Promise((resolve, reject) => {
-      timeoutTimer = setTimeout(() => reject(new StepTimeoutError(label, timeoutMs)), timeoutMs)
-      timeoutTimer.unref?.()
+      timeoutTimer = timeout(() => reject(new StepTimeoutError(label, timeoutMs)), timeoutMs)
+      timeoutTimer?.unref?.()
     })
     return await Promise.race([work, limit])
   } finally {
-    if (beatTimer) clearInterval(beatTimer)
-    if (timeoutTimer) clearTimeout(timeoutTimer)
+    if (beatTimer) clearIntervalFn(beatTimer)
+    if (timeoutTimer) clearTimeoutFn(timeoutTimer)
   }
 }
 
@@ -1563,13 +1569,15 @@ export function createWatchdog({
     tick,
     start(intervalMs = DEFAULT_HEARTBEAT_MS) {
       if (timer || !(intervalMs > 0)) return
-      timer = setInterval(() => {
+      const interval = config.timers?.setInterval || setInterval
+      timer = interval(() => {
         tick().catch((error) => log({ level: 'error', msg: '看门狗检查失败', error: error.message }))
       }, intervalMs)
-      timer.unref?.()
+      timer?.unref?.()
     },
     stop() {
-      if (timer) clearInterval(timer)
+      const clear = config.timers?.clearInterval || clearInterval
+      if (timer) clear(timer)
       timer = null
     },
   }
