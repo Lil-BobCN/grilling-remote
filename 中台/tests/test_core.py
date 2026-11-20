@@ -313,6 +313,35 @@ class TestWorkState(unittest.TestCase):
             self.poller._merge_status([{"status": "active", "agents": [{"state": "done"}]}])[0],
             "等待人")
 
+    def test_linked_prs_lists_all_candidates(self):
+        tickets = self.poller.compute_tickets([
+            {"repoId": "r1", "linkedIssue": 2, "status": "working",
+             "linkedPR": {"number": 187, "state": "open", "title": "旧", "url": "u"}},
+            {"repoId": "r1", "linkedIssue": 2, "status": "working",
+             "linkedPR": {"number": 188, "state": "merged", "title": "新", "url": "v"}},
+        ])
+        self.assertEqual([p["number"] for p in tickets["2"]["prs"]], [187, 188])
+        self.assertEqual(tickets["2"]["pr"]["number"], 188)
+
+    def test_linked_prs_dedupes_same_number(self):
+        tickets = self.poller.compute_tickets([
+            {"repoId": "r1", "linkedIssue": 2, "status": "working",
+             "linkedPR": {"number": 188, "state": "open", "title": "同一", "url": "v"}},
+            {"repoId": "r1", "branch": "Lil-BobCN/issue-2", "status": "active",
+             "linkedPR": {"number": 188, "state": "merged", "title": "同一", "url": "v"}},
+        ])
+        self.assertEqual([p["number"] for p in tickets["2"]["prs"]], [188])
+
+    def test_write_persists_prs(self):
+        self.poller._write(offline=False, tickets={
+            "2": {"state": "进行中", "pr": {"number": 188, "state": "merged"},
+                  "prs": [{"number": 188, "state": "merged"},
+                          {"number": 187, "state": "open"}]},
+        })
+        entry = self.store.written["tickets"]["2"]
+        self.assertEqual([p["number"] for p in entry["prs"]], [188, 187])
+        self.assertEqual(entry["pr"]["number"], 188)
+
     def test_blocked_wins(self):
         tickets = self.poller.compute_tickets([
             {"repoId": "r1", "linkedIssue": 2, "status": "working"},
