@@ -7,7 +7,7 @@
  */
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { parseEnvFile } from './config.mjs'
+import { parseEnvFile, readEnvValues } from './config.mjs'
 import { githubAppFromEnv } from './github-app.mjs'
 
 export const GIT_IDENTITY = {
@@ -106,7 +106,6 @@ export async function ensureRepoEnv({
   image = '',
   minter,
   now = Date.now(),
-  forceToken = false,
 }) {
   let existing = {}
   try {
@@ -122,7 +121,7 @@ export async function ensureRepoEnv({
 
   const expiresAt = Number(values.GH_TOKEN_EXPIRES_AT || 0)
   const stale = !expiresAt || expiresAt - Number(now) < TOKEN_REFRESH_MS
-  const needToken = forceToken || !String(values.GH_TOKEN || '').trim() || stale
+  const needToken = !String(values.GH_TOKEN || '').trim() || stale
   if (needToken) {
     if (!minter || typeof minter.mintRepoToken !== 'function') {
       throw new Error(
@@ -167,4 +166,18 @@ export function createRepoEnv({ env = process.env, fetchImpl, now = Date.now } =
       return ensureRepoEnv({ ...args, env, minter: await app(), now: now() })
     },
   }
+}
+
+/**
+ * 从 `~/.afkfactory/env` 和进程环境建 repoEnv；没有 App 配置时返回 null。
+ * ignite 和 repo-env 两个 CLI 共用，避免各自判断 GITHUB_APP_ID 而漏读 env 文件。
+ */
+export async function repoEnvFromProcess({ env = process.env, envFile, readFile, ...options } = {}) {
+  const loaded = await readEnvValues({ env, envFile, readFile })
+  const values = { ...loaded.values }
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && String(value) !== '') values[key] = String(value)
+  }
+  if (!String(values.GITHUB_APP_ID || '').trim()) return null
+  return createRepoEnv({ env: values, ...options })
 }

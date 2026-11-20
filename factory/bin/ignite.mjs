@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createGithub } from '../lib/github.mjs'
 import { buildPromptForTicket, createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
-import { createRepoEnv } from '../lib/repo-env.mjs'
+import { repoEnvFromProcess } from '../lib/repo-env.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createSandcastleRunner } from '../lib/sandcastle-runner.mjs'
 
@@ -107,9 +107,7 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
       dockerfile: config.dockerfile ?? dockerfile,
       timeoutMs,
       token,
-      repoEnv:
-        config.repoEnv ??
-        (process.env.GITHUB_APP_ID ? createRepoEnv({ env: process.env }) : null),
+      repoEnv: config.repoEnv ?? await repoEnvFromProcess(),
     },
     runner:
       runner ||

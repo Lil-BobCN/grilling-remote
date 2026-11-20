@@ -9,7 +9,7 @@
  * check 只读，缺文件或键时退出码 1，错误里列清楚缺什么。
  */
 import { fileURLToPath } from 'node:url'
-import { checkRepoEnv, createRepoEnv } from '../lib/repo-env.mjs'
+import { checkRepoEnv, repoEnvFromProcess } from '../lib/repo-env.mjs'
 
 function option(argv, name) {
   const index = argv.indexOf(name)
@@ -34,7 +34,10 @@ export async function run(argv = process.argv.slice(2), { out = console.log } = 
     const owner = option(rest, '--owner')
     const repo = option(rest, '--repo')
     if (!owner || !repo) throw new Error('ensure 需要 --owner 和 --repo')
-    const repoEnv = createRepoEnv()
+    const repoEnv = await repoEnvFromProcess()
+    if (!repoEnv) {
+      throw new Error('缺 GITHUB_APP_ID：检查 ~/.afkfactory/env')
+    }
     const result = await repoEnv.ensure({
       repoDir,
       owner,
