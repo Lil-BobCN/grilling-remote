@@ -72,25 +72,25 @@ class CloseWatcher:
             now = time.time()
             if self._retry_at.get(record["id"], 0) > now:
                 continue
-            closed_own = None
+            closed_record_pr = None
             merged_heads = []
-            gh_error = None
+            gh_unavailable = None
             matched = False
             for cand in candidates:
                 number = cand["number"]
                 # orca 说记录 PR 已关闭时不用再问 gh，保持旧路径
                 if number == record["pr"] and str(cand.get("state") or "").lower() == "closed":
-                    closed_own = f"PR #{number} 已关闭但没有合并"
+                    closed_record_pr = f"PR #{number} 已关闭但没有合并"
                     continue
                 try:
                     data = self.pr_head(number)
                 except Exception as exc:
-                    gh_error = (number, exc)
+                    gh_unavailable = (number, exc)
                     continue
                 gh_state = str(data.get("state") or "").upper()
                 if gh_state == "CLOSED":
                     if number == record["pr"]:
-                        closed_own = f"PR #{number} 在 GitHub 上是关闭未合并"
+                        closed_record_pr = f"PR #{number} 在 GitHub 上是关闭未合并"
                     continue
                 if gh_state != "MERGED":
                     continue
@@ -105,8 +105,8 @@ class CloseWatcher:
                 break
             if matched:
                 continue
-            if gh_error is not None:
-                number, exc = gh_error
+            if gh_unavailable is not None:
+                number, exc = gh_unavailable
                 self._retry_at[record["id"]] = time.time() + self.retry_seconds
                 self.store._log(
                     f"待关票记录 {record['id']} 核对 PR #{number} 失败：{exc}")
@@ -120,9 +120,9 @@ class CloseWatcher:
                     for n, h in merged_heads)
                 self._mark(record, status="过期", check="sha_mismatch", detail=detail)
                 continue
-            if closed_own:
+            if closed_record_pr:
                 self._mark(record, status="过期", check="closed_without_merge",
-                           detail=closed_own)
+                           detail=closed_record_pr)
                 continue
             self._retry_at[record["id"]] = time.time() + self.retry_seconds
             if record.get("verify") == "无法核对":

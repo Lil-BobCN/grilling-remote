@@ -173,23 +173,28 @@ class WorkStatePoller:
         return result
 
     def _linked_prs(self, worktrees):
-        """收集一张票关联的全部 PR，按 PR 号去重；屏幕只看 pr，关票看 prs。"""
+        """收集一张票关联的全部 PR，按 PR 号去重；同一号以 merged 状态为准。"""
         prs = []
-        seen = set()
+        index = {}
         for wt in worktrees:
             pr = wt.get("linkedPR")
             if not isinstance(pr, dict) or not pr.get("number"):
                 continue
-            number = pr["number"]
-            if number in seen:
-                continue
-            seen.add(number)
-            prs.append({
-                "number": number,
+            entry = {
+                "number": pr["number"],
                 "state": pr.get("state"),
                 "title": pr.get("title"),
                 "url": pr.get("url"),
-            })
+            }
+            number = entry["number"]
+            if number not in index:
+                index[number] = len(prs)
+                prs.append(entry)
+                continue
+            current = prs[index[number]]
+            if (str(entry.get("state") or "").lower() == "merged"
+                    and str(current.get("state") or "").lower() != "merged"):
+                prs[index[number]] = entry
         return prs
 
     def _linked_pr(self, worktrees):

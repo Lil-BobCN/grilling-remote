@@ -330,7 +330,9 @@ class TestWorkState(unittest.TestCase):
             {"repoId": "r1", "branch": "Lil-BobCN/issue-2", "status": "active",
              "linkedPR": {"number": 188, "state": "merged", "title": "同一", "url": "v"}},
         ])
-        self.assertEqual([p["number"] for p in tickets["2"]["prs"]], [188])
+        self.assertEqual(tickets["2"]["prs"],
+                         [{"number": 188, "state": "merged", "title": "同一", "url": "v"}])
+        self.assertEqual(tickets["2"]["pr"]["state"], "merged")
 
     def test_write_persists_prs(self):
         self.poller._write(offline=False, tickets={
