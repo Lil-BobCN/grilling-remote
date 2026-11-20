@@ -19,6 +19,16 @@ VERSION=${2:?用法：deploy.sh <发布包.tgz> <版本号>}
 [[ -f $TARBALL ]] || { echo "找不到发布包：$TARBALL" >&2; exit 1; }
 [[ $VERSION =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || { echo "版本号只能用字母、数字、点、下划线和连字符" >&2; exit 1; }
 
+SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+# 查找顺序和 afk-product、check.sh 保持一致：脚本旁边、仓库 deploy/lib、安装目录。
+HEALTH_LIB=""
+for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" /usr/local/share/afk-product/health.sh; do
+  if [[ -f $candidate ]]; then HEALTH_LIB=$candidate; break; fi
+done
+[[ -n $HEALTH_LIB ]] || { echo "找不到 health.sh（共享健康判据）；按 docs/后端服务.md 的发布一节装到 /data/app/bin/" >&2; exit 1; }
+# shellcheck source=../lib/health.sh
+. "$HEALTH_LIB"
+
 RELEASES=/data/app/releases
 RELEASE=$RELEASES/$VERSION
 CURRENT=/data/app/current
@@ -32,7 +42,7 @@ OLD=$(readlink -f "$CURRENT" 2>/dev/null || true)
 health_ok() {
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8787/app/api/health || true)
-  [[ $code == 200 ]] || return 1
+  healthy "$code" || return 1
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8787/app/api/session || true)
   [[ $code == 401 ]] || return 1
 }
@@ -53,6 +63,13 @@ tar -xzf "$TARBALL" -C "$incoming"
 mv "$incoming" "$RELEASE"
 chown -R afkapp:afkapp "$RELEASE"
 chmod -R u+rwX,go-rwx "$RELEASE"
+# check.sh 用普通用户跑。发布指纹文件要能读，scaffold 模板要能遍历和读；
+# 程序代码和其余文件仍是 700。
+chmod 711 "$RELEASE"
+for fingerprint in release.json release.manifest; do
+  if [[ -f $RELEASE/$fingerprint ]]; then chmod 644 "$RELEASE/$fingerprint"; fi
+done
+if [[ -d $RELEASE/scaffold ]]; then chmod -R go+rX "$RELEASE/scaffold"; fi
 
 ln -sfn "$RELEASE" "$CURRENT"
 systemctl restart afkapp
