@@ -378,11 +378,17 @@ test('子票全合完、收尾评审和验证都过：建 PR、合主干、通�
         return gh.mergePull({ owner, repo, number: pr.number, mergeMethod: method })
       },
       notifier: { send: async (event) => sent.push(event) },
-      cleanup: async (ctx) => calls.push(['cleanup', ctx]),
+      cleanup: async (ctx) => {
+        calls.push(['cleanup', ctx])
+        return { removed: ['ticket-1'], kept: [], archived: ['.audit/archive/20261120T000000Z-ticket-1/首页.png'] }
+      },
     })
 
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.mergeSha, 'merge-1')
+    assert.deepEqual(result.cleanup.archived, [
+      '.audit/archive/20261120T000000Z-ticket-1/首页.png',
+    ])
 
     const pulls = fake.state.pulls.get(`${OWNER}/${REPO}`)
     assert.equal(pulls.length, 1)

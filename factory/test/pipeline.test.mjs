@@ -1265,7 +1265,7 @@ test('归档处理不了时返回 branch_conflict，不再报 branch-busy', asyn
   await mkdir(join(repoDir, '.audit', 'verify'), { recursive: true })
   await writeFile(join(repoDir, '.audit', 'verify', 'after.png'), 'LEFTOVER-EVIDENCE')
   await git(repoDir, ['config', 'core.hooksPath', '.git/nonexistent-hooks'])
-  // 目标分支被另一个工作树占着，checkout 会失败，归档也救不回来。
+  // 票分支被另一个工作树占着，repoWorkspace 建不了新工作树，归档也救不回来。
   const other = join(repoDir, '..', 'other-worktree')
   await git(repoDir, ['worktree', 'add', other, `ticket/${ticket.number}`])
   t.after(() => git(repoDir, ['worktree', 'remove', '--force', other]).catch(() => {}))

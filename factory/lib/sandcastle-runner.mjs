@@ -170,8 +170,17 @@ function tryParseResult(stdout) {
 }
 
 function parseResult(stdout, ticketBranch) {
-  const parsed = tryParseResult(stdout)
-  if (!parsed) throw new Error('Sandcastle 没有输出 AFK_RESULT')
+  const line = String(stdout || '')
+    .split(/\r?\n/)
+    .reverse()
+    .find((row) => row.startsWith('AFK_RESULT:'))
+  if (!line) throw new Error('Sandcastle 没有输出 AFK_RESULT')
+  let parsed
+  try {
+    parsed = JSON.parse(line.slice('AFK_RESULT:'.length))
+  } catch {
+    throw new Error(`Sandcastle 的 AFK_RESULT 不是合法 JSON：${line.slice(0, 200)}`)
+  }
   return {
     commits: Array.isArray(parsed?.commits) ? parsed.commits : [],
     branch: parsed?.branch || ticketBranch,

@@ -146,7 +146,7 @@ function deliveryComment({ address, version, codeZipUrl }) {
 
 /**
  * 合并后清理工作树：需求分支上的、票的，都清。当前目录不删。
- * 票工作树走 repoWorkspace 的释放规则：干净删，只有未跟踪文件的先归档再删，
+ * 票工作树走 repo-workspace.mjs 的释放规则：干净删，只有未跟踪文件的先归档再删，
  * 改了已跟踪文件的保留现场。返回删掉、保留和归档的清单。
  */
 export async function cleanupRequirement({ repoDir, reqBranch }) {

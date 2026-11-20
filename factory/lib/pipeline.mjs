@@ -223,8 +223,8 @@ export function createTicketPipeline({
   merge = mergeTicket,
   readTrailImpl = readTrail,
   gitImpl = git,
-  workspace = createRepoWorkspace(),
 } = {}) {
+  const workspace = createRepoWorkspace()
   /**
    * 证据写在票工作树里，先提交到票分支；主仓合并时从分支上读得到。
    * 只提交 `.audit`，agent 留下的其他未跟踪文件交给 release 归档。
@@ -378,7 +378,7 @@ export function createTicketPipeline({
           reason: 'worktree_dirty',
           worktree: error.worktreeDirty,
           problems: [errorText(error)],
-          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+          archived: archived.map((row) => row.to),
         }
       }
       log({
@@ -397,7 +397,7 @@ export function createTicketPipeline({
         ok: false,
         reason: 'branch_conflict',
         problems: [errorText(error)],
-        ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+        archived: archived.map((row) => row.to),
       }
     }
     const worktree = prepared.worktree
@@ -515,7 +515,7 @@ export function createTicketPipeline({
           ticket: ticket.number,
           ...ensured,
           reason,
-          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+          archived: archived.map((row) => row.to),
         }
       }
 
@@ -526,7 +526,7 @@ export function createTicketPipeline({
           reason: 'worktree_dirty',
           worktree: keptWorktree,
           problems: ['票工作树有未提交的已跟踪改动，没合需求分支'],
-          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+          archived: archived.map((row) => row.to),
         }
       }
 
@@ -578,7 +578,7 @@ export function createTicketPipeline({
       return {
         ticket: ticket.number,
         ...result,
-        ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+        archived: archived.map((row) => row.to),
       }
     } catch (error) {
       log({

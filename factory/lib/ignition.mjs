@@ -95,15 +95,6 @@ function defaultRepoRoot() {
   return join(homedir(), '.afkfactory', 'repos')
 }
 
-async function exists(path) {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function runGit(args, { cwd, env } = {}) {
   return git(cwd || process.cwd(), args, { env, timeoutMs: 120000 })
 }
@@ -439,16 +430,14 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
   const timeoutMs = config.timeoutMs ?? 120000
   const pushBranch = typeof push === 'function' ? push : createGitPush()
   // 客户仓、票分支、工作树的唯一 owner；点火不再自己拼路径。
-  const workspace =
-    config.workspace ||
-    createRepoWorkspace({
-      repoRoot: config.repoRoot || defaultRepoRoot(),
-      lockDir: config.lockDir || defaultLockDir(),
-      token: config.token || '',
-      remoteUrlFor: ({ owner, repo }) => remoteUrlFor(config, owner, repo),
-      pushBranch: ({ repoDir, owner, repo, branch }) =>
-        pushBranch({ config, repoDir, owner, repo, branch }),
-    })
+  const workspace = createRepoWorkspace({
+    repoRoot: config.repoRoot || defaultRepoRoot(),
+    lockDir: config.lockDir || defaultLockDir(),
+    token: config.token || '',
+    remoteUrlFor: ({ owner, repo }) => remoteUrlFor(config, owner, repo),
+    pushBranch: ({ repoDir, owner, repo, branch }) =>
+      pushBranch({ config, repoDir, owner, repo, branch }),
+  })
 
   function now() {
     const value = clock()
@@ -620,17 +609,19 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     // 失败时用来写清是哪一步出的事：准备、运行、推送、开 PR。
     let stage = '准备'
 
-    /** 归档未跟踪文件后释放工作树；失败路径用 abort，正常路径用 release。 */
-    async function tidyWorktree({ mode, path = worktree }) {
+    /** 归档未跟踪文件后释放工作树；abort 用在失败路径，release 用在正常路径。 */
+    async function tidyWorktree({ abort = false, path = worktree }) {
       if (!path || cleaned) return
       try {
-        const released = await workspace[mode]({ repoDir, worktree: path, branch: ticketBranch })
+        const released = abort
+          ? await workspace.abort({ repoDir, worktree: path, branch: ticketBranch })
+          : await workspace.release({ repoDir, worktree: path, branch: ticketBranch })
         cleaned = true
         archived = released.archived || []
         if (archived.length) {
           log({
             level: 'info',
-            msg: '归档点火工作树里的未跟踪文件',
+            msg: '归档票工作树里的未跟踪文件',
             owner,
             repo,
             ticket: ticket.number,
@@ -641,7 +632,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         if (released.errors?.length) {
           log({
             level: 'error',
-            msg: '归档点火工作树失败，保留现场',
+            msg: '归档票工作树失败，保留现场',
             owner,
             repo,
             ticket: ticket.number,
@@ -652,7 +643,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         if (released.kept) {
           log({
             level: 'warning',
-            msg: '点火工作树有未提交改动，保留',
+            msg: '票工作树有未提交改动，保留',
             owner,
             repo,
             ticket: ticket.number,
@@ -666,7 +657,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       } catch (error) {
         log({
           level: 'error',
-          msg: '清点火工作树失败',
+          msg: '清票工作树失败',
           owner,
           repo,
           ticket: ticket.number,
@@ -795,8 +786,12 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       }
 
       if (outcome.kind === 'timeout') {
-        // 超时后不再等这次 run；它晚到的结果不写回工单，等人处理。
-        runPromise.catch(() => {})
+        // 超时后不再等这次 run；它晚到时在后台归档并释放票工作树，结果不写回工单。
+        runPromise
+          .then((late) =>
+            tidyWorktree({ path: String(late?.preservedWorktreePath || '') || worktree }),
+          )
+          .catch(() => tidyWorktree({ abort: true }))
         await markTimeout({
           owner,
           repo,
@@ -832,7 +827,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         })
       }
       // 脏文件先归档，再释放；改了已跟踪文件的工作树保留，路径回传给下一环。
-      await tidyWorktree({ mode: 'release', path: preservedWorktreePath || worktree })
+      await tidyWorktree({ path: preservedWorktreePath || worktree })
       const commits = normalizeCommits(result?.commits)
       runCommits = commits
       pushedBranch = result?.branch || ticketBranch
@@ -863,7 +858,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           stage: '没有提交',
           error: '这次 run 没有产生提交',
         })
-        return { ok: false, error: 'no-commits', reqBranch, ticketBranch, ...(archived.length ? { archived } : {}) }
+        return { ok: false, error: 'no-commits', reqBranch, ticketBranch, archived }
       }
 
       stage = '推送'
@@ -931,13 +926,25 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         branch: pushedBranch,
         commits,
         prUrl,
-        ...(archived.length ? { archived } : {}),
+        archived,
         ...(worktree ? { worktree } : {}),
       }
     } catch (error) {
       const message = String(error?.message || error)
+      // runner 把 Sandcastle 抛出的保留路径挂在 error 上，不能丢。
+      const preservedWorktreePath = String(error?.preservedWorktreePath || '')
+      if (preservedWorktreePath) {
+        log({
+          level: 'info',
+          msg: 'Sandcastle 保留了工作树',
+          owner,
+          repo,
+          ticket: ticket.number,
+          worktree: preservedWorktreePath,
+        })
+      }
       // 失败现场：未跟踪文件先归档，再连脏工作树一起删；已经释放过的不重复动。
-      await tidyWorktree({ mode: 'abort' })
+      await tidyWorktree({ abort: true, path: preservedWorktreePath || worktree })
       await ensureCommentOnce(gh, {
         owner,
         repo,
@@ -966,7 +973,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         stage,
         error: message,
       })
-      return { ok: false, error: message, reqBranch, ticketBranch, ...(archived.length ? { archived } : {}) }
+      return { ok: false, error: message, reqBranch, ticketBranch, archived }
     }
   }
 
