@@ -42,9 +42,17 @@
 
 默认 runner 的依赖装在 `~/.afkfactory/sandcastle`（`AFK_SANDCASTLE_HOME` 可改），不进客户仓。第一次跑一张票时执行 `npm install @ai-hero/sandcastle@0.12.0 tsx`，之后复用。
 
-镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。真正用的 tag 带 Dockerfile 和模板 `backend/scaffold/.sandcastle/Dockerfile` 的内容哈希，比如 `sandcastle:demo-a1b2c3d4e5f6`。哈希变了，下一次点火自动用 `npx @ai-hero/sandcastle docker build-image` 重建，不需要人工 `docker tag`。
+镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没写就用 `sandcastle:<仓名>`。
+实际镜像名带内容哈希，比如 `sandcastle:demo-a1b2c3d4e5f6`。
+哈希算两样内容：客户仓的 Dockerfile，和模板 `backend/scaffold/.sandcastle/Dockerfile`。
+任一处改了，下一次点火自动重建。
+镜像内容仍取客户仓的 Dockerfile；模板变了但客户仓没同步时，重建不改变内容。
+构建用 runner 目录里已装的 CLI（`~/.afkfactory/sandcastle/node_modules/.bin/sandcastle`），不走网络。
+不再需要人工 `docker tag`。
 
-建镜像的 cwd 是客户仓，默认 build context 是客户仓里的 `.sandcastle`。要用仓根做 context 时显式传 `--dockerfile <相对客户仓的路径>`，CLI 会收到绝对路径。
+建镜像的工作目录（cwd）是客户仓。
+默认构建上下文（build context）是客户仓里的 `.sandcastle`。
+要用仓根当构建上下文，显式传 `--dockerfile <相对客户仓的路径>`，CLI 会收到绝对路径。
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 

@@ -753,6 +753,8 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           ticket: ticket.number,
           reqBranch,
           ticketBranch,
+          image: prepared?.imageName,
+          imageHash: prepared?.hash,
         })
       }
 

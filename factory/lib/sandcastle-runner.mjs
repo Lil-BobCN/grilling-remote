@@ -17,7 +17,7 @@ export const SANDCASTLE_VERSION = '0.12.0'
 export const DEFAULT_MODEL = 'ccs-claude-deepseek--deepseek-v4-flash[1M]'
 
 /** 客户仓模板里的 Dockerfile；镜像 tag 的哈希把这份模板也算进去。 */
-export const SCAFFOLD_DOCKERFILE = join(
+const SCAFFOLD_DOCKERFILE = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
   '..',
@@ -128,7 +128,7 @@ async function ensureDeps({ home, env, exec }) {
 }
 
 /** 镜像 tag 带 Dockerfile 和模板的内容哈希；仓库名保留，名字只变 tag。 */
-export function hashTaggedImage(image, hash) {
+function hashTaggedImage(image, hash) {
   const value = String(image || '')
   const slash = value.lastIndexOf('/')
   const colon = value.lastIndexOf(':')
@@ -140,7 +140,7 @@ export function hashTaggedImage(image, hash) {
 }
 
 /** Dockerfile 内容和模板一起算哈希；任一变化都换 tag，下次点火重建。 */
-export function imageContentHash(dockerfileText, templateText) {
+function imageContentHash(dockerfileText, templateText) {
   return createHash('sha256')
     .update('dockerfile\0')
     .update(String(dockerfileText ?? ''))
@@ -165,6 +165,7 @@ async function readTextOrEmpty(path) {
 export async function defaultBuildImage({
   image,
   repoDir,
+  home = process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle'),
   env,
   exec,
   dockerfile = '',
@@ -190,16 +191,13 @@ export async function defaultBuildImage({
     return { built: false, image: taggedImage, hash }
   }
 
-  const args = [
-    '--yes',
-    `@ai-hero/sandcastle@${SANDCASTLE_VERSION}`,
-    'docker',
-    'build-image',
-    '--image-name',
-    taggedImage,
-  ]
+  // 用 runner 目录里已装的 CLI，cwd 仍是客户仓；走 npx 会在客户仓重新下载。
+  const args = ['docker', 'build-image', '--image-name', taggedImage]
   if (dockerfile) args.push('--dockerfile', dockerfilePath)
-  const result = await exec('npx', args, { cwd: repoDir, env: baseEnv(env) })
+  const result = await exec(join(home, 'node_modules', '.bin', 'sandcastle'), args, {
+    cwd: repoDir,
+    env: baseEnv(env),
+  })
   if (result.code !== 0) {
     throw new Error(`建镜像 ${taggedImage} 失败（退出码 ${result.code}）：${tail(result)}`)
   }
@@ -289,7 +287,6 @@ export function createSandcastleRunner({
 
     return {
       imageName: actualImage,
-      image: actualImage,
       hash: String(built?.hash || ''),
       scriptPath,
       installed: Boolean(deps?.installed),
