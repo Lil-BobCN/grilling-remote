@@ -74,7 +74,15 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.scheduler
 
 安装只复制 plist 和 wrapper，不加载任务。重装后先 `launchctl bootout gui/$(id -u)/<Label>`，再 bootstrap。
 
-两个 wrapper 都 source `~/.afkfactory/env`，需要的键：`AFK_SERVER`（或写完整命令的 `AFK_HELPER`）、`AFK_SSH_KEY`、`GITHUB_OWNER`、`GITHUB_TOKEN`（细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写）、`ANTHROPIC_MODEL`（或 `AFK_AGENT_MODEL`）。token 不写进 plist。env 文件路径可用 `AFK_ENV_FILE` 换。
+两个 wrapper 都 source `~/.afkfactory/env`。env 文件路径可用 `AFK_ENV_FILE` 换。需要的键：
+
+- `AFK_SERVER`（或写完整命令的 `AFK_HELPER`）
+- `AFK_SSH_KEY`
+- `GITHUB_OWNER`
+- `GITHUB_TOKEN`
+- `ANTHROPIC_MODEL`（或 `AFK_AGENT_MODEL`）
+
+`GITHUB_TOKEN` 用细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写。token 不写进 plist。
 
 调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。
 

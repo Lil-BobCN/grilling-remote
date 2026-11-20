@@ -6,6 +6,19 @@ test('AFK_HELPER 只写 ssh 时 helperCommand 报错，不会拼出 ssh preview-
   assert.throws(() => helperCommand({ AFK_HELPER: 'ssh' }), /preview-sweep/)
 })
 
+test('AFK_HELPER 的 ssh 缺主机或缺远程命令时报错，完整命令放行', () => {
+  assert.throws(() => helperCommand({ AFK_HELPER: 'ssh -i /tmp/key' }), /preview-sweep/)
+  assert.throws(() => helperCommand({ AFK_HELPER: 'ssh dev@host' }), /远程命令/)
+  assert.deepEqual(
+    helperCommand({ AFK_HELPER: 'ssh -i /tmp/key dev@host sudo -n /usr/local/sbin/afk-product' }),
+    ['ssh', '-i', '/tmp/key', 'dev@host', 'sudo', '-n', '/usr/local/sbin/afk-product'],
+  )
+  assert.deepEqual(helperCommand({ AFK_HELPER: 'sudo /usr/local/sbin/afk-product' }), [
+    'sudo',
+    '/usr/local/sbin/afk-product',
+  ])
+})
+
 test('helperCommand 认 AFK_HELPER、AFK_SERVER 和本机 afk-product 三种来源', () => {
   assert.deepEqual(helperCommand({ AFK_HELPER: '/opt/helper --flag' }), ['/opt/helper', '--flag'])
   assert.deepEqual(helperCommand({ AFK_SERVER: 'dev@host', AFK_SSH_KEY: '/tmp/key' }), [

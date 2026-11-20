@@ -188,3 +188,31 @@ test('直接调 run 时 customers 形状错也报错，不静默零仓', async (
     /repos 必须是对象/,
   )
 })
+
+test('缺 GITHUB_OWNER 时 start 报错，写清键名和环境文件', async (t) => {
+  const files = await fixture(t, goodEnv())
+  const saved = {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
+  }
+  t.after(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  await assert.rejects(
+    start(['--once', '--customers', files.customersPath], {
+      env: { HOME: files.dir, AFK_ENV_FILE: files.envFile },
+      probeModel: async () => ({ ok: true }),
+    }),
+    (error) => {
+      assert.ok(error instanceof ConfigError)
+      assert.equal(error.key, 'GITHUB_OWNER')
+      assert.match(error.message, /GITHUB_OWNER/)
+      assert.match(error.message, new RegExp(files.envFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      return true
+    },
+  )
+})

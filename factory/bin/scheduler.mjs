@@ -21,7 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
-import { loadConfig, readCustomersFile } from '../lib/config.mjs'
+import { ConfigError, loadConfig, readCustomersFile } from '../lib/config.mjs'
 import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
@@ -358,6 +358,14 @@ export async function start(
 ) {
   const loaded = await loadConfig({ env, envFile, probeModel, readFile })
   applyConfigEnv(loaded)
+  const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
+  if (!owner) {
+    const target = loaded.found ? `${loaded.envFile} 里也没有` : `${loaded.envFile} 不存在`
+    throw new ConfigError(`缺 GITHUB_OWNER：--owner 和进程环境都没有，${target}`, {
+      key: 'GITHUB_OWNER',
+      file: loaded.envFile,
+    })
+  }
   const customersPath = option(
     argv,
     '--customers',

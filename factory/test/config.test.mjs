@@ -340,8 +340,8 @@ test('{customers: [...]} 里的坏行也能指出真实行号', async (t) => {
   const path = await customersFile(t, [
     '{',
     '  "customers": [',
-    '    { "id": "c-0001", "repos": {} },',
-    '    { "id": "c-0002", "repos": "acme-demo" }',
+    '    { "id": "c-0001", "status": "active", "repos": {} },',
+    '    { "id": "c-0002", "status": "active", "repos": "acme-demo" }',
     '  ]',
     '}',
   ])
@@ -376,4 +376,44 @@ test('AFK_SSH_KEY 指向的私钥不存在时启动报错，存在时放行', as
   await writeFile(key, 'test-key\n', 'utf8')
   const loaded = await loadConfig({ env, probeModel: quietProbe })
   assert.equal(loaded.helper.source, 'AFK_SERVER')
+})
+
+test('status 写错或缺失时报错，不静默跳过', async (t) => {
+  const wrong = await customersFile(t, [
+    '[',
+    '  { "id": "c-0001", "status": "activ", "repos": { "demo": "acme-demo" } }',
+    ']',
+  ])
+  await assert.rejects(
+    readCustomersFile(wrong),
+    (error) => {
+      assert.ok(error instanceof ConfigError)
+      assert.match(error.message, /第 2 行/)
+      assert.match(error.message, /status/)
+      assert.match(error.message, /activ/)
+      return true
+    },
+  )
+
+  const missing = await customersFile(t, ['[', '  { "id": "c-0001", "repos": {} }', ']'])
+  await assert.rejects(readCustomersFile(missing), /status 必须是 active 或 disabled/)
+})
+
+test('repos 的值不是仓名字符串时报错，指出那个键', async (t) => {
+  const path = await customersFile(t, [
+    '[',
+    '  { "id": "c-0001", "status": "active", "repos": { "demo": 123 } }',
+    ']',
+  ])
+
+  await assert.rejects(
+    readCustomersFile(path),
+    (error) => {
+      assert.ok(error instanceof ConfigError)
+      assert.match(error.message, /第 2 行/)
+      assert.match(error.message, /repos\["demo"\]/)
+      assert.match(error.message, /数字/)
+      return true
+    },
+  )
 })

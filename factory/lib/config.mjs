@@ -12,7 +12,10 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 const HELPER_PATH = '/usr/local/sbin/afk-product'
-const TRANSPORT_COMMANDS = new Set(['ssh', 'scp', 'sudo', 'docker', 'podman'])
+// ssh 的常用带值选项；判断 AFK_HELPER 里 ssh 有没有主机和远程命令时跳过它们。
+const SSH_OPTIONS_WITH_VALUE = new Set([
+  '-b', '-c', '-D', '-E', '-F', '-i', '-J', '-L', '-l', '-m', '-o', '-p', '-R', '-S', '-W', '-w',
+])
 
 export class ConfigError extends Error {
   constructor(message, { key = '', file = '', line = 0 } = {}) {
@@ -59,15 +62,37 @@ export function parseEnvFile(text, { file = '' } = {}) {
   return values
 }
 
+function checkedTarget(file, envFileFound) {
+  return envFileFound ? `${file} 里也没有` : `${file} 不存在`
+}
+
 function missingKeyMessage(key, file, envFileFound) {
-  const target = envFileFound ? `${file} 里也没有` : `${file} 不存在`
-  return `缺 ${key}：进程环境没有，${target}`
+  return `缺 ${key}：进程环境没有，${checkedTarget(file, envFileFound)}`
 }
 
 const HELPER_FIX =
   "改成完整命令，例如 AFK_HELPER='/usr/local/sbin/afk-product' 或 " +
   "AFK_HELPER='ssh dev@<服务器> sudo -n /usr/local/sbin/afk-product'；" +
   '也可以删掉 AFK_HELPER，改设 AFK_SERVER（可配 AFK_SSH_KEY）'
+
+/** ssh 命令里有没有「主机 + 远程命令」两段；没有就说明子命令会被当成主机名。 */
+function sshHasTargetAndCommand(command) {
+  let i = 1
+  while (i < command.length) {
+    const token = command[i]
+    if (token === '--') {
+      i += 1
+      break
+    }
+    if (token.startsWith('-')) {
+      i += SSH_OPTIONS_WITH_VALUE.has(token) ? 2 : 1
+      continue
+    }
+    return i + 1 < command.length
+  }
+  const rest = command.slice(i)
+  return rest.length >= 2
+}
 
 /**
  * 解析 helper 命令。没配时返回 null，由 loadConfig 报错。
@@ -80,8 +105,8 @@ export function resolveHelperCommand(env = {}) {
   if (raw) {
     const command = raw.split(/\s+/)
     const program = command[0].split('/').pop()
-    if (TRANSPORT_COMMANDS.has(program) && command.length < 3) {
-      throw new ConfigError(`AFK_HELPER 只写了 ${command[0]}，像 preview-sweep 这样的子命令会被当成主机名。${HELPER_FIX}`, {
+    if (program === 'ssh' && !sshHasTargetAndCommand(command)) {
+      throw new ConfigError(`AFK_HELPER 里的 ssh 缺主机或远程命令，像 preview-sweep 这样的子命令会被当成主机名。${HELPER_FIX}`, {
         key: 'AFK_HELPER',
       })
     }
@@ -163,7 +188,10 @@ function typeName(value) {
   if (Array.isArray(value)) return '数组'
   if (value === null) return 'null'
   if (isPlainObject(value)) return '对象'
-  return typeof value
+  return (
+    { string: '字符串', number: '数字', boolean: '布尔值', undefined: '未设置' }[typeof value] ||
+    typeof value
+  )
 }
 
 function skipWs(text, start) {
@@ -300,7 +328,8 @@ function lineAt(text, offset) {
 
 function keyLine(text, key, element, fallback) {
   if (!element) return fallback
-  const match = new RegExp(`"${key}"\\s*:`).exec(text.slice(element.start, element.end))
+  const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`"${escaped}"\\s*:`).exec(text.slice(element.start, element.end))
   return match ? lineAt(text, element.start + match.index) : fallback
 }
 
@@ -336,12 +365,30 @@ export function validateCustomersText(text, { file = '' } = {}) {
         { file, line },
       )
     }
+    if (row.status !== 'active' && row.status !== 'disabled') {
+      const statusLine = keyLine(text, 'status', element, line)
+      throw new ConfigError(
+        `customers 文件 ${file} 第 ${statusLine} 行：status 必须是 active 或 disabled，现在是${typeName(row.status)}`,
+        { file, line: statusLine },
+      )
+    }
     if (row.repos !== undefined && !isPlainObject(row.repos)) {
       const reposLine = keyLine(text, 'repos', element, line)
       throw new ConfigError(
         `customers 文件 ${file} 第 ${reposLine} 行：repos 必须是对象（软件简称 → 仓名），现在是${typeName(row.repos)}`,
         { file, line: reposLine },
       )
+    }
+    if (isPlainObject(row.repos)) {
+      for (const [product, value] of Object.entries(row.repos)) {
+        if (typeof value !== 'string' || !value.trim()) {
+          const productLine = keyLine(text, product, element, line)
+          throw new ConfigError(
+            `customers 文件 ${file} 第 ${productLine} 行：repos["${product}"] 必须是仓名字符串，现在是${typeName(value)}`,
+            { file, line: productLine },
+          )
+        }
+      }
     }
   })
 
@@ -426,10 +473,10 @@ export async function loadConfig({
     try {
       await stat(sshKey)
     } catch {
-      throw new ConfigError(`AFK_SSH_KEY 指向的私钥不存在：${sshKey}`, {
-        key: 'AFK_SSH_KEY',
-        file: loaded.file,
-      })
+      throw new ConfigError(
+        `AFK_SSH_KEY 指向的私钥不存在：${sshKey}。查过：进程环境、${loaded.file}`,
+        { key: 'AFK_SSH_KEY', file: loaded.file },
+      )
     }
   }
 
@@ -437,8 +484,7 @@ export async function loadConfig({
   const modelCommand = String(values.AFK_AGENT_COMMAND || 'claude').trim()
   if (!modelName) {
     throw new ConfigError(
-      `缺模型：设 ANTHROPIC_MODEL（或 AFK_AGENT_MODEL）。进程环境没有，` +
-        `${loaded.found ? `${loaded.file} 里也没有` : `${loaded.file} 不存在`}`,
+      `缺模型（ANTHROPIC_MODEL 或 AFK_AGENT_MODEL）：进程环境没有，${checkedTarget(loaded.file, loaded.found)}`,
       { key: 'ANTHROPIC_MODEL', file: loaded.file },
     )
   }
