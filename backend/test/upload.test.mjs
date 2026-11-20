@@ -362,6 +362,29 @@ test('内容不全返回 200 和 missing，补好后同一轮重传', async () =
   }
 })
 
+test('缺客户原话的包在订单 missing 里提示', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const { zipPath } = await makeZipFromEntries([
+      {
+        name: '.scratch/demo/需求草稿.md',
+        kind: 'file',
+        payload: '# demo 需求草稿\n\nStatus: 已问完\n\n## 1. 客户原话\n',
+      },
+      { name: '.scratch/demo/验收场景.md', kind: 'file', payload: '客户确认：2026-11-15\n' },
+    ])
+    const response = await upload(server.base, cookie, await readZip(zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.match(body.orders[0].missing.join('\n'), /客户原话/)
+  } finally {
+    await server.close()
+  }
+})
+
 test('地图型需求完整包通过', async () => {
   const { config } = await makeConfig()
   await seedCustomer(config)

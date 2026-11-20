@@ -202,6 +202,11 @@ export async function makeWorkspace({
         `# 01\n\nType: grilling\nStatus: ${complete ? 'resolved' : 'claimed'}\n\n## Question\n\n到店取还是送货？\n\n## 结论\n\n到店取。\n`,
         'utf8',
       )
+      await writeFile(
+        join(requirement, '问答记录.md'),
+        '# 问答记录\n\n## 客户原话\n\n> 「想要一个预约取货的小程序。」\n\n日期：2026-11-15\n',
+        'utf8',
+      )
     }
 
     if (complete) {
