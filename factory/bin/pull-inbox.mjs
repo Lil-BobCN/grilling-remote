@@ -25,7 +25,7 @@
 import { dirname, join, resolve } from 'node:path'
 import { createSshRemote, importEvent, pullInbox } from '../lib/inbox.mjs'
 import { logLine } from '../lib/log.mjs'
-import { createNotifier } from '../lib/notify.mjs'
+import { createNotifier, sendEvent } from '../lib/notify.mjs'
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name)
@@ -39,7 +39,13 @@ function notifyOperator(notifier) {
   return async function sendImportEvent({ meta, alert }) {
     const siteBase = (process.env.SITE_BASE || 'https://afkfactory.space').replace(/\/+$/, '')
     const event = importEvent({ meta, alert, link: `${siteBase}/app/admin` })
-    const result = await notifier.send(event)
+    const result = await sendEvent(notifier, {
+      key: event.key,
+      event: event.event,
+      data: event.data,
+      link: event.link,
+      now: event.occurred_at,
+    })
     if (!result || result.code !== 0) {
       throw new Error(`通知命令退出码 ${result?.code ?? '?'}：${String(result?.stdout || '').trim()}`)
     }

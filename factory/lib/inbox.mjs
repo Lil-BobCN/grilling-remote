@@ -261,6 +261,7 @@ export async function pullInbox({
 
     const zipPath = join(dir, 'package.zip')
     // 失败终态也要把包存档：服务器 7 天后会删原包，本地只剩 meta 就补不回来。
+    // `failed` 故意不在内：那次没进导入，只转发提醒，不占本地存档。
     const copyPackage =
       status === 'ready' ||
       status === 'imported' ||

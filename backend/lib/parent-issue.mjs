@@ -13,7 +13,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { customerQuoteFrom, numberedSectionBody } from './protocol.mjs'
+import { customerQuoteFrom, encodeAcceptance, numberedSectionBody } from './protocol.mjs'
 
 async function readOptional(path) {
   try {
@@ -101,7 +101,7 @@ function acceptanceItems(markdown) {
     .map((line) => stripTrailingRevision(line))
     .filter(Boolean)
   if (!items.length) return ['- 无']
-  return items.map((item) => `- [ ] ${item}`)
+  return encodeAcceptance(items).split('\n')
 }
 
 function draftSection(draft, number, keywords) {

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { eventKey } from '../../backend/lib/protocol.mjs'
 import { git } from './git.mjs'
-import { notificationEvent } from './notify.mjs'
+import { sendEvent } from './notify.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -119,21 +119,19 @@ export async function notifyDeployFailure({
 } = {}) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send(
-      notificationEvent({
-        key: key || deployKey('', '出事', reason),
-        event: '出事',
-        now: new Date(),
-        link,
-        data: {
-          customer: customer || '未知客户',
-          requirement: requirement || '成品部署',
-          reason,
-          tried,
-          attempt,
-        },
-      }),
-    )
+    await sendEvent(notifier, {
+      key: key || deployKey('', '出事', reason),
+      event: '出事',
+      now: new Date(),
+      link,
+      data: {
+        customer: customer || '未知客户',
+        requirement: requirement || '成品部署',
+        reason,
+        tried,
+        attempt,
+      },
+    })
   } catch {
     // 通知失败不改变部署结果。
   }
@@ -142,21 +140,19 @@ export async function notifyDeployFailure({
 async function notifyDeployDone({ notifier, key, customer, requirement, address, version, pr, link }) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send(
-      notificationEvent({
-        key: key || deployKey('', '部署完成', version),
-        event: '部署完成',
-        now: new Date(),
-        link,
-        data: {
-          customer,
-          requirement,
-          address,
-          version,
-          ...(pr ? { pr } : {}),
-        },
-      }),
-    )
+    await sendEvent(notifier, {
+      key: key || deployKey('', '部署完成', version),
+      event: '部署完成',
+      now: new Date(),
+      link,
+      data: {
+        customer,
+        requirement,
+        address,
+        version,
+        ...(pr ? { pr } : {}),
+      },
+    })
   } catch {
     // 已经部署好了，通知失败不回滚。
   }
