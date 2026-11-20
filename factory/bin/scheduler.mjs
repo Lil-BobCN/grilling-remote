@@ -26,6 +26,7 @@ import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
+import { createJobStore, defaultJobsPath } from '../lib/job.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
@@ -185,6 +186,8 @@ export async function run(
     runLog: injectedRunLog,
     ghRun: injectedGhRun,
     customers: injectedCustomers,
+    jobsFile: injectedJobsFile,
+    jobs: injectedJobs,
     config: configOverrides = {},
   } = {},
 ) {
@@ -216,6 +219,23 @@ export async function run(
   const maxActive = Number(process.env.MAX_ACTIVE) || 5
   const timeoutMs = Number(process.env.AFK_IGNITE_TIMEOUT_MS) || 120000
   const maxFixRounds = resolveMaxFixRounds(process.env.AFK_MAX_FIX_ROUNDS)
+  const jobsPath = injectedJobsFile || process.env.AFK_JOBS_FILE || defaultJobsPath()
+  let jobs = injectedJobs || configOverrides.jobs || null
+  if (!jobs && !dryRun) {
+    jobs = createJobStore({ filePath: jobsPath, log: configOverrides.log || logLine })
+    try {
+      await jobs.load()
+    } catch (error) {
+      // 读坏了也要跑：这一轮按空表走，错误写进日志让人看到。
+      const write = configOverrides.log || ((fields) => console.error(JSON.stringify(fields)))
+      write({
+        level: 'error',
+        msg: '作业表读不了，这一轮按空表跑',
+        file: jobsPath,
+        error: error.message,
+      })
+    }
+  }
 
   if (dryRun) {
     const now = clock ? clock() : new Date()
@@ -229,6 +249,16 @@ export async function run(
     repoRoot,
     lockDir,
     maxActive,
+    jobs,
+    jobsPath,
+    jobPolicy: configOverrides.jobPolicy ?? {
+      maxAttempts: Number(process.env.AFK_JOB_MAX_ATTEMPTS) || undefined,
+      backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
+    },
+    stepTimeoutMs: Number(process.env.AFK_STEP_TIMEOUT_MS) || undefined,
+    jobHeartbeatMs: Number(process.env.AFK_JOB_HEARTBEAT_MS) || undefined,
+    roundTimeoutMs: Number(process.env.AFK_ROUND_TIMEOUT_MS) || undefined,
+    watchdogIntervalMs: Number(process.env.AFK_HEARTBEAT_MS) || undefined,
     ...configOverrides,
     needsAnswer: configOverrides.needsAnswer ?? createNeedsAnswer({ run: injectedGhRun || runGh }),
     listMergedYesterday:
@@ -320,6 +350,9 @@ export async function run(
   if (once) {
     const report = await runOnceImpl(options)
     for (const line of parentLines(report)) out(JSON.stringify(line))
+    // 没挂到任何父工单上的错误（作业表读写等）走 stderr，不污染 --once 的 JSONL。
+    const orphans = report.errors.filter((error) => !error.repo)
+    if (orphans.length) console.error(JSON.stringify({ errors: orphans }))
     // 点火在后台跑；--once 是手工跑一次，等它跑完再退出，进程结束不丢活。
     await Promise.allSettled([...(config.pendingIgnitions || [])])
     return report

@@ -6,12 +6,14 @@ import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
 import { commitAll, git, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
+import { createJobStore, findJob } from '../lib/job.mjs'
 import { progressLine } from '../lib/progress.mjs'
 import { createFixTicket as createFixTicketJob } from '../lib/scheduler-jobs.mjs'
 import {
   STATE_LABELS,
   collectRepos,
   collectSnapshot,
+  createWatchdog,
   digestEvent,
   dueDigest,
   pendingReminder,
@@ -72,7 +74,7 @@ function sub(overrides = {}) {
   }
 }
 
-function route({ stateLabel = '状态:已提交', small = false, comments = [], subIssues = [], spec = null, closedNumbers = [], activeCount = 0, maxActive = 5, repoBusy = false } = {}) {
+function route({ stateLabel = '状态:已提交', small = false, comments = [], subIssues = [], spec = null, closedNumbers = [], activeCount = 0, maxActive = 5, repoBusy = false, jobs = [], jobPolicy = {} } = {}) {
   const names = [stateLabel]
   if (small) names.push('大小:小需求')
   return routeParent({
@@ -85,6 +87,8 @@ function route({ stateLabel = '状态:已提交', small = false, comments = [], 
     activeCount,
     maxActive,
     repoBusy,
+    jobs,
+    jobPolicy,
   })
 }
 
@@ -389,6 +393,101 @@ test('开发中：分支没合齐或还有 open 子票，不叫 finish', () => {
     now: NOW,
   })
   assert.ok(!types(stillOpen).includes('finish'))
+})
+
+test('部署失败停了 finish：下一轮不再叫收尾，也不转待验收', () => {
+  const jobs = [
+    { action: 'finish', ticket: null, attempt: 1, stop: 'deploy-failed', reason: '部署失败', lastBeat: NOW.toISOString() },
+  ]
+  const actions = routeParent({
+    parent: parent({
+      labels: labels('状态:开发中'),
+      order: 'o-0001',
+      branchesMerged: true,
+    }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+    jobs,
+  })
+  assert.deepEqual(actions, [])
+})
+
+test('finish 失败后退避：没到时间不重发，过了退避再试', () => {
+  const jobs = [
+    { action: 'finish', ticket: null, attempt: 1, stop: '', reason: '评审没过', lastBeat: NOW.toISOString() },
+  ]
+  const options = {
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: true }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 10 * 60 * 1000 },
+  }
+  assert.deepEqual(routeParent(options), [], '刚失败过，退避期间不重发')
+
+  jobs[0].lastBeat = new Date(NOW.getTime() - 11 * 60 * 1000).toISOString()
+  assert.deepEqual(types(routeParent(options)), ['finish', 'setState'], '过了退避时间再试')
+})
+
+test('已提交父工单贴 needs-info：补缺口不再跑', () => {
+  const blocked = routeParent({
+    parent: parent({ labels: labels('状态:已提交', 'needs-info') }),
+    comments: [],
+    subIssues: [],
+    closedNumbers: [],
+    now: NOW,
+  })
+  assert.deepEqual(blocked, [])
+})
+
+test('needs-info 写了 stop：补缺口和 finish 都认，重启后一样', () => {
+  const jobs = [
+    { action: 'needs-info', ticket: null, attempt: 0, stop: 'needs-info', reason: '认证失败', lastBeat: NOW.toISOString() },
+  ]
+  const gap = route({ jobs })
+  assert.deepEqual(gap, [], '已提交的单不再跑补缺口')
+
+  const finish = routeParent({
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: true }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+    jobs,
+  })
+  assert.deepEqual(finish, [], '开发中的单不再收尾')
+})
+
+test('补缺口失败后退避：没到时间不重发，过了退避再试', () => {
+  const jobs = [
+    { action: 'gap-proposal', ticket: null, attempt: 1, stop: '', reason: 'agent 退出码 1', lastBeat: NOW.toISOString() },
+  ]
+  assert.deepEqual(route({ jobs, jobPolicy: { maxAttempts: 3, backoffBaseMs: 10 * 60 * 1000 } }), [])
+
+  jobs[0].lastBeat = new Date(NOW.getTime() - 11 * 60 * 1000).toISOString()
+  assert.deepEqual(
+    types(route({ jobs, jobPolicy: { maxAttempts: 3, backoffBaseMs: 10 * 60 * 1000 } })),
+    ['runGapProposal'],
+  )
+})
+
+test('点火退避只挡那张票，下一张没失败的照常点', () => {
+  const jobs = [
+    { action: 'ignite', ticket: 51, attempt: 1, stop: '', reason: '点火失败', lastBeat: NOW.toISOString() },
+  ]
+  const actions = route({
+    stateLabel: '状态:开发中',
+    comments: [],
+    subIssues: [sub({ number: 51 }), sub({ number: 52 })],
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 10 * 60 * 1000 },
+  })
+  assert.deepEqual(types(actions), ['ignite'])
+  assert.equal(actions[0].ticketNumber, 52)
 })
 
 test('没有状态标签 → needs-info', () => {
@@ -971,6 +1070,371 @@ test('runOnce：票分支还没合进 req 分支就不叫 finish', async (t) => 
   assert.equal(calls.length, 0)
 })
 
+async function jobFile(t) {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-scheduler-jobs-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  return join(dir, 'jobs.json')
+}
+
+async function loadStore(filePath) {
+  const store = createJobStore({ filePath })
+  await store.load()
+  return store
+}
+
+test('runOnce：部署失败写 stop，下一轮不再收尾、不开重复 PR', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  const second = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: second.number })
+  const { root } = await makeRequirementRepo(t, [first.number, second.number])
+  let calls = 0
+  const finish = async () => {
+    calls += 1
+    return { ok: false, reason: '部署失败', deploy: { ok: false, reason: 'bad_address', error: '地址不通' } }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, repoRoot: root, jobs }
+
+  const firstReport = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+  assert.equal(calls, 1)
+  assert.ok(firstReport.errors.length === 0)
+  const row = jobs.get([...Object.keys(jobs.table.jobs)][0])
+  assert.equal(row.stop, 'deploy-failed')
+  assert.match(row.reason, /部署失败/)
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+  assert.equal(calls, 1, '下一轮不再叫收尾')
+  const names = labelsOf(fake, OWNER, REPO, parent.number)
+  assert.ok(names.includes('状态:开发中'), '不转待验收')
+  assert.ok(names.includes('needs-info'), '停线要让人看到')
+  assert.ok(!names.includes('状态:待验收'))
+})
+
+test('runOnce：重复 finish 按 attempt 退避，重启后 attempt 和 stop 还在', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  let calls = 0
+  const finish = async () => {
+    calls += 1
+    return { ok: false, reason: 'review_failed', findings: ['差一处'] }
+  }
+  const jobsPath = await jobFile(t)
+  const clock = new Date(NOW)
+  const policy = { maxAttempts: 2, backoffBaseMs: 60_000 }
+  const run = async (store) =>
+    runOnce({
+      gh,
+      customers: customers(),
+      notifier: fakeNotifier(),
+      finish,
+      clock: () => clock,
+      config: {
+        owner: OWNER,
+        lockDir: await lockDir(t),
+        maxActive: 5,
+        repoRoot: root,
+        jobs: store,
+        jobPolicy: policy,
+      },
+    })
+
+  await run(await loadStore(jobsPath))
+  assert.equal(calls, 1, '第一次失败照常叫收尾')
+
+  // 重启：新 store 从同一个文件读，退避期间不重发。
+  const second = await loadStore(jobsPath)
+  await run(second)
+  assert.equal(calls, 1, '退避期间不重发同一个动作')
+  const row = findJob(second.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'finish',
+  })
+  assert.equal(row.attempt, 1)
+
+  clock.setTime(NOW.getTime() + 61_000)
+  const third = await loadStore(jobsPath)
+  await run(third)
+  assert.equal(calls, 2, '过了退避再试一次')
+  const stopped = findJob(third.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'finish',
+  })
+  assert.equal(stopped.attempt, 2)
+  assert.equal(stopped.stop, 'retry-exhausted')
+
+  clock.setTime(NOW.getTime() + 10 * 61_000)
+  const fourth = await loadStore(jobsPath)
+  await run(fourth)
+  assert.equal(calls, 2, '到上限后停线，重启也不再叫收尾')
+})
+
+test('runOnce：已提交父工单贴 needs-info 后补缺口不再跑', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.addLabels({ owner: OWNER, repo: REPO, number: parent.number, labels: ['needs-info'] })
+  let calls = 0
+  const gapProposal = async () => {
+    calls += 1
+    return { ok: true }
+  }
+  const jobs = await loadStore(await jobFile(t))
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    gapProposal,
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, jobs },
+  })
+
+  assert.equal(calls, 0)
+})
+
+test('runOnce：补缺口失败写 needs-info stop，重启后还在，摘标签才恢复', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  let calls = 0
+  const gapProposal = async () => {
+    calls += 1
+    return { ok: false, code: 1, stdout: '', stderr: '403 没权限' }
+  }
+  const jobsPath = await jobFile(t)
+  const configFor = (jobs) => ({ owner: OWNER, lockDir: null, maxActive: 5, jobs })
+
+  const first = await loadStore(jobsPath)
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    gapProposal,
+    clock: () => NOW,
+    config: configFor(first),
+  })
+  assert.equal(calls, 1)
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+  const row = findJob(first.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'needs-info',
+  })
+  assert.equal(row.stop, 'needs-info')
+  assert.match(row.reason, /403 没权限/)
+
+  // 重启后标签和 stop 都还在，仍然不跑。
+  const second = await loadStore(jobsPath)
+  const reloaded = findJob(second.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'needs-info',
+  })
+  assert.equal(reloaded.stop, 'needs-info', '重启后 stop 还在')
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    gapProposal,
+    clock: () => NOW,
+    config: configFor(second),
+  })
+  assert.equal(calls, 1, '标签还在，不再重跑补缺口')
+
+  // 运营者摘掉 needs-info，表示放行；下一轮清 stop 并重跑。
+  await gh.removeLabel({ owner: OWNER, repo: REPO, number: parent.number, name: 'needs-info' })
+  const third = await loadStore(jobsPath)
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    gapProposal,
+    clock: () => NOW,
+    config: configFor(third),
+  })
+  assert.equal(calls, 2, '摘掉标签后恢复')
+})
+
+test('runOnce：管线认证失败写 auth-failed stop', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const child = await createChild(gh, parent, { labels: ['状态:排队中', 'Sandcastle'] })
+  const jobs = await loadStore(await jobFile(t))
+  const ticketPipeline = async () => ({
+    runs: [{ ticket: child.number, ok: false, reason: 'auth_failed', problems: ['401 未授权'] }],
+  })
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+    },
+  })
+
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'pipeline',
+  })
+  assert.equal(row.stop, 'auth-failed')
+  assert.match(row.reason, /401 未授权/)
+})
+
+test('runOnce：一轮开始写心跳，结束记完成时间', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const jobs = await loadStore(await jobFile(t))
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, jobs },
+  })
+
+  assert.equal(report.errors.length, 0)
+  assert.equal(jobs.heartbeat.roundStart, null, '跑完就清掉进行中标记')
+  assert.equal(jobs.heartbeat.lastBeat, NOW.toISOString())
+  assert.equal(jobs.heartbeat.lastEnd, NOW.toISOString())
+})
+
+test('runOnce：单步超时只记错误，这一轮照样结束', async (t) => {
+  const { gh } = await setupRepo(t)
+  await createParent(gh)
+  const jobs = await loadStore(await jobFile(t))
+  const hanging = () => new Promise(() => {})
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline: hanging,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+      stepTimeoutMs: 30,
+    },
+  })
+
+  assert.ok(report.errors.some((error) => error.pipeline && /超时/.test(error.message)))
+  assert.equal(jobs.heartbeat.roundStart, null, '超时后这一轮仍然收尾')
+})
+
+test('runOnce：慢管线在步超时以内跑完，不误判成卡住', async (t) => {
+  const { gh } = await setupRepo(t)
+  await createParent(gh)
+  const jobs = await loadStore(await jobFile(t))
+  const slow = async () => {
+    await new Promise((done) => setTimeout(done, 40))
+    return { runs: [] }
+  }
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline: slow,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+      stepTimeoutMs: 500,
+    },
+  })
+  assert.equal(report.errors.length, 0)
+
+  // 一轮已经结束，之后再久也不该报「轮次超时」。
+  const watchdog = createWatchdog({
+    jobs,
+    notifier: fakeNotifier(),
+    clock: () => new Date(NOW.getTime() + 30 * 60_000),
+    stallMs: 10 * 60_000,
+    log: () => {},
+  })
+  assert.equal(await watchdog.tick(), null)
+})
+
+test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不再发', async (t) => {
+  const jobs = await loadStore(await jobFile(t))
+  let now = NOW.getTime()
+  const clock = () => new Date(now)
+  await jobs.startRound({ now: clock() })
+  now += 11 * 60_000
+  const notifier = fakeNotifier()
+  const watchdog = createWatchdog({
+    jobs,
+    notifier,
+    clock,
+    stallMs: 10 * 60_000,
+    log: () => {},
+  })
+
+  const event = await watchdog.tick()
+  assert.equal(event.event, '出事')
+  assert.match(event.data.reason, /轮次超时/)
+  assert.match(event.key, /轮次超时/)
+  assert.equal(event.data.customer, '工厂')
+  assert.equal(notifier.calls.length, 1)
+
+  assert.equal(await watchdog.tick(), null, '同一轮只发一次')
+  assert.equal(notifier.calls.length, 1)
+
+  await jobs.endRound({ now: clock() })
+  assert.equal(await watchdog.tick(), null)
+})
+
+test('runLoop 启动和停掉看门狗', async () => {
+  const controller = new AbortController()
+  const calls = []
+  const watchdog = {
+    start() {
+      calls.push('start')
+    },
+    stop() {
+      calls.push('stop')
+    },
+  }
+  await runLoop({
+    intervalMs: 1000,
+    signal: controller.signal,
+    log: () => {},
+    run: async () => {
+      controller.abort()
+      return { now: NOW.toISOString(), repos: [], errors: [] }
+    },
+    onReport: async () => {},
+    watchdog,
+  })
+  assert.deepEqual(calls, ['start', 'stop'])
+})
+
 test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火；重启不再点第二次', async (t) => {
   const { fake, gh } = await setupRepo(t)
   const parent = await createParent(gh, { small: true })
@@ -1175,6 +1639,41 @@ test('开发中：驳回建的修复票有 open 子票就点火', async (t) => {
   assert.equal(ignite.calls.length, 1)
   assert.equal(ignite.calls[0].ticket.number, fix.number)
   assert.ok(labelsOf(fake, OWNER, REPO, fix.number).includes('Sandcastle'))
+})
+
+test('runOnce：后台点火失败记 attempt，下一轮退避不重发', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const ticket = await createChild(gh, parent)
+  let calls = 0
+  const ignite = async () => {
+    calls += 1
+    throw new Error('runner 起不来')
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+
+  assert.equal(calls, 1)
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'ignite',
+    ticket: ticket.number,
+  })
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /runner 起不来/)
+  assert.ok(!labelsOf(fake, OWNER, REPO, ticket.number).includes('Sandcastle'), '失败后摘掉认领标签')
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+  assert.equal(calls, 1, '退避期间不重复点火')
 })
 
 test('同一仓已有 Sandcastle 票，不点第二张', async (t) => {
