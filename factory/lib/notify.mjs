@@ -24,6 +24,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
  * 在不同客户仓之间不会相撞；故障事件只按身份去重，发生次数放 `data.attempt`。
  *
  * @param {object} parts
+ * @param {string} [parts.key] 已经由 eventKey 算好的 key；不给就按身份现算
  * @param {string} [parts.owner]
  * @param {string} [parts.repo]
  * @param {string} [parts.subject] 事件主体，如父工单号 `#42`
@@ -34,6 +35,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
  * @param {Date|string} [parts.now]
  */
 export function notificationEvent({
+  key = '',
   owner = '',
   repo = '',
   subject = '',
@@ -46,7 +48,7 @@ export function notificationEvent({
   const at = now instanceof Date ? now : new Date(now)
   return {
     v: 1,
-    key: eventKey({ owner, repo, subject, event, scope }),
+    key: key || eventKey({ owner, repo, subject, event, scope }),
     event,
     occurred_at: at.toISOString(),
     ...(link ? { link } : {}),

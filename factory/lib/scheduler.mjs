@@ -14,6 +14,7 @@ import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { blockingStop, findJob, jobBlocked } from './job.mjs'
 import { logLine } from './log.mjs'
 import { acquireFileLock } from './lock.mjs'
+import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
@@ -986,7 +987,10 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
   // 认领完成：实现跑在后台，这一轮不等它。锁跟到后台任务结束才放；
   // 进程重启后由已经贴上的 Sandcastle 标签挡住重复点火。
   config.pendingIgnitions ??= new Set()
-  const previous = findJob(config.jobs?.all?.() || [], { action: 'ignite', ticket: ticketNumber })
+  const previousRows = config.jobs?.rowsFor?.({ owner, repo, parent: parent.number }) || []
+  const previous = previousRows.find(
+    (row) => row?.action === 'ignite' && row?.ticket === ticketNumber,
+  )
   const attempt = (previous?.attempt || 0) + 1
   const task = runIgnitionInBackground({
     gh,
@@ -1075,22 +1079,28 @@ async function runIgnitionInBackground({
 }
 
 function notificationPayload(event, now) {
-  return {
-    v: 1,
+  return notificationEvent({
     key: event.key,
     event: event.event,
-    occurred_at: (now instanceof Date ? now : new Date(now)).toISOString(),
-    ...(event.link ? { link: event.link } : {}),
-    data: event.data || {},
-  }
+    data: event.data,
+    link: event.link,
+    now: now instanceof Date ? now : new Date(now),
+  })
 }
 
-async function sendEvent({ notifier, event, config, now }) {
+/** 调度器这一层的发送：先查本轮已发 key，再走统一的 sendEvent。 */
+async function deliverEvent({ notifier, event, config, now }) {
   const payload = notificationPayload(event, now)
   if (config.notifiedKeys?.has(payload.key)) {
     return { type: 'notify', event: payload.event, key: payload.key, skipped: 'already-notified' }
   }
-  const result = await notifier.send(payload)
+  const result = await sendNotification(notifier, {
+    key: payload.key,
+    event: payload.event,
+    data: payload.data,
+    link: payload.link,
+    now,
+  })
   if (result?.code === 0) config.notifiedKeys?.add(payload.key)
   return { type: 'notify', event: payload.event, key: payload.key, code: result?.code }
 }
@@ -1147,7 +1157,7 @@ async function executeActions({
       })
       results.push({ type: 'comment', created })
     } else if (action.type === 'notify') {
-      results.push(await sendEvent({ notifier, event: action, config, now }))
+      results.push(await deliverEvent({ notifier, event: action, config, now }))
     } else if (action.type === 'addLabel') {
       results.push(
         await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: action.name }),
@@ -1359,42 +1369,47 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
   }
   const ensureStopLabel = () =>
     ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
-  const facts = parentFacts(parent)
-  const failureEvent = (action, result, row, scope, reason = '作业失败') => ({
-    type: 'notify',
-    event: '出事',
-    key: eventKey({
+  const failureEvent = (action, result, row, scope, reason = '作业失败') =>
+    notifyAction({
+      parent,
       owner,
       repo,
-      subject: `#${parent.number}`,
       event: '出事',
       scope,
-    }),
-    data: {
-      customer: facts.customer,
-      requirement: facts.requirement,
-      reason,
-      tried: failureText(result),
-      attempt: row?.attempt ?? 0,
-    },
-    link: parentLink(parent, owner, repo),
-  })
+      data: {
+        reason,
+        tried: failureText(result),
+        attempt: row?.attempt ?? 0,
+      },
+    })
   // 同一故障只报一次：key 稳定，attempt 放 data；到上限另发一条换 key 的升级。
+  // 收尾的验证评审失败和收尾模块自己发的「验证评审修不过」共用 key，不重复报。
+  const failureScope = (action, result) => {
+    if (action === 'finish' && result?.reason === 'review_failed') {
+      return { scope: '验证评审修不过:收尾评审', reason: '验证评审修不过' }
+    }
+    if (action === 'finish' && result?.reason === 'verify_failed') {
+      return { scope: '验证评审修不过:PR 验证', reason: '验证评审修不过' }
+    }
+    const kind = String(result?.reason || '失败').replace(/\s+/g, '-')
+    return { scope: `作业失败:${action}:${kind}`, reason: '作业失败' }
+  }
   const notifyFailure = async (action, result, row) => {
     if (!row || !notifier) return
+    const { scope, reason } = failureScope(action, result)
     await guard(
-      sendEvent({
+      deliverEvent({
         notifier,
-        event: failureEvent(action, result, row, `作业失败:${action}`),
+        event: failureEvent(action, result, row, scope, reason),
         config,
         now,
       }),
     )
     if (row.stop === 'retry-exhausted') {
       await guard(
-        sendEvent({
+        deliverEvent({
           notifier,
-          event: failureEvent(action, result, row, `作业失败:${action}:升级`, '重试用完，作业停了'),
+          event: failureEvent(action, result, row, `${scope}:升级`, '重试用完，作业停了'),
           config,
           now,
         }),
@@ -1458,7 +1473,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
       )
       await guard(ensureStopLabel())
       await guard(
-        sendEvent({
+        deliverEvent({
           notifier,
           event: failureEvent('finish', { reason }, row, '作业失败:finish:升级', '部署失败，作业停了'),
           config,
@@ -1642,7 +1657,7 @@ export function createWatchdog({
       return event
     }
     try {
-      const result = await sendEvent({ notifier, event, config, now: at })
+      const result = await deliverEvent({ notifier, event, config, now: at })
       if (result?.skipped) return null
     } catch (error) {
       log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
@@ -1906,7 +1921,7 @@ export async function runOnce({
         })
         if (newTicket) {
           try {
-            const result = await sendEvent({ notifier, event: newTicket, config, now: nowDate })
+            const result = await deliverEvent({ notifier, event: newTicket, config, now: nowDate })
             report.notifications.push({
               repo: row.repo,
               parent: parent.number,
@@ -1951,7 +1966,7 @@ export async function runOnce({
         if (!reminder) continue
         const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
         try {
-          const result = await sendEvent({ notifier, event, config, now: nowDate })
+          const result = await deliverEvent({ notifier, event, config, now: nowDate })
           report.notifications.push({
             repo: row.repo,
             parent: parent.number,
@@ -2002,7 +2017,7 @@ export async function runOnce({
       let result = { sent: false, count: items.length }
       if (event) {
         try {
-          result = { sent: true, count: items.length, ...(await sendEvent({ notifier, event, config, now: nowDate })) }
+          result = { sent: true, count: items.length, ...(await deliverEvent({ notifier, event, config, now: nowDate })) }
         } catch (error) {
           report.errors.push({ digest: true, message: error.message })
           result = { sent: false, count: items.length, error: error.message }

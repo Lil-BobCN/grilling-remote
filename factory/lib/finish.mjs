@@ -7,7 +7,7 @@
  */
 import { dirname } from 'node:path'
 import { git } from './git.mjs'
-import { notificationEvent } from './notify.mjs'
+import { sendEvent } from './notify.mjs'
 import { hasLabel } from './scheduler.mjs'
 import { parentCustomer, parentRequirement } from './ignition.mjs'
 import {
@@ -317,24 +317,22 @@ async function notifyIncident({ notifier, parentIssue, owner, repo, tag, tried, 
   if (typeof notifier?.send !== 'function') return
   const facts = factsOf(parentIssue)
   try {
-    await notifier.send(
-      notificationEvent({
-        owner,
-        repo,
-        subject: `#${parentIssue.number}`,
-        event: '出事',
-        scope: `验证评审修不过:${tag}`,
-        now: new Date(),
-        link: issueLink(parentIssue, owner, repo),
-        data: {
-          customer: facts.customer,
-          requirement: facts.requirement,
-          reason: '验证评审修不过',
-          tried,
-          attempt,
-        },
-      }),
-    )
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${parentIssue.number}`,
+      event: '出事',
+      scope: `验证评审修不过:${tag}`,
+      now: new Date(),
+      link: issueLink(parentIssue, owner, repo),
+      data: {
+        customer: facts.customer,
+        requirement: facts.requirement,
+        reason: '验证评审修不过',
+        tried,
+        attempt,
+      },
+    })
   } catch {
     // 通知失败不改变已经做出的判断。
   }
@@ -623,18 +621,16 @@ export async function finishRequirement({
   const number = prNumber(pr)
   if (typeof notifier?.send === 'function') {
     try {
-      await notifier.send(
-        notificationEvent({
-          owner,
-          repo,
-          subject: `#${parentIssue.number}`,
-          event: '自己合并',
-          scope: `PR-${number ?? '?'}`,
-          now: new Date(),
-          link: pr?.html_url || issueLink(parentIssue, owner, repo),
-          data: { customer: facts.customer, requirement: facts.requirement, pr: number },
-        }),
-      )
+      await sendEvent(notifier, {
+        owner,
+        repo,
+        subject: `#${parentIssue.number}`,
+        event: '自己合并',
+        scope: `PR-${number ?? '?'}`,
+        now: new Date(),
+        link: pr?.html_url || issueLink(parentIssue, owner, repo),
+        data: { customer: facts.customer, requirement: facts.requirement, pr: number },
+      })
     } catch {
       // 合已经合了，通知失败不回滚。
     }

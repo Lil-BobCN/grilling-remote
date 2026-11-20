@@ -11,6 +11,7 @@
  *   AFK_UPLOADS_HELPER 服务器上的 helper 路径，默认 /usr/local/sbin/afk-uploads
  *   AFK_INBOX         本地存档目录，默认当前目录下的 inbox
  *   AFK_CUSTOMERS_FILE 本机 customers.json 路径，默认 inbox 的上一层
+ *   NOTIFIER_COMMAND  通知命令，默认 python3
  *   NOTIFIER_HOME     通知模块的运行目录，默认 ~/.grilling/notifier
  *   SITE_BASE         通知里的链接前缀，默认 https://afkfactory.space
  *
@@ -60,7 +61,10 @@ async function main() {
     key: process.env.AFK_SSH_KEY || '',
     helper: process.env.AFK_UPLOADS_HELPER || '/usr/local/sbin/afk-uploads',
   })
-  const notifier = createNotifier({ home: process.env.NOTIFIER_HOME })
+  const notifier = createNotifier({
+    command: process.env.NOTIFIER_COMMAND || 'python3',
+    home: process.env.NOTIFIER_HOME,
+  })
 
   const result = await pullInbox({
     remote,

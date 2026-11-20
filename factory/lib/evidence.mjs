@@ -15,7 +15,7 @@ import { appendFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { GitError, git, mergeNoFf, pushOrigin } from './git.mjs'
 import { ensureLabel } from './issues.mjs'
-import { notificationEvent } from './notify.mjs'
+import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
 import { progressLine } from './progress.mjs'
 
@@ -740,24 +740,22 @@ export async function freshVerifiers({ trail, headSha = '', repoDir = '' } = {})
 async function notifyIncident({ notifier, ticket, owner = '', repo = '', reason, tried, link }) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send(
-      notificationEvent({
-        owner,
-        repo,
-        subject: `#${ticket.number}`,
-        event: '出事',
-        scope: reason,
-        now: new Date(),
-        link,
-        data: {
-          customer: ticket.customer || '未知客户',
-          requirement: ticket.requirement || ticket.title || '',
-          reason,
-          tried,
-          round: ticket.round ?? 1,
-        },
-      }),
-    )
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${ticket.number}`,
+      event: '出事',
+      scope: reason,
+      now: new Date(),
+      link,
+      data: {
+        customer: ticket.customer || '未知客户',
+        requirement: ticket.requirement || ticket.title || '',
+        reason,
+        tried,
+        round: ticket.round ?? 1,
+      },
+    })
   } catch {
     // 通知失败不回滚已经做出的判断。
   }

@@ -10,7 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
-import { notificationEvent } from './notify.mjs'
+import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
@@ -533,17 +533,15 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send(
-          notificationEvent({
-            owner,
-            repo,
-            subject: `#${ticket.number}`,
-            event: '点火超时',
-            now: at,
-            link,
-            data: { customer, requirement, attempt },
-          }),
-        )
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
+          event: '点火超时',
+          now: at,
+          link,
+          data: { customer, requirement, attempt },
+        })
       }
     } catch (error) {
       log({
@@ -590,24 +588,22 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
 
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send(
-          notificationEvent({
-            owner,
-            repo,
-            subject: `#${ticket.number}`,
-            event: '出事',
-            scope: '点火失败',
-            now: at,
-            link,
-            data: {
-              customer,
-              requirement,
-              reason: oneLine(`点火失败：${stage}：${message}`),
-              tried: oneLine(`${stage}阶段报错：${message}`),
-              attempt,
-            },
-          }),
-        )
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
+          event: '出事',
+          scope: '点火失败',
+          now: at,
+          link,
+          data: {
+            customer,
+            requirement,
+            reason: oneLine(`点火失败：${stage}：${message}`),
+            tried: oneLine(`${stage}阶段报错：${message}`),
+            attempt,
+          },
+        })
       }
     } catch (err) {
       log({

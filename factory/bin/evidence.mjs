@@ -37,7 +37,7 @@ import { createGithub } from '../lib/github.mjs'
 import { git } from '../lib/git.mjs'
 import { runHelper } from '../lib/helper.mjs'
 import { parentCustomer, parentRequirement } from '../lib/ignition.mjs'
-import { createNotifier, notificationEvent } from '../lib/notify.mjs'
+import { createNotifier, sendEvent } from '../lib/notify.mjs'
 import { previewNeeded, startPreview, stopPreview } from '../lib/preview.mjs'
 import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
 
@@ -206,24 +206,22 @@ function cachedPreview(preview) {
 async function notifyAuditIncident({ notifier, ticket, owner = '', repo = '', problems }) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send(
-      notificationEvent({
-        owner,
-        repo,
-        subject: `#${ticket.number}`,
-        event: '出事',
-        scope: '验证评审修不过:证据补齐',
-        now: new Date(),
-        link: ticket.htmlUrl || '',
-        data: {
-          customer: ticket.customer,
-          requirement: ticket.requirement,
-          reason: '验证评审修不过',
-          tried: problems.join('；') || '证据补齐失败',
-          round: ticket.round ?? 1,
-        },
-      }),
-    )
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${ticket.number}`,
+      event: '出事',
+      scope: '验证评审修不过:证据补齐',
+      now: new Date(),
+      link: ticket.htmlUrl || '',
+      data: {
+        customer: ticket.customer,
+        requirement: ticket.requirement,
+        reason: '验证评审修不过',
+        tried: problems.join('；') || '证据补齐失败',
+        round: ticket.round ?? 1,
+      },
+    })
   } catch {
     // 通知失败不改变判断。
   }

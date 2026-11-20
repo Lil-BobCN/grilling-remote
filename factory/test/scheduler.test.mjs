@@ -2459,12 +2459,116 @@ test('runOnce：重试到上限另发升级通知，key 与失败通知不同，
   clock.setTime(NOW.getTime() + 61_000)
   await run(await loadStore(jobsPath))
 
-  const failureKey = `acme/acme-demo:#${parent.number}:出事:作业失败:finish`
-  const escalationKey = `acme/acme-demo:#${parent.number}:出事:作业失败:finish:升级`
+  const failureKey = `acme/acme-demo:#${parent.number}:出事:验证评审修不过:收尾评审`
+  const escalationKey = `acme/acme-demo:#${parent.number}:出事:验证评审修不过:收尾评审:升级`
   assert.ok(notifier.delivered.has(failureKey), '失败通知 key 稳定')
   assert.ok(notifier.delivered.has(escalationKey), '到上限另发升级')
   assert.equal(notifier.delivered.size, 2, '失败和升级各只送达一次')
   assert.equal(notifier.delivered.get(failureKey).data.attempt, 1)
   assert.equal(notifier.delivered.get(escalationKey).data.attempt, 2)
   assert.match(notifier.delivered.get(escalationKey).data.tried, /差一处/)
+})
+
+test('runOnce：同一动作不同失败原因用不同 key，不被 7 天去重吞掉', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  let calls = 0
+  const finish = async () => {
+    calls += 1
+    return { ok: false, reason: calls === 1 ? 'push_failed' : 'pr_failed', error: '网络抖了一下' }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+  const run = async () =>
+    runOnce({
+      gh,
+      customers: customers(),
+      notifier,
+      finish,
+      clock: () => NOW,
+      config: {
+        owner: OWNER,
+        lockDir: await lockDir(t),
+        maxActive: 5,
+        repoRoot: root,
+        jobs,
+        jobPolicy: { maxAttempts: 5, backoffBaseMs: 0 },
+      },
+    })
+
+  await run()
+  await run()
+
+  const keys = [...notifier.delivered.keys()].filter((key) => key.includes('作业失败:finish'))
+  assert.deepEqual(keys.sort(), [
+    `acme/acme-demo:#${parent.number}:出事:作业失败:finish:pr_failed`,
+    `acme/acme-demo:#${parent.number}:出事:作业失败:finish:push_failed`,
+  ])
+})
+
+test('点火 attempt 只数本仓本父单的作业，别仓同号不算进来', async (t) => {
+  const fake = await startFakeGithub({
+    repos: [
+      { owner: OWNER, name: 'shop-a' },
+      { owner: OWNER, name: 'shop-b' },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  await repoLabels(gh, OWNER, 'shop-a')
+  await repoLabels(gh, OWNER, 'shop-b')
+  for (const repo of ['shop-a', 'shop-b']) {
+    const parent = await gh.createIssue({
+      owner: OWNER,
+      repo,
+      title: '要个预约取货',
+      body: parentBody(),
+      labels: ['状态:开发中'],
+    })
+    assert.equal(parent.number, 1)
+    const child = await gh.createIssue({
+      owner: OWNER,
+      repo,
+      title: '子票一',
+      body: '',
+      labels: ['状态:排队中'],
+    })
+    assert.equal(child.number, 2)
+    await gh.addSubIssue({ owner: OWNER, repo, number: 1, subIssueId: child.id })
+  }
+
+  const jobsPath = await jobFile(t)
+  const jobs = await loadStore(jobsPath)
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await jobs.recordFailure({
+      owner: OWNER,
+      repo: 'shop-b',
+      parent: 1,
+      ticket: 2,
+      action: 'ignite',
+      reason: '别仓的旧失败',
+      now: NOW,
+      policy: { maxAttempts: 99 },
+    })
+  }
+
+  const ignite = fakeIgnite()
+  await runOnce({
+    gh,
+    customers: customers([
+      { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'shop-a' } },
+      { id: 'c-0002', short_name: 'other', status: 'active', repos: { demo: 'shop-b' } },
+    ]),
+    notifier: fakeNotifier(),
+    ignite: ignite.ignite,
+    clock: () => NOW,
+    config: { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, jobs },
+  })
+
+  assert.equal(ignite.calls.length, 1, '只点火 A 仓')
+  assert.equal(ignite.calls[0].repo, 'shop-a')
+  assert.equal(ignite.calls[0].attempt, 1, '别仓 #2 的 5 次失败不算本仓的 attempt')
 })
