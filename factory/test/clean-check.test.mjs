@@ -145,7 +145,7 @@ test('检出失败报 setup，不跑安装和测试', async () => {
   }
 })
 
-test('检不出提交也报 setup，head 留空', async () => {
+test('检不出提交也报 setup，head 留空，日志可查', async () => {
   const base = join(tmpdir(), `afk-clean-check-ref-${process.pid}`)
   await mkdir(base, { recursive: true })
   try {
@@ -165,6 +165,7 @@ test('检不出提交也报 setup，head 留空', async () => {
     assert.equal(result.reason, 'setup')
     assert.equal(result.headSha, '')
     assert.equal(calls.length, 0)
+    assert.match(await readFile(result.logPath, 'utf8'), /Needed a single revision/)
   } finally {
     await rm(base, { recursive: true, force: true })
   }

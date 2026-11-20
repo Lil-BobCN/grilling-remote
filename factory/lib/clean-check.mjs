@@ -19,8 +19,11 @@ import { git } from './git.mjs'
 
 const execFileAsync = promisify(execFile)
 
-export const DEFAULT_CHECK_COMMAND = 'npm test'
-export const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
+const DEFAULT_CHECK_COMMAND = 'npm test'
+const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
+
+/** trail 行里标记「这条 test 是干净检查写的」，用来区分验证 agent 自己的测试行。 */
+export const CLEAN_CHECK_MARKER = '干净检出'
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
@@ -118,11 +121,19 @@ export async function verifyInCleanCheckout({
   try {
     headSha = await gitImpl(repoDir, ['rev-parse', '--verify', ref])
   } catch (error) {
+    const setupLog =
+      logPath ||
+      join(
+        tmpdir(),
+        'afk-clean-check-logs',
+        `clean-check-unknown-${stamp(at)}-${process.pid}.log`,
+      )
     return resultOf({
       ok: false,
       headSha: '',
       reason: 'setup',
       missing: [`干净检出失败：检不出 ${ref}（${tail(errorText(error))}）`],
+      logPath: await writeLog(setupLog, [...lines, `! rev-parse 失败：${errorText(error)}`]),
     })
   }
 

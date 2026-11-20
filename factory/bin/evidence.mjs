@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
 import { fixerRoundsUsed, runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
-import { verifyInCleanCheckout } from '../lib/clean-check.mjs'
+import { CLEAN_CHECK_MARKER, verifyInCleanCheckout } from '../lib/clean-check.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
 import {
   appendTrail,
@@ -228,11 +228,11 @@ async function notifyAuditIncident({ notifier, ticket, problems }) {
   }
 }
 
-/** 每轮评审结果交给调用方；回调抛错不影响评审结论。 */
-async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
+/** 每轮修复结果交给调用方；回调抛错不影响判定。 */
+async function reportReviewRound({ onReviewRound, round, ok, problems = [], stage = '' }) {
   if (typeof onReviewRound !== 'function') return
   try {
-    await onReviewRound({ round, ok, problems })
+    await onReviewRound({ round, ok, problems, stage })
   } catch {
     // 进度写不进去不改评审结论。
   }
@@ -306,7 +306,7 @@ export async function ensureEvidenceBeforeMerge({
   const cleanCheckEnabled = typeof cleanCheck === 'function'
   const freshCleanChecks = cleanCheckEnabled
     ? (await freshTestRows({ trail: rows, headSha, repoDir })).filter((row) =>
-        String(row.why || '').includes('干净检出'),
+        String(row.why || '').includes(CLEAN_CHECK_MARKER),
       )
     : []
   const needsCleanCheck = cleanCheckEnabled && freshCleanChecks.length === 0
@@ -354,15 +354,12 @@ export async function ensureEvidenceBeforeMerge({
     return true
   }
   let interrogateFailed = false
-  let cleanCheckedHead = ''
 
   // 在干净检出里跑确定性门禁。结果记成 test 行，why 里绑当前 head；
   // 失败原因交给 fixer，和评审问题同一条修复路径。
-  const runCleanCheck = async ({ force = false } = {}) => {
+  const runCleanCheck = async () => {
     if (!cleanCheckEnabled) return []
     const head = await git(repoDir, ['rev-parse', branch])
-    if (!force && head === cleanCheckedHead) return []
-    cleanCheckedHead = head
     let result
     try {
       result = await cleanCheck({ repoDir, ref: head, branch, ticket, now })
@@ -390,7 +387,7 @@ export async function ensureEvidenceBeforeMerge({
         ts: now,
         phase: 'test',
         decision: result.command || '干净检查',
-        why: `干净检出 head ${boundHead || head}`,
+        why: `${CLEAN_CHECK_MARKER} head ${boundHead || head}`,
         evidence: result.logPath || (ok ? 'pass' : 'fail'),
         result: ok ? 'pass' : 'fail',
       })
@@ -436,7 +433,7 @@ export async function ensureEvidenceBeforeMerge({
 
   // 修完 head 变了，旧验证不算数：干净检查先在新 head 重跑，再按计划把验证队补回来。
   const reverifyAfterFix = async () => {
-    const cleanProblems = await runCleanCheck({ force: true })
+    const cleanProblems = await runCleanCheck()
     if (cleanProblems.length) return cleanProblems
     const fixedHead = await git(repoDir, ['rev-parse', branch])
     if (!plan) {
@@ -471,10 +468,15 @@ export async function ensureEvidenceBeforeMerge({
     // 验证问题（确定性干净检查 + 验证 agent）和评审问题放进同一个 failed，
     // 修完按当前 head 重算；旧 head 的问题不留在里面多挡一轮。
     let failed = []
+    let failedStage = ''
     if (!authProblem && needsCleanCheck) {
-      failed.push(...(await runCleanCheck()))
+      const cleanProblems = await runCleanCheck()
+      if (cleanProblems.length) {
+        failed.push(...cleanProblems)
+        failedStage = 'verify'
+      }
     }
-    if (!authProblem && verifyRuns > 0 && failed.length === 0) {
+    if (!authProblem && verifyRuns > 0) {
       const ids = plan ? nextVerifierIds(freshIds, verifyRuns) : ['']
       for (const verifierId of ids) {
         const audit = await runVerifyAudit({
@@ -489,16 +491,27 @@ export async function ensureEvidenceBeforeMerge({
         if (stopOnAuth(audit, 'verify')) break
         if (!audit.ok) {
           failed.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+          failedStage = 'verify'
           break
         }
       }
     }
     if (!authProblem && (gaps.includes('review') || interrogateGap)) {
-      failed.push(...(await runReviewRound({ standards: gaps.includes('review') })))
+      const reviewProblems = await runReviewRound({ standards: gaps.includes('review') })
+      if (reviewProblems.length) {
+        failed.push(...reviewProblems)
+        if (!failedStage) failedStage = 'review'
+      }
     }
     let round = 1
     if (!authProblem) {
-      await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
+      await reportReviewRound({
+        onReviewRound,
+        round,
+        ok: failed.length === 0,
+        problems: failed,
+        stage: failedStage,
+      })
     }
     if (!authProblem && failed.length && typeof fixer === 'function') {
       let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
@@ -512,12 +525,26 @@ export async function ensureEvidenceBeforeMerge({
         if (authProblem) break
         if (failed.length) {
           // 复验问题和评审问题一样，继续交给下一轮 fixer，轮次用完才停。
-          await reportReviewRound({ onReviewRound, round, ok: false, problems: failed })
+          failedStage = 'verify'
+          await reportReviewRound({
+            onReviewRound,
+            round,
+            ok: false,
+            problems: failed,
+            stage: failedStage,
+          })
           continue
         }
         failed = await runReviewRound({ standards: true })
         if (authProblem) break
-        await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
+        failedStage = failed.length ? 'review' : ''
+        await reportReviewRound({
+          onReviewRound,
+          round,
+          ok: failed.length === 0,
+          problems: failed,
+          stage: failedStage,
+        })
       }
     }
     if (!authProblem && failed.length) problems.push(...failed)

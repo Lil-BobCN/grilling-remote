@@ -645,6 +645,7 @@ test('初次验证判不过：同一轮叫 fixer，复验通过后不再被旧�
       },
     }
     const fixerCalls = []
+    const stages = []
     const fixer = async ({ repoDir, findings }) => {
       fixerCalls.push(findings)
       await writeFile(join(repoDir, 'fixed.txt'), 'fixed\n')
@@ -672,12 +673,14 @@ test('初次验证判不过：同一轮叫 fixer，复验通过后不再被旧�
       now: NOW,
       fixer,
       cleanCheck,
+      onReviewRound: async ({ stage }) => stages.push(stage),
     })
 
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(fixerCalls.length, 1, '初次验证失败要叫一次 fixer')
     assert.match(fixerCalls[0].join('；'), /首页白屏/)
     assert.equal(verifyCalls, 2, '修复后在新 head 复验一次')
+    assert.ok(stages.includes('verify'), `进度回调要标出验证阶段：${stages.join(',')}`)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -807,6 +810,70 @@ test('同一 head 已经有干净检查 pass 就不再重跑', async () => {
     const second = await ensureEvidenceBeforeMerge(options)
     assert.equal(second.ok, true, JSON.stringify(second))
     assert.equal(heads.length, 1, '同一 head 不重跑干净检查')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('分支到了新 head，旧 head 的干净检查 pass 行不算，仍在新 head 重跑', async () => {
+  const dir = await makeRepo()
+  try {
+    const oldHead = await git(dir, ['rev-parse', 'HEAD'])
+    await writeFile(join(dir, 'app.txt'), 'v2\n')
+    await git(dir, ['add', '-A'])
+    await git(dir, ['commit', '-m', 'code change'])
+    const newHead = await git(dir, ['rev-parse', 'HEAD'])
+
+    for (const [phase, decision] of [
+      ['verify', newHead],
+      ['test', 'npm test'],
+      ['review', '标准'],
+      ['review', 'spec'],
+    ]) {
+      await appendTrail({
+        repoDir: dir,
+        ticket: 51,
+        ts: NOW,
+        phase,
+        decision,
+        why: `head ${newHead}`,
+        evidence: '.audit/screenshots/after.png',
+        result: 'pass',
+      })
+    }
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'test',
+      decision: 'npm test',
+      why: `干净检出 head ${oldHead}`,
+      evidence: 'pass',
+      result: 'pass',
+    })
+    await git(dir, ['add', '-A'])
+    await git(dir, ['commit', '-m', 'trail'])
+
+    const heads = []
+    const cleanCheck = async ({ ref }) => {
+      heads.push(ref)
+      return { ok: true, headSha: ref, reason: '', missing: [], logPath: '' }
+    }
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner: fakeRunner(true),
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      cleanCheck,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(heads.length, 1, '旧 head 的 pass 行不能挡住新 head 的干净检查')
+    assert.notEqual(heads[0], oldHead)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
