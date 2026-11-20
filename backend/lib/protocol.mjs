@@ -12,7 +12,7 @@ export const PROGRESS_PREFIX = '进度 v1｜'
 const TICKETS_MARKER_RE = /<!--\s*factory:tickets\s+([A-Za-z0-9_-]+)\s*-->/g
 
 function textOf(value) {
-  return String(value ?? '').replace(/^﻿/, '')
+  return String(value ?? '').replace(/^\uFEFF/, '')
 }
 
 function sectionBody(text, headingRe) {
@@ -39,12 +39,12 @@ const DATE_PREFIX_LINE = /^\s*(?:>\s*)?(\d{4}-\d{2}-\d{2})\s*[：:]\s*(.+)$/m
  *
  * 规范写法：「」包住原话，另起一行 `日期：YYYY-MM-DD`。命中返回 format `quote-date`。
  * 兼容写法一：`YYYY-MM-DD：原话`，命中返回 format `date-prefix`。
- * 兼容写法二：普通条目加 `日期：` 行（需求草稿第 1 段），命中返回 format `plain-line`。
- * 同一节里有两种写法时，按上面的优先级取。
+ * 兼容写法二：普通条目（需求草稿第 1 段），日期可缺，命中返回 format `plain-line`。
+ * 同一节里有多种写法时，按上面的优先级取。
  *
  * 只读 `## 客户原话` 一节，后面轮次的话不算原话。
  * 文本里没有任何 `##` 标题时，把整段当作原话段落读。
- * 读不到原话返回 null，和读到空引号区分开。
+ * 读不到原话或只读到空引号都返回 null，调用方用 null 判断缺原话。
  *
  * @param {string} text
  * @returns {{quote: string, date: string, format: 'quote-date'|'date-prefix'|'plain-line'}|null}
@@ -58,9 +58,10 @@ export function parseCustomerQuote(text) {
   }
   if (!body) return null
 
+  const dateLine = QUOTE_DATE_LINE.exec(body)
+
   const quoted = /「([\s\S]*?)」/.exec(body)
   if (quoted && quoted[1].trim()) {
-    const dateLine = QUOTE_DATE_LINE.exec(body)
     return {
       quote: quoted[1].trim(),
       date: dateLine ? dateLine[1].trim() : '',
@@ -76,16 +77,17 @@ export function parseCustomerQuote(text) {
     if (quote) return { quote, date: dated[1], format: 'date-prefix' }
   }
 
-  const dateLine = QUOTE_DATE_LINE.exec(body)
-  if (dateLine) {
-    for (const rawLine of body.split(/\r?\n/)) {
-      let line = rawLine.trim().replace(/^(?:>\s*)+/, '').replace(/^[-*]\s+/, '').trim()
-      if (!line) continue
-      if (/^日期[：:]/.test(line)) continue
-      if (/^#/.test(line)) continue
-      if (/^「」$/.test(line)) continue
-      if (DATE_PREFIX_LINE.test(line)) continue
-      return { quote: line, date: dateLine[1].trim(), format: 'plain-line' }
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim().replace(/^(?:>\s*)+/, '').replace(/^[-*]\s+/, '').trim()
+    if (!line) continue
+    if (/^日期[：:]/.test(line)) continue
+    if (/^#/.test(line)) continue
+    if (/^「」$/.test(line)) continue
+    if (DATE_PREFIX_LINE.test(line)) continue
+    return {
+      quote: line,
+      date: dateLine ? dateLine[1].trim() : '',
+      format: 'plain-line',
     }
   }
 
@@ -199,8 +201,10 @@ export function progressLine({ path = '其余', tier, step, round = 1, stuck = f
 }
 
 /**
- * 解析一行进度。不是 `进度 v1｜` 开头，或缺路径、客户档，返回 null。
+ * 解析一行进度。不是 `进度 v1｜` 开头或缺客户档，返回 null。
+ * 兼容写法：没有 `路径：` 的订单进度行按默认路径 `其余` 读。
  * 字段之间用全角 `｜` 分隔，每个字段是 `名：值`。
+ * `sub` 是细阶段第一段，`progress` 是后面的进度数（如 `2/4`），合起来是细阶段原文。
  */
 export function parseProgress(line) {
   if (typeof line !== 'string') return null
@@ -212,12 +216,12 @@ export function parseProgress(line) {
     const cut = segment.indexOf('：')
     if (cut > 0) fields[segment.slice(0, cut).trim()] = segment.slice(cut + 1).trim()
   }
-  if (!fields['路径'] || !fields['客户档']) return null
+  if (!fields['客户档']) return null
 
   const [sub = '', ...rest] = (fields['细阶段'] || '').split(/\s+/)
   return {
     line: text,
-    path: fields['路径'],
+    path: fields['路径'] || '其余',
     tier: fields['客户档'],
     sub,
     progress: rest.join(' '),

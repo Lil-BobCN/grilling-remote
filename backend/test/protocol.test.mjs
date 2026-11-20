@@ -79,6 +79,26 @@ Q1：怎么取？
 - 送货加收 5 元
 `
 
+// backend/test/import.test.mjs 里没有日期行的需求草稿
+const UNDATED_DRAFT_SAMPLE = `# demo 需求草稿
+
+Status: 已问完
+
+## 1. 客户原话
+
+- 想要预约取货。
+
+## 3. 已经定下的
+
+- 到店取
+
+## 5. 以后再说
+
+- 无
+
+复核：查过
+`
+
 // factory/test/tickets.test.mjs 的三张票
 const TICKETS_SAMPLE = [
   {
@@ -106,9 +126,12 @@ const TICKETS_MARKER_SAMPLE =
   '<!-- factory:tickets W3sidGl0bGUiOiLpob7lrqLmiZPlvIDpk77mjqXog73nnIvliLDlvZPlpKnmsLTmnpzlkozljZblroznmoQiLCJ2ZXJ0aWNhbFNsaWNlIjoi6aG-5a6i5omT5byA6ZO-5o6l77yM55yL5Yiw5LuK5aSp55qE5rC05p6c44CB5Lu35qC85ZKM5Y2W5a6M55qE44CCIiwiYWNjZXB0YW5jZSI6WyLmiZPlvIDpk77mjqXvvIznnIvliLDlvZPlpKnmsLTmnpznmoTlkI3ljZXjgIIiLCLljZblroznmoTmsLTmnpzmoIflh7rmnaXvvIzkuI3og73kuIvljZXjgIIiXSwiYmxvY2tlZEJ5IjpbXX0seyJ0aXRsZSI6IumhvuWuouS4i-WNleaXtuiDvemAieWIsOW6l-WPliIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXml7bog73pgInliLDlupflj5bvvIzmjJHkuIDkuKrlj5botKfml7bpl7TjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaXtumAieWIsOW6l-WPlu-8jOaMkeS4gOS4quWPlui0p-aXtumXtOOAgiJdLCJibG9ja2VkQnkiOlswXX0seyJ0aXRsZSI6IuS4i-WNleaIkOWKn-eci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgCIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXmiJDlip_vvIznnIvliLDorqLljZXlj7flkozlj5botKflnLDlnYDjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaIkOWKn-WQjueci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgOOAgiJdLCJibG9ja2VkQnkiOlsi6aG-5a6i5LiL5Y2V5pe26IO96YCJ5Yiw5bqX5Y-WIl19XQ -->'
 
 // factory/test/scheduler.test.mjs 里的进度行
-const PROGRESS_SAMPLE = '进度 v1｜路径：其余｜客户档：安排中｜细阶段：记驳回｜轮次：1｜卡住：否'
+const PROGRESS_SAMPLE = '进度 v1｜路径：其余｜客户档：已驳回｜细阶段：记驳回｜轮次：1｜卡住：否'
+// factory/test/progress.test.mjs 里的备注样例
 const PROGRESS_NOTE_SAMPLE =
   '进度 v1｜路径：其余｜客户档：安排中｜细阶段：技术闸门｜轮次：3｜卡住：是｜备注：等运营者答技术闸门'
+// customer-kit/测试记录.md 里的真实订单行，没有路径字段
+const ORDER_PROGRESS_SAMPLE = '进度 v1｜客户档：已收到｜细阶段：收包｜轮次：2｜卡住：否'
 
 test('parseCustomerQuote 认「」加日期：父工单样例', () => {
   const parsed = parseCustomerQuote(PARENT_ISSUE_SAMPLE)
@@ -139,18 +162,24 @@ test('parseCustomerQuote 认 YYYY-MM-DD：前缀写法', () => {
   assert.equal(parsed.format, 'date-prefix')
 })
 
-test('parseCustomerQuote 认需求草稿第 1 段的普通条目加日期', () => {
-  const parsed = parseCustomerQuote(DRAFT_SAMPLE)
-  assert.equal(parsed.quote, '我想要一个预约取货的小程序。')
-  assert.equal(parsed.date, '2026-11-15')
-  assert.equal(parsed.format, 'plain-line')
+test('parseCustomerQuote 认需求草稿第 1 段的普通条目，日期可缺', () => {
+  const dated = parseCustomerQuote(DRAFT_SAMPLE)
+  assert.equal(dated.quote, '我想要一个预约取货的小程序。')
+  assert.equal(dated.date, '2026-11-15')
+  assert.equal(dated.format, 'plain-line')
+
+  const undated = parseCustomerQuote(UNDATED_DRAFT_SAMPLE)
+  assert.equal(undated.quote, '想要预约取货。')
+  assert.equal(undated.date, '')
+  assert.equal(undated.format, 'plain-line')
 })
 
-test('parseCustomerQuote 缺原话返回 null，不和空引号混在一起', () => {
+test('parseCustomerQuote 缺原话返回 null；空引号按缺原话处理', () => {
   assert.equal(parseCustomerQuote(''), null)
   assert.equal(parseCustomerQuote(null), null)
   assert.equal(parseCustomerQuote('## 客户确认的结论\n\n- 无'), null)
   assert.equal(parseCustomerQuote('## 客户原话\n\n> 「」\n\n日期：2026-11-08'), null)
+  assert.equal(parseCustomerQuote('## 客户原话\n\n日期：2026-11-08'), null)
   assert.equal(
     parseCustomerQuote('## 客户原话\n\n## 第1轮\n\n客户：「这句是后面轮次的，不是原话。」'),
     null,
@@ -227,7 +256,7 @@ test('票单 round-trip，缺 marker 或坏 JSON 返回 null', () => {
 
 test('progressLine 生成调度器样例里的进度行', () => {
   assert.equal(
-    progressLine({ path: '其余', tier: '安排中', step: '记驳回', round: 1, stuck: false }),
+    progressLine({ path: '其余', tier: '已驳回', step: '记驳回', round: 1, stuck: false }),
     PROGRESS_SAMPLE,
   )
   assert.equal(PROGRESS_PREFIX, '进度 v1｜')
@@ -248,12 +277,21 @@ test('parseProgress 解析调度器样例进度行', () => {
   const parsed = parseProgress(PROGRESS_SAMPLE)
   assert.equal(parsed.line, PROGRESS_SAMPLE)
   assert.equal(parsed.path, '其余')
-  assert.equal(parsed.tier, '安排中')
+  assert.equal(parsed.tier, '已驳回')
   assert.equal(parsed.sub, '记驳回')
   assert.equal(parsed.progress, '')
   assert.equal(parsed.round, 1)
   assert.equal(parsed.stuck, false)
   assert.equal(parsed.note, '')
+})
+
+test('parseProgress 认没有路径的订单进度行，路径按其余', () => {
+  const parsed = parseProgress(ORDER_PROGRESS_SAMPLE)
+  assert.equal(parsed.path, '其余')
+  assert.equal(parsed.tier, '已收到')
+  assert.equal(parsed.sub, '收包')
+  assert.equal(parsed.round, 2)
+  assert.equal(parsed.stuck, false)
 })
 
 test('进度行 round-trip：备注和子票进度数', () => {
@@ -274,9 +312,10 @@ test('进度行 round-trip：备注和子票进度数', () => {
   assert.equal(numbered.progress, '2/4')
 })
 
-test('parseProgress 不是进度行返回 null', () => {
+test('parseProgress 不是进度行或缺客户档返回 null', () => {
   assert.equal(parseProgress('普通评论'), null)
-  assert.equal(parseProgress('进度 v1｜客户档：安排中'), null)
+  assert.equal(parseProgress('进度 v1｜路径：其余'), null)
+  assert.equal(parseProgress('进度 v1｜路径：其余｜客户档：'), null)
   assert.equal(parseProgress(''), null)
   assert.equal(parseProgress(null), null)
 })
