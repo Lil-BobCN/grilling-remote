@@ -201,21 +201,44 @@ class TestMergeTrigger(Base):
         self.assertEqual(record["status"], "过期")
         self.assertEqual(record["last_check"]["result"], "closed_without_merge")
 
-    def test_other_linked_pr_does_not_trigger(self):
+    def test_record_pr_checked_even_if_workstate_links_other_pr(self):
         map_id, root = self.make_map()
         ticket = self.make_ticket(map_id, root)
         prep = self.prepare(ticket)
         record_id = prep["payload"]["record"]
-        called = []
-        watcher = self.watcher(lambda pr: called.append(pr) or {"state": "MERGED",
-                                                                "headRefOid": SHA})
+        heads = {187: SHA, 188: OTHER_SHA}
 
-        watcher.check({ticket: {"state": "等待人",
-                                "pr": {"number": 188, "state": "closed"}}})
+        def pr_head(pr):
+            return {"state": "MERGED", "headRefOid": heads[pr]}
 
-        self.assertEqual(called, [])
-        self.assertEqual(self.store.state["close_records"][record_id]["status"], "等合并")
+        self.watcher(pr_head).check({
+            ticket: {"state": "等待人",
+                     "pr": {"number": 188, "state": "merged"},
+                     "prs": [{"number": 188, "state": "merged"}]},
+        })
+
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "closed")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "已展开")
+
+    def test_other_closed_pr_does_not_expire_record(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        prep = self.prepare(ticket)
+        record_id = prep["payload"]["record"]
+        states = {187: "OPEN", 188: "CLOSED"}
+
+        def pr_head(pr):
+            return {"state": states[pr], "headRefOid": SHA}
+
+        self.watcher(pr_head).check({
+            ticket: {"state": "等待人",
+                     "pr": {"number": 188, "state": "closed"},
+                     "prs": [{"number": 187, "state": "open"},
+                             {"number": 188, "state": "closed"}]},
+        })
+
         self.assertEqual(self.store.state["issues"][ticket]["state"], "open")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "等合并")
 
     def test_gh_failure_marks_unverified_then_recovers(self):
         map_id, root = self.make_map()
@@ -282,6 +305,50 @@ class TestMergeTrigger(Base):
         view = board_view(self.store, map_id)
         signal = [s for s in view["signals"] if s["key"] == "close-missing"][0]
         self.assertEqual(signal["count"], 1)
+        self.assertIn("ticket:" + ticket, signal["targets"])
+
+
+class TestMultiPr(Base):
+    """一张票挂多个已合并 PR 时，按记录 SHA 匹配任一候选。"""
+
+    def test_two_merged_prs_record_on_second_closes(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket, pr=188)["payload"]["record"]
+        heads = {187: OTHER_SHA, 188: SHA}
+
+        def pr_head(pr):
+            return {"state": "MERGED", "headRefOid": heads[pr]}
+
+        self.watcher(pr_head).check({
+            ticket: {"state": "等待人",
+                     "pr": {"number": 187, "state": "merged"},
+                     "prs": [{"number": 187, "state": "merged"},
+                             {"number": 188, "state": "merged"}]},
+        })
+
+        self.assertEqual(self.store.state["issues"][ticket]["state"], "closed")
+        self.assertEqual(self.store.state["close_records"][record_id]["status"], "已展开")
+
+    def test_two_merged_prs_no_head_matches_expires_with_signal(self):
+        map_id, root = self.make_map()
+        ticket = self.make_ticket(map_id, root)
+        record_id = self.prepare(ticket)["payload"]["record"]
+
+        self.watcher(
+            lambda pr: {"state": "MERGED", "headRefOid": OTHER_SHA}
+        ).check({
+            ticket: {"state": "等待人",
+                     "pr": {"number": 188, "state": "merged"},
+                     "prs": [{"number": 188, "state": "merged"},
+                             {"number": 187, "state": "merged"}]},
+        })
+
+        record = self.store.state["close_records"][record_id]
+        self.assertEqual(record["status"], "过期")
+        self.assertEqual(record["last_check"]["result"], "sha_mismatch")
+        view = board_view(self.store, map_id)
+        signal = [s for s in view["signals"] if s["key"] == "close-sha"][0]
         self.assertIn("ticket:" + ticket, signal["targets"])
 
 
