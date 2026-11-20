@@ -1251,8 +1251,16 @@ function countTickets(body) {
   return (String(body || '').match(/^\s*-\s*\d+\.\s/gm) || []).length
 }
 
-function reminderEvent({ reminder, parent, owner, repo }) {
+function reminderEvent({ reminder, parent, owner, repo, repoRoot = '' }) {
   const facts = parentFacts(parent)
+  const kind =
+    reminder.event === '补缺口提案'
+      ? 'gap'
+      : reminder.event === '拆票提案'
+        ? 'split'
+        : reminder.event === '需要你答'
+          ? 'gate'
+          : ''
   const event = {
     v: 1,
     key: reminder.key,
@@ -1262,6 +1270,7 @@ function reminderEvent({ reminder, parent, owner, repo }) {
       customer: facts.customer,
       requirement: facts.requirement,
       days_waited: reminder.days_waited,
+      ...(kind ? { owner, repo, ticket: parent.number, kind } : {}),
     },
   }
   if (reminder.event === '补缺口提案') {
@@ -1273,6 +1282,7 @@ function reminderEvent({ reminder, parent, owner, repo }) {
   if (reminder.event === '需要你答') {
     event.data.question = reminder.item.question
     event.data.recommended = reminder.item.recommended
+    if (repoRoot) event.data.repo_dir = join(repoRoot, repo)
     if (reminder.item.link) event.link = reminder.item.link
   }
   return event
@@ -1966,7 +1976,13 @@ export async function runOnce({
           repo: row.repo,
         })
         if (!reminder) continue
-        const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
+        const event = reminderEvent({
+          reminder,
+          parent,
+          owner: row.owner,
+          repo: row.repo,
+          repoRoot: config.repoRoot || '',
+        })
         try {
           const result = await deliverEvent({ notifier, event, config, now: nowDate })
           report.notifications.push({

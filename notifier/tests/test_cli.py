@@ -131,6 +131,10 @@ class TestRouting(Base):
                 "customer": "B 店",
                 "requirement": "预约送货",
                 "question_count": 3,
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "gap",
             },
             "该跑 to-spec": {
                 "customer": "B 店",
@@ -140,12 +144,21 @@ class TestRouting(Base):
                 "customer": "B 店",
                 "requirement": "预约送货",
                 "ticket_count": 5,
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "split",
             },
             "需要你答": {
                 "customer": "B 店",
                 "requirement": "预约送货",
                 "question": "闸门第三题选哪个方案",
                 "recommended": "方案 A",
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "gate",
+                "repo_dir": "/Users/Admin/.afkfactory/repos/acme-shop",
             },
         }
         for name, data in events.items():

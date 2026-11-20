@@ -18,7 +18,15 @@ def samples():
             "https://example.test/2",
         ),
         "补缺口提案": (
-            {"customer": "B 店", "requirement": "预约送货", "question_count": 3},
+            {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "question_count": 3,
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "gap",
+            },
             "https://example.test/1",
         ),
         "该跑 to-spec": (
@@ -26,7 +34,15 @@ def samples():
             "https://example.test/1",
         ),
         "拆票提案": (
-            {"customer": "B 店", "requirement": "预约送货", "ticket_count": 5},
+            {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "ticket_count": 5,
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "split",
+            },
             "https://example.test/1",
         ),
         "需要你答": (
@@ -35,6 +51,11 @@ def samples():
                 "requirement": "预约送货",
                 "question": "闸门第三题选哪个方案",
                 "recommended": "方案 A",
+                "owner": "Lil-BobCN",
+                "repo": "acme-shop",
+                "ticket": 42,
+                "kind": "gate",
+                "repo_dir": "/Users/Admin/.afkfactory/repos/acme-shop",
             },
             "https://example.test/pull/123",
         ),
@@ -125,7 +146,9 @@ class TestTemplates(unittest.TestCase):
             (
                 "补缺口提案",
                 "B 店 · 预约送货 · 等你补缺口（3 题）",
-                "闸门题和推荐答案列好了。打开 Orca 答一轮。"
+                "闸门题和推荐答案列好了。打开待办：\n"
+                "node factory/bin/console.mjs open --owner Lil-BobCN "
+                "--repo acme-shop --ticket 42 --kind gap\n"
                 "https://example.test/1",
             ),
             (
@@ -137,7 +160,9 @@ class TestTemplates(unittest.TestCase):
             (
                 "拆票提案",
                 "B 店 · 预约送货 · 等你点头拆票（5 张）",
-                "接缝、票单、每票验收条件已备好。打开 Orca 扫一眼。"
+                "接缝、票单、每票验收条件已备好。打开待办：\n"
+                "node factory/bin/console.mjs open --owner Lil-BobCN "
+                "--repo acme-shop --ticket 42 --kind split\n"
                 "https://example.test/1",
             ),
         ]
@@ -171,9 +196,21 @@ class TestTemplates(unittest.TestCase):
         self.assertEqual(title, "B 店 · 预约送货 · 等你答：闸门第三题选哪个方案")
         self.assertEqual(
             body,
-            "闸门第三题选哪个方案。推荐：方案 A。打开 Orca 答。"
+            "闸门第三题选哪个方案。推荐：方案 A。打开待办：\n"
+            "node factory/bin/console.mjs open --owner Lil-BobCN "
+            "--repo acme-shop --ticket 42 --kind gate "
+            "--repo-dir /Users/Admin/.afkfactory/repos/acme-shop\n"
             "https://example.test/pull/123",
         )
+
+    def test_need_answer_without_repo_dir_uses_placeholder(self):
+        data, link = samples()["需要你答"]
+        data = copy.deepcopy(data)
+        data.pop("repo_dir")
+        title, body = render_event("需要你答", data, link)
+        self.assertEqual(title, "B 店 · 预约送货 · 等你答：闸门第三题选哪个方案")
+        self.assertIn("--repo-dir <客户仓>", body)
+        self.assertIn("repoDir 没配", body)
 
     def test_incident_exact(self):
         data, link = samples()["出事"]
