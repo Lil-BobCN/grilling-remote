@@ -524,6 +524,21 @@ export async function finishRequirement({
     return { ok: false, reason: 'pr_failed', error: errorText(error) }
   }
   const pr = normalizePr(created, { owner, repo })
+  const alreadyMerged = Boolean(pr?.merged_at || pr?.merged === true)
+  if (alreadyMerged) {
+    // 部署失败后重试时，PR 可能已经合过。不能再建、再验、再合，直接复用合并结果。
+    const mergeSha = pr.merge_commit_sha || ''
+    if (!mergeSha) return { ok: false, reason: 'merged_pr_sha_missing', pr }
+    let warning = ''
+    if (typeof cleanup === 'function') {
+      try {
+        await cleanup({ repoDir, reqBranch })
+      } catch (error) {
+        warning = `合完了，但清理 worktree 失败：${errorText(error)}`
+      }
+    }
+    return { ok: true, pr, mergeSha, risk, alreadyMerged: true, ...(warning ? { warning } : {}) }
+  }
 
   const verifyBranch = pr?.head?.ref || reqBranch
   let verified = await runVerify({ verify, repoDir, branch: verifyBranch, parentIssue })
