@@ -218,6 +218,46 @@ test('evidenceReady 代码头变了判过期，要求复验', async () => {
   }
 })
 
+test('evidenceReady 旧 head 的干净检查 pass 不能替新提交作证', async () => {
+  const { dir, codeSha } = await readyFixture()
+  try {
+    await writeFile(join(dir, 'app.txt'), 'v2\n')
+    const newHead = await commitAll(dir, 'code change')
+    const rowsAt = (sha) => [
+      row({ why: `验证 head ${sha}`, evidence: `.audit/screenshots/after.png sha=${sha}` }),
+      row({ phase: 'test', decision: '全量测试', why: `测试 head ${sha}` }),
+      row({ phase: 'review', decision: '标准：通过', why: `标准轴 head ${sha}` }),
+      row({ phase: 'review', decision: 'spec：符合验收条件', why: `spec 轴 head ${sha}` }),
+    ]
+
+    const stale = await evidenceReady({
+      trail: [
+        ...rowsAt(newHead),
+        row({ phase: 'test', decision: 'npm test', why: `干净检出 head ${codeSha}`, evidence: 'pass' }),
+      ],
+      headSha: newHead,
+      repoDir: dir,
+    })
+    assert.equal(stale.ready, false)
+    assert.ok(
+      stale.missing.some((text) => text.includes('干净检查')),
+      JSON.stringify(stale),
+    )
+
+    const fresh = await evidenceReady({
+      trail: [
+        ...rowsAt(newHead),
+        row({ phase: 'test', decision: 'npm test', why: `干净检出 head ${newHead}`, evidence: 'pass' }),
+      ],
+      headSha: newHead,
+      repoDir: dir,
+    })
+    assert.equal(fresh.ready, true, JSON.stringify(fresh))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('riskLevel 碰迁移、删除、凭证、大版本依赖和大 diff 判高风险', () => {
   assert.equal(
     riskLevel({ files: ['db/migrations/001_init.sql'], diffStat: { additions: 2, deletions: 0 } }),

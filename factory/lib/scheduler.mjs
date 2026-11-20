@@ -1699,6 +1699,8 @@ export async function runOnce({
 }) {
   const now = clock()
   const nowDate = now instanceof Date ? now : new Date(now)
+  // customers 可以直接是表，也可以是每轮调用的读取函数（常驻时按 mtime 重读）。
+  const customerRows = typeof customers === 'function' ? await customers() : customers
   config.notifiedKeys ??= new Set()
   const jobs = config.jobs || null
   const jobPolicy = config.jobPolicy || {}
@@ -1723,7 +1725,7 @@ export async function runOnce({
   }
 
   try {
-    const repos = collectRepos({ gh, customers, owner: config.owner })
+    const repos = collectRepos({ gh, customers: customerRows, owner: config.owner })
     const snapshots = []
     for (const row of repos) {
       try {

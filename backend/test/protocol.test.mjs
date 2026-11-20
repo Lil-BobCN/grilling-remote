@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  customerQuoteFrom,
   encodeAcceptance,
   encodeTicketsPayload,
   eventKey,
@@ -186,6 +187,25 @@ test('parseCustomerQuote 缺原话返回 null；空引号按缺原话处理', ()
   )
 })
 
+test('customerQuoteFrom 先读问答记录，读不到再读草稿；只有 Status 不算原话', () => {
+  const fromQuestions = customerQuoteFrom({
+    questions: '## 客户原话\n\n2026-11-15：想要预约取货。\n',
+    draft: '## 1. 客户原话\n\n- 草稿里的原话。\n',
+  })
+  assert.equal(fromQuestions.quote, '想要预约取货。')
+  assert.equal(fromQuestions.date, '2026-11-15')
+
+  const fromDraft = customerQuoteFrom({
+    questions: '# 问答记录\n\n## 第1轮\n\nQ1：怎么取？\n',
+    draft: 'Status: 已问完\n\n## 1. 客户原话\n\n- 草稿里的原话。\n',
+  })
+  assert.equal(fromDraft.quote, '草稿里的原话。')
+
+  assert.equal(customerQuoteFrom({ draft: 'Status: 已问完\n' }), null)
+  assert.equal(customerQuoteFrom({}), null)
+  assert.equal(customerQuoteFrom({ questions: '## 客户原话\n\n（待补）\n' }), null)
+})
+
 test('parseAcceptance 读父工单样例的验收条件', () => {
   assert.deepEqual(parseAcceptance(PARENT_ISSUE_SAMPLE), [
     { text: '顾客扫码进小程序，看到当天水果的名单。', checked: false },
@@ -215,6 +235,27 @@ test('parseAcceptance 普通 - 按未勾选处理，只读验收条件一节', (
     { text: '已勾选', checked: true },
     { text: '已勾选留空', checked: false },
     { text: '大写已勾选', checked: true },
+  ])
+})
+
+test('parseAcceptance 传 requireSection 时没有验收条件一节返回空', () => {
+  const body = `## 客户确认的结论
+
+- 顾客打开链接看货。
+
+## 不做清单
+
+- 不做在线支付
+`
+  // 不传时读整段，方便直接读验收场景文件。
+  assert.deepEqual(parseAcceptance(body), [
+    { text: '顾客打开链接看货。', checked: false },
+    { text: '不做在线支付', checked: false },
+  ])
+  // 父工单必须明确写出验收条件一节，别把结论和不要做的条目当验收条件。
+  assert.deepEqual(parseAcceptance(body, { requireSection: true }), [])
+  assert.deepEqual(parseAcceptance('## 验收条件\n\n- 普通条目\n', { requireSection: true }), [
+    { text: '普通条目', checked: false },
   ])
 })
 

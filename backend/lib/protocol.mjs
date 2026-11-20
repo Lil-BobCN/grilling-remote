@@ -27,6 +27,26 @@ function oneLine(value) {
   return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ').trim()
 }
 
+/**
+ * 按编号或标题关键词找二级标题下的一节正文。
+ * `## 1. 客户原话` 和 `## 客户原话` 都算命中；找不到返回 null。
+ */
+export function numberedSectionBody(text, number, keywords) {
+  if (!text) return null
+  const heading = /^##\s+(?:(\d+)\s*[.、．]?\s*)?(.*)$/gm
+  let match
+  while ((match = heading.exec(text))) {
+    const label = match[2] || ''
+    const hitNumber = match[1] === String(number)
+    const hitKeyword = keywords.some((word) => label.includes(word))
+    if (!hitNumber && !hitKeyword) continue
+    const rest = text.slice(match.index + match[0].length)
+    const next = /^##\s/m.exec(rest)
+    return (next ? rest.slice(0, next.index) : rest).trim()
+  }
+  return null
+}
+
 // ---- 客户原话 ----
 
 const CUSTOMER_QUOTE_HEADING = /^##\s*(?:\d+\s*[.、．]?\s*)?客户原话\s*$/m
@@ -94,6 +114,23 @@ export function parseCustomerQuote(text) {
   return null
 }
 
+/**
+ * 从问答记录和需求草稿的正文里读客户原话。导入和上传校验共用这一份规则。
+ *
+ * 问答记录的 `## 客户原话` 一节只认两种写法：「」加日期、`YYYY-MM-DD：` 一行。
+ * 读不到再看需求草稿第 1 段，那里还认普通条目。
+ * 两处都读不到返回 null。
+ *
+ * @param {{questions?: string|null, draft?: string|null}} input
+ * @returns {{quote: string, date: string, format: 'quote-date'|'date-prefix'|'plain-line'}|null}
+ */
+export function customerQuoteFrom({ questions = null, draft = null } = {}) {
+  const section = sectionBody(textOf(questions), CUSTOMER_QUOTE_HEADING)
+  const fromQuestions = parseCustomerQuote(section)
+  if (fromQuestions && fromQuestions.format !== 'plain-line') return fromQuestions
+  return parseCustomerQuote(numberedSectionBody(textOf(draft), 1, ['客户原话']))
+}
+
 // ---- 验收条件 ----
 
 const ACCEPTANCE_HEADING = /^##\s*验收条件\s*$/m
@@ -126,14 +163,18 @@ export function encodeAcceptance(items = []) {
  * 规范写法：`- [ ] 条目`。兼容写法：普通 `-` 或 `*` 条目，按未勾选处理。
  * `- [x]`、`- [X]` 按已勾选读回，生成时仍写回 `- [ ]`。
  * 正文里有 `## 验收条件` 时只读这一节；没有时读整段，方便直接读验收场景文件。
+ * 传 `{ requireSection: true }` 时，没有这一节返回空数组。
+ * 父工单用这个模式，免得把「客户确认的结论」「不做清单」里的条目当成验收条件。
  *
  * @param {string} text
+ * @param {{requireSection?: boolean}} [options]
  * @returns {Array<{text: string, checked: boolean}>}
  */
-export function parseAcceptance(text) {
+export function parseAcceptance(text, { requireSection = false } = {}) {
   const source = textOf(text)
   if (!source.trim()) return []
   const section = sectionBody(source, ACCEPTANCE_HEADING)
+  if (section === null && requireSection) return []
   const body = section === null ? source : section
 
   const items = []
