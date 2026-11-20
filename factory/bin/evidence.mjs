@@ -19,10 +19,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRunner, MERGER_TOOLS } from '../lib/agent-runner.mjs'
 import { fixerRoundsUsed, runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
+import { CLEAN_CHECK_MARKER, verifyInCleanCheckout } from '../lib/clean-check.mjs'
 import { productFromRepo } from '../lib/deploy.mjs'
 import {
+  appendTrail,
   assessMerge,
   diffInfo,
+  freshTestRows,
   freshVerifiers,
   interrogateStatus,
   readTrail,
@@ -225,11 +228,11 @@ async function notifyAuditIncident({ notifier, ticket, problems }) {
   }
 }
 
-/** 每轮评审结果交给调用方；回调抛错不影响评审结论。 */
-async function reportReviewRound({ onReviewRound, round, ok, problems = [] }) {
+/** 每轮修复结果交给调用方；回调抛错不影响判定。 */
+async function reportReviewRound({ onReviewRound, round, ok, problems = [], stage = '' }) {
   if (typeof onReviewRound !== 'function') return
   try {
-    await onReviewRound({ round, ok, problems })
+    await onReviewRound({ round, ok, problems, stage })
   } catch {
     // 进度写不进去不改评审结论。
   }
@@ -245,9 +248,14 @@ function authProblems(audit) {
  * 再读一遍。给了 baseBranch 时按 riskLevel/verifyPlan 算验证队要几个，
  * 按 fresh 验证者 id 的差额补跑；高风险票还要求一条指向当前 head 的 interrogate pass。
  *
- * 评审或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；默认最多四轮
+ * 验证前还会在干净检出里跑一次确定性测试（`cleanCheck`，默认
+ * `verifyInCleanCheckout`）：有 lockfile 用 `npm ci`，没有用 `npm install`，
+ * 再跑测试。结果按 head 记成 test 行，旧 head 的 pass 不算数。干净检查和验证
+ * agent 的问题与评审问题放进同一个 failed，交给同一条 fixer 路径。
+ *
+ * 评审、验证或 interrogate 没过时，如果注入了 `fixer`，按轮次修完再复评；默认最多四轮
  * （`maxFixRounds` 或环境变量 `AFK_MAX_FIX_ROUNDS` 可改，跨调度轮次按票分支上的修复
- * 提交累计）。每次修完 head 变了，验证、standard/spec
+ * 提交累计）。每次修完 head 变了，按新 head 重算问题：干净检查、验证、standard/spec
  * 和 interrogate 都重跑；复验也没过时，复验问题同样交给下一轮 fixer，不提前停。
  * 每轮结果交给 `onReviewRound`，调度器用它写进度行。
  * 修不过或没注入 fixer 就销毁预览、发「出事」、返回 evidence_not_ready。
@@ -268,6 +276,7 @@ export async function ensureEvidenceBeforeMerge({
   fixer,
   onReviewRound,
   maxFixRounds = resolveMaxFixRounds(),
+  cleanCheck = verifyInCleanCheckout,
 } = {}) {
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)
@@ -292,7 +301,18 @@ export async function ensureEvidenceBeforeMerge({
   const verifyRuns = gaps.includes('verify')
     ? Math.max(missingVerifiers, plan ? 0 : 1)
     : missingVerifiers
-  if (gaps.length === 0 && verifyRuns === 0 && !interrogateGap) return { ok: true, trail: rows }
+  // 干净检查是确定性门禁：这个 head 还没有 pass 的干净检出 test 行就补跑。
+  // 非 Node 仓库由 verifyInCleanCheckout 自己跳过，不记行，下一轮再查一次。
+  const cleanCheckEnabled = typeof cleanCheck === 'function'
+  const freshCleanChecks = cleanCheckEnabled
+    ? (await freshTestRows({ trail: rows, headSha, repoDir })).filter((row) =>
+        String(row.why || '').includes(CLEAN_CHECK_MARKER),
+      )
+    : []
+  const needsCleanCheck = cleanCheckEnabled && freshCleanChecks.length === 0
+  if (gaps.length === 0 && verifyRuns === 0 && !interrogateGap && !needsCleanCheck) {
+    return { ok: true, trail: rows }
+  }
 
   // 轮次用完、同一 head 已经判过 fail：再跑一次要 9–12 分钟，问题不会变。
   if (interrogateGap && interrogate.fail && gaps.length === 0 && verifyRuns === 0) {
@@ -334,8 +354,129 @@ export async function ensureEvidenceBeforeMerge({
     return true
   }
   let interrogateFailed = false
+
+  // 在干净检出里跑确定性门禁。结果记成 test 行，why 里绑当前 head；
+  // 失败原因交给 fixer，和评审问题同一条修复路径。
+  const runCleanCheck = async () => {
+    if (!cleanCheckEnabled) return []
+    const head = await git(repoDir, ['rev-parse', branch])
+    let result
+    try {
+      result = await cleanCheck({ repoDir, ref: head, branch, ticket, now })
+    } catch (error) {
+      return [`干净检查出错：${errorText(error)}`]
+    }
+    if (!result || typeof result !== 'object') return ['干净检查没有返回结果']
+    if (result.skipped) return []
+    const boundHead = String(result.headSha || '')
+    if (boundHead && !(head.startsWith(boundHead) || boundHead.startsWith(head))) {
+      return [
+        `干净检查跑在 ${boundHead.slice(0, 8)}，不是当前 head ${head.slice(0, 8)}，这一轮不算`,
+      ]
+    }
+    const ok = result.ok === true
+    const cleanProblems = ok
+      ? []
+      : [
+          `干净检查没过（${result.reason || 'check'}）：${(result.missing || []).join('；') || '看日志'}`,
+        ]
+    try {
+      await appendTrail({
+        repoDir,
+        ticket: ticketNumber,
+        ts: now,
+        phase: 'test',
+        decision: result.command || '干净检查',
+        why: `${CLEAN_CHECK_MARKER} head ${boundHead || head}`,
+        evidence: result.logPath || (ok ? 'pass' : 'fail'),
+        result: ok ? 'pass' : 'fail',
+      })
+    } catch (error) {
+      cleanProblems.push(`干净检查结果没写进 trail：${errorText(error)}`)
+    }
+    return cleanProblems
+  }
+
+  const runReviewRound = async ({ standards }) => {
+    const roundProblems = []
+    if (standards) {
+      const audit = await runReviewAudit({
+        repoDir,
+        ticket: ticketNumber,
+        branch,
+        mode: 'all',
+        runner,
+        extraBrief,
+        now,
+      })
+      if (stopOnAuth(audit, 'review')) return []
+      if (!audit.ok) roundProblems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
+    }
+    if (wantsInterrogate) {
+      const audit = await runReviewAudit({
+        repoDir,
+        ticket: ticketNumber,
+        branch,
+        mode: 'interrogate',
+        runner,
+        extraBrief,
+        now,
+      })
+      if (stopOnAuth(audit, 'review')) return []
+      interrogateFailed = !audit.ok
+      if (!audit.ok) {
+        roundProblems.push(...(audit.problems.length ? audit.problems : [INTERROGATE_MISSING]))
+      }
+    }
+    return roundProblems
+  }
+
+  // 修完 head 变了，旧验证不算数：干净检查先在新 head 重跑，再按计划把验证队补回来。
+  const reverifyAfterFix = async () => {
+    const cleanProblems = await runCleanCheck()
+    if (cleanProblems.length) return cleanProblems
+    const fixedHead = await git(repoDir, ['rev-parse', branch])
+    if (!plan) {
+      const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
+      if (stopOnAuth(audit, 'verify')) return []
+      return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
+    }
+    const trail = await readTrail({ repoDir, ticket: ticketNumber })
+    const fresh = await freshVerifiers({ trail, headSha: fixedHead, repoDir })
+    const needed = Math.max(0, plan.verifiers - fresh.length)
+    const found = []
+    for (const verifierId of nextVerifierIds(fresh, needed)) {
+      const audit = await runVerifyAudit({
+        repoDir,
+        ticket: ticketNumber,
+        branch,
+        verifierId,
+        runner,
+        extraBrief,
+        now,
+      })
+      if (stopOnAuth(audit, 'verify')) break
+      if (!audit.ok) {
+        found.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+        break
+      }
+    }
+    return found
+  }
+
   try {
-    if (verifyRuns > 0) {
+    // 验证问题（确定性干净检查 + 验证 agent）和评审问题放进同一个 failed，
+    // 修完按当前 head 重算；旧 head 的问题不留在里面多挡一轮。
+    let failed = []
+    let failedStage = ''
+    if (!authProblem && needsCleanCheck) {
+      const cleanProblems = await runCleanCheck()
+      if (cleanProblems.length) {
+        failed.push(...cleanProblems)
+        failedStage = 'verify'
+      }
+    }
+    if (!authProblem && verifyRuns > 0) {
       const ids = plan ? nextVerifierIds(freshIds, verifyRuns) : ['']
       for (const verifierId of ids) {
         const audit = await runVerifyAudit({
@@ -349,107 +490,64 @@ export async function ensureEvidenceBeforeMerge({
         })
         if (stopOnAuth(audit, 'verify')) break
         if (!audit.ok) {
-          problems.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+          failed.push(...(audit.problems.length ? audit.problems : ['验证没过']))
+          failedStage = 'verify'
           break
         }
       }
     }
     if (!authProblem && (gaps.includes('review') || interrogateGap)) {
-      const runReviewRound = async ({ standards }) => {
-        const roundProblems = []
-        if (standards) {
-          const audit = await runReviewAudit({
-            repoDir,
-            ticket: ticketNumber,
-            branch,
-            mode: 'all',
-            runner,
-            extraBrief,
-            now,
-          })
-          if (stopOnAuth(audit, 'review')) return []
-          if (!audit.ok) roundProblems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
-        }
-        if (wantsInterrogate) {
-          const audit = await runReviewAudit({
-            repoDir,
-            ticket: ticketNumber,
-            branch,
-            mode: 'interrogate',
-            runner,
-            extraBrief,
-            now,
-          })
-          if (stopOnAuth(audit, 'review')) return []
-          interrogateFailed = !audit.ok
-          if (!audit.ok) {
-            roundProblems.push(
-              ...(audit.problems.length ? audit.problems : [INTERROGATE_MISSING]),
-            )
-          }
-        }
-        return roundProblems
+      const reviewProblems = await runReviewRound({ standards: gaps.includes('review') })
+      if (reviewProblems.length) {
+        failed.push(...reviewProblems)
+        if (!failedStage) failedStage = 'review'
       }
-
-      // 修完 head 变了，旧验证不算数，按计划把验证队补回来。
-      const reverifyAfterFix = async () => {
-        const fixedHead = await git(repoDir, ['rev-parse', branch])
-        if (!plan) {
-          const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
-          if (stopOnAuth(audit, 'verify')) return []
-          return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
-        }
-        const trail = await readTrail({ repoDir, ticket: ticketNumber })
-        const fresh = await freshVerifiers({ trail, headSha: fixedHead, repoDir })
-        const needed = Math.max(0, plan.verifiers - fresh.length)
-        const found = []
-        for (const verifierId of nextVerifierIds(fresh, needed)) {
-          const audit = await runVerifyAudit({
-            repoDir,
-            ticket: ticketNumber,
-            branch,
-            verifierId,
-            runner,
-            extraBrief,
-            now,
-          })
-          if (stopOnAuth(audit, 'verify')) break
-          if (!audit.ok) {
-            found.push(...(audit.problems.length ? audit.problems : ['验证没过']))
-            break
-          }
-        }
-        return found
-      }
-
-      let round = 1
-      let failed = await runReviewRound({ standards: gaps.includes('review') })
-      if (!authProblem) {
-        await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
-      }
-      if (!authProblem && failed.length && typeof fixer === 'function') {
-        let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
-        while (failed.length && used < maxFixRounds) {
-          used += 1
-          const fixed = await fixer({ repoDir, branch, findings: failed, round: used })
-          if (stopOnAuth(fixed, 'review')) break
-          if (!fixed?.ok) break
-          round += 1
-          const verifyProblems = await reverifyAfterFix()
-          if (authProblem) break
-          if (verifyProblems.length) {
-            // 复验问题和评审问题一样，继续交给下一轮 fixer，轮次用完才停。
-            failed = verifyProblems
-            await reportReviewRound({ onReviewRound, round, ok: false, problems: failed })
-            continue
-          }
-          failed = await runReviewRound({ standards: true })
-          if (authProblem) break
-          await reportReviewRound({ onReviewRound, round, ok: failed.length === 0, problems: failed })
-        }
-      }
-      if (!authProblem && failed.length) problems.push(...failed)
     }
+    let round = 1
+    if (!authProblem) {
+      await reportReviewRound({
+        onReviewRound,
+        round,
+        ok: failed.length === 0,
+        problems: failed,
+        stage: failedStage,
+      })
+    }
+    if (!authProblem && failed.length && typeof fixer === 'function') {
+      let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
+      while (failed.length && used < maxFixRounds) {
+        used += 1
+        const fixed = await fixer({ repoDir, branch, findings: failed, round: used })
+        if (stopOnAuth(fixed, 'review')) break
+        if (!fixed?.ok) break
+        round += 1
+        failed = await reverifyAfterFix()
+        if (authProblem) break
+        if (failed.length) {
+          // 复验问题和评审问题一样，继续交给下一轮 fixer，轮次用完才停。
+          failedStage = 'verify'
+          await reportReviewRound({
+            onReviewRound,
+            round,
+            ok: false,
+            problems: failed,
+            stage: failedStage,
+          })
+          continue
+        }
+        failed = await runReviewRound({ standards: true })
+        if (authProblem) break
+        failedStage = failed.length ? 'review' : ''
+        await reportReviewRound({
+          onReviewRound,
+          round,
+          ok: failed.length === 0,
+          problems: failed,
+          stage: failedStage,
+        })
+      }
+    }
+    if (!authProblem && failed.length) problems.push(...failed)
   } catch (error) {
     problems.push(errorText(error))
   }

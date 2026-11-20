@@ -277,16 +277,17 @@ export function createTicketPipeline({
       (({ repoDir: dir, branch, findings, round }) =>
         runFixerAudit({ repoDir: dir, ticket: ticket.number, branch, findings, round, runner }))
 
-    // 评审没过的那一轮在父工单留一行进度，轮次递增，三圈停滞检测读得到。
-    const reviewProgress = async ({ round, ok, problems }) => {
+    // 没过的那一轮在父工单留一行进度，轮次递增，三圈停滞检测读得到。
+    const reviewProgress = async ({ round, ok, problems, stage = '' }) => {
       if (ok) return
+      const label = stage === 'verify' ? '验证没过' : '评审没过'
       const body = progressLine({
         path: ticketInfo.path,
         tier: '开发中',
         step: '评审修复',
         round: ticketInfo.round + round - 1,
         stuck: false,
-        note: `评审没过：${problems.slice(0, 2).join('；')}`.replace(/\s+/g, ' ').slice(0, 160),
+        note: `${label}：${problems.slice(0, 2).join('；')}`.replace(/\s+/g, ' ').slice(0, 160),
       })
       try {
         await gh.createComment({ owner, repo, number: parent.number, body })
