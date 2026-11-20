@@ -377,6 +377,122 @@ test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评�
   assert.equal(notifier.calls.length, 0)
 })
 
+test('点火完成后票工作树释放，主仓还停在需求分支', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  let duringRun = null
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    duringRun = {
+      branch: await git(args.repoDir, ['branch', '--show-current']),
+      worktrees: await git(args.repoDir, ['worktree', 'list', '--porcelain']),
+    }
+    return { commits: [{ sha: 'abc123' }], branch: args.ticketBranch }
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(duringRun.branch, REQ_BRANCH, '点火时主仓不能切走需求分支')
+  assert.match(
+    duringRun.worktrees,
+    new RegExp(`worktrees/ticket-${ticket.number}`),
+    'run 开始时票工作树要在场',
+  )
+
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `点火后还有工作树残留：\n${left}`)
+})
+
+test('Sandcastle 返回 preservedWorktreePath：未跟踪截图先归档再释放', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  const logs = []
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    await mkdir(join(args.worktree, 'shots'), { recursive: true })
+    await writeFile(join(args.worktree, 'shots', '首页.png'), 'png-bytes')
+    return {
+      commits: [{ sha: 'abc123' }],
+      branch: args.ticketBranch,
+      preservedWorktreePath: args.worktree,
+    }
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.archived.length, 1, JSON.stringify(result.archived))
+  assert.equal(result.archived[0].from, 'shots/首页.png')
+  assert.match(
+    result.archived[0].to,
+    new RegExp(`^\\.audit/archive/[0-9]{8}T[0-9]{6}Z-ticket-${ticket.number}/shots/首页\\.png$`),
+  )
+  assert.equal(await readFile(join(repoDir, result.archived[0].to), 'utf8'), 'png-bytes')
+
+  const archivedLog = logs.find((row) => row.msg === '归档点火工作树里的未跟踪文件')
+  assert.ok(archivedLog, '归档路径要写进日志')
+  assert.deepEqual(archivedLog.files, [result.archived[0].to])
+
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `归档后还有工作树残留：\n${left}`)
+})
+
+test('Sandcastle 保留了改了已跟踪文件的工作树：不删，回传路径', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  const logs = []
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    await writeFile(join(args.worktree, 'src', 'app.mjs'), 'export const APP = "DIRTY"\n')
+    return {
+      commits: [{ sha: 'abc123' }],
+      branch: args.ticketBranch,
+      preservedWorktreePath: args.worktree,
+    }
+  })
+  t.after(() => git(repoDir, ['worktree', 'remove', '--force', join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`)]).catch(() => {}))
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.worktree, join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`))
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(left.includes(result.worktree), '改了已跟踪文件的工作树要保留')
+  assert.equal(
+    await readFile(join(result.worktree, 'src', 'app.mjs'), 'utf8'),
+    'export const APP = "DIRTY"\n',
+  )
+  assert.ok(
+    logs.some((row) => row.msg === '点火工作树有未提交改动，保留'),
+    '保留现场要写日志',
+  )
+})
+
 test('点火成功先 push 票分支，PR head 用 push 的分支', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
@@ -629,7 +745,8 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
     body: progressLine({ path: '其余', tier: '开发中', step: '开工', round: 1, stuck: false }),
   })
   const logs = []
-  const runner = fakeRunner(async () => {
+  const runner = fakeRunner(async (args) => {
+    await writeFile(join(args.worktree, '失败截图.png'), 'png')
     throw new Error('容器起不来')
   })
   const pr = fakeOpenPr()
@@ -646,13 +763,20 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
   assert.equal(result.ok, false)
   assert.match(result.error, /容器起不来/)
   assert.equal(pr.calls.length, 0)
+  assert.equal(result.archived.length, 1, '失败现场的未跟踪文件要先归档')
+  assert.equal(
+    await readFile(join(fixture.root, 'repos', REPO, result.archived[0].to), 'utf8'),
+    'png',
+  )
+  const left = await git(join(fixture.root, 'repos', REPO), ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `点火失败后还有工作树残留：\n${left}`)
   const comments = commentsOf(fake, ticket.number)
   assert.equal(comments.length, 1)
   assert.ok(comments[0].startsWith('点火失败'))
   assert.match(comments[0], /容器起不来/)
-  assert.equal(logs.length, 1)
-  assert.equal(logs[0].level, 'error')
-  assert.equal(logs[0].msg, '点火失败')
+  const failureLog = logs.find((row) => row.msg === '点火失败')
+  assert.ok(failureLog)
+  assert.equal(failureLog.level, 'error')
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:待验收'))
   assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
   assert.ok(labelsOf(fake, ticket.number).includes('状态:开发中'))
