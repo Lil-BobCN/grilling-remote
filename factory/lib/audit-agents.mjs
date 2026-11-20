@@ -14,7 +14,7 @@
 import { mkdir, readFile, rename, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { appendTrail } from './evidence.mjs'
+import { appendTrail, lastCodeCommit } from './evidence.mjs'
 import { FIXER_TOOLS, REVIEW_TOOLS, NO_WRITE_TOOLS, VERIFY_TOOLS } from './agent-runner.mjs'
 import { git } from './git.mjs'
 
@@ -258,7 +258,8 @@ export async function runVerifyAudit({
 } = {}) {
   if (!repoDir || !ticket || !branch) throw new Error('验证需要 repoDir、ticket 和 branch')
   if (typeof runner?.run !== 'function') throw new Error('验证需要注入 runner')
-  const headSha = await git(repoDir, ['rev-parse', branch])
+  // 绑代码提交，不绑只改 `.audit` 的提交；下一轮 lastCodeCommit 才认这条记录。
+  const headSha = await lastCodeCommit(repoDir, await git(repoDir, ['rev-parse', branch]))
   const id = String(verifierId || '').trim().replace(/\s+/g, '-')
   const evidenceDir = evidenceDirFor({ ticket, verifierId: id })
   const text = instructions ?? (await readFile(join(agentsDir, 'verify.md'), 'utf8'))
@@ -372,7 +373,8 @@ export async function runReviewAudit({
   const decisions = REVIEW_DECISIONS[mode]
   if (!decisions) throw new Error(`评审模式只能是 ${Object.keys(REVIEW_DECISIONS).join('、')}`)
 
-  const headSha = await git(repoDir, ['rev-parse', branch])
+  // 和验证行一样绑代码提交，避免下一轮把只改 audit 的提交当成新 head。
+  const headSha = await lastCodeCommit(repoDir, await git(repoDir, ['rev-parse', branch]))
   const text = instructions ?? (await readFile(join(agentsDir, 'review.md'), 'utf8'))
   const run = await runner.run({
     name: `review-${ticket}-${mode}`,

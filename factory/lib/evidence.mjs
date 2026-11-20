@@ -320,7 +320,7 @@ async function commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket }) {
  * 验证者写完 trail 行再提交时，head 会变成只改 audit 的提交；
  * 证据指向它前面那个代码提交，仍算当前。
  */
-async function lastCodeCommit(repoDir, headSha) {
+export async function lastCodeCommit(repoDir, headSha) {
   let sha = headSha
   if (!sha) {
     try {

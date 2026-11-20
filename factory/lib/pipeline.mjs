@@ -22,6 +22,7 @@ import { ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { previewNeeded } from './preview.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
+import { createRepoWorkspace } from './repo-workspace.mjs'
 import { hasLabel, NEEDS_INFO_LABEL } from './scheduler.mjs'
 
 export const SANDBOX_LABEL = 'Sandcastle'
@@ -222,7 +223,24 @@ export function createTicketPipeline({
   merge = mergeTicket,
   readTrailImpl = readTrail,
   gitImpl = git,
+  workspace = createRepoWorkspace(),
 } = {}) {
+  /**
+   * 证据写在票工作树里，先提交到票分支；主仓合并时从分支上读得到。
+   * 只提交 `.audit`，agent 留下的其他未跟踪文件交给 release 归档。
+   */
+  async function commitAuditFiles({ worktree, ticket }) {
+    const dirty = await gitImpl(worktree, ['status', '--porcelain', '--', '.audit']).catch(() => '')
+    if (!dirty) return ''
+    await gitImpl(worktree, ['add', '-A', '--', '.audit'])
+    const staged = await gitImpl(worktree, ['diff', '--cached', '--name-only', '--', '.audit']).catch(
+      () => '',
+    )
+    if (!staged) return ''
+    await gitImpl(worktree, ['commit', '-m', `FACTORY: 证据进 git #${ticket}`])
+    return gitImpl(worktree, ['rev-parse', 'HEAD'])
+  }
+
   async function merger({ repoDir, files }) {
     if (typeof runner?.run !== 'function') {
       return { ok: false, problems: ['没有注入 runner，解不了冲突'] }
@@ -251,8 +269,6 @@ export function createTicketPipeline({
     const ticketBranch = `ticket/${ticket.number}`
     const headSha = await gitImpl(repoDir, ['rev-parse', '--verify', '--quiet', ticketBranch]).catch(() => '')
     if (!headSha) return { ticket: ticket.number, skipped: 'branch-missing' }
-
-    const trail = await readTrailImpl({ repoDir, ticket: ticket.number })
 
     const order = parentOrder(parent?.body)
     if (!order) return { ticket: ticket.number, skipped: 'no-order' }
@@ -303,76 +319,162 @@ export function createTicketPipeline({
       }
     }
 
-    const preview = previewFor({ ticket: ticketInfo, parent, owner, repo, repoDir })
-    if (previewNeeded({ trail: serializeTrail(trail) }) && typeof preview?.start !== 'function') {
-      const missing = ['这张票有界面，但没有注入预览（等 #469）']
-      log({ level: 'error', msg: '证据补齐失败', owner, repo, ticket: ticket.number, reason: 'preview_required', missing })
-      return { ticket: ticket.number, ok: false, reason: 'preview_required', missing }
-    }
-    const previewImpl = preview?.start && preview?.stop ? cachedPreview(preview) : preview
-
-    const originalBranch = await gitImpl(repoDir, ['branch', '--show-current']).catch(() => '')
-    let switched = false
-    if (originalBranch !== ticketBranch) {
-      let archived = []
-      try {
-        const conflicts = await untrackedOverlaps({ gitImpl, repoDir, branch: ticketBranch })
-        if (conflicts.length > 0) {
-          archived = await archiveUntracked({
-            repoDir,
-            files: conflicts,
-            branch: originalBranch,
-            at: clock(),
-          })
-          log({
-            level: 'info',
-            msg: '切票分支前归档了未跟踪文件',
-            owner,
-            repo,
-            ticket: ticket.number,
-            branch: ticketBranch,
-            files: archived.map((row) => row.to),
-          })
-        }
-        await gitImpl(repoDir, ['checkout', ticketBranch])
-        switched = true
-      } catch (error) {
+    // 主仓不切票分支：挡路的未跟踪文件先归档，再去 repoWorkspace 拿票工作树。
+    const archived = []
+    try {
+      const conflicts = await untrackedOverlaps({ gitImpl, repoDir, branch: ticketBranch })
+      if (conflicts.length > 0) {
+        const current = await gitImpl(repoDir, ['branch', '--show-current']).catch(() => '')
+        archived.push(
+          ...(await archiveUntracked({ repoDir, files: conflicts, branch: current, at: clock() })),
+        )
         log({
-          level: 'error',
-          msg: '切不到票分支',
+          level: 'info',
+          msg: '准备票工作树前归档了未跟踪文件',
           owner,
           repo,
           ticket: ticket.number,
           branch: ticketBranch,
-          reason: 'branch_conflict',
-          archived: archived.map((row) => row.to),
-          error: errorText(error),
+          files: archived.map((row) => row.to),
         })
+      }
+    } catch (error) {
+      // 主仓不切分支，归档失败不挡后面的工作树。
+      log({
+        level: 'warning',
+        msg: '归档主仓未跟踪文件失败',
+        owner,
+        repo,
+        ticket: ticket.number,
+        branch: ticketBranch,
+        error: errorText(error),
+      })
+    }
+
+    async function prepareWorktree() {
+      try {
+        return await workspace.prepareTicket({ repoDir, base: reqBranch, ticketBranch })
+      } catch (error) {
+        // 上一次点火留下的脏工作树：先归档未跟踪文件；只剩已跟踪改动时交给人。
+        const released = await workspace.release({ repoDir, branch: ticketBranch }).catch(() => null)
+        if (released?.archived?.length) archived.push(...released.archived)
+        if (released?.kept) {
+          const dirty = new Error(`票工作树 ${released.path} 有未提交的已跟踪改动，先人工处理`)
+          dirty.worktreeDirty = released.path
+          throw dirty
+        }
+        return await workspace.prepareTicket({ repoDir, base: reqBranch, ticketBranch })
+      }
+    }
+
+    let prepared
+    try {
+      prepared = await prepareWorktree()
+    } catch (error) {
+      if (error.worktreeDirty) {
         return {
           ticket: ticket.number,
           ok: false,
-          reason: 'branch_conflict',
+          reason: 'worktree_dirty',
+          worktree: error.worktreeDirty,
           problems: [errorText(error)],
           ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
         }
       }
+      log({
+        level: 'error',
+        msg: '准备票工作树失败',
+        owner,
+        repo,
+        ticket: ticket.number,
+        branch: ticketBranch,
+        reason: 'branch_conflict',
+        archived: archived.map((row) => row.to),
+        error: errorText(error),
+      })
+      return {
+        ticket: ticket.number,
+        ok: false,
+        reason: 'branch_conflict',
+        problems: [errorText(error)],
+        ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+      }
     }
+    const worktree = prepared.worktree
+
+    const worktreeTrail = await readTrailImpl({ repoDir: worktree, ticket: ticket.number })
+    const preview = previewFor({ ticket: ticketInfo, parent, owner, repo, repoDir: worktree })
+    if (previewNeeded({ trail: serializeTrail(worktreeTrail) }) && typeof preview?.start !== 'function') {
+      const missing = ['这张票有界面，但没有注入预览（等 #469）']
+      log({ level: 'error', msg: '证据补齐失败', owner, repo, ticket: ticket.number, reason: 'preview_required', missing })
+      await workspace.release({ repoDir, worktree, branch: ticketBranch }).catch(() => {})
+      return { ticket: ticket.number, ok: false, reason: 'preview_required', missing }
+    }
+    const previewImpl = preview?.start && preview?.stop ? cachedPreview(preview) : preview
 
     try {
-      const ensured = await ensureEvidence({
-        repoDir,
-        ticket: ticketInfo,
-        ticketNumber: ticket.number,
-        branch: ticketBranch,
-        baseBranch: reqBranch,
-        runner,
-        preview: previewImpl,
-        notifier,
-        now: clock(),
-        fixer,
-        onReviewRound: reviewProgress,
-        maxFixRounds,
-      })
+      let ensured
+      let keptWorktree = ''
+      try {
+        ensured = await ensureEvidence({
+          repoDir: worktree,
+          ticket: ticketInfo,
+          ticketNumber: ticket.number,
+          branch: ticketBranch,
+          baseBranch: reqBranch,
+          runner,
+          preview: previewImpl,
+          notifier,
+          now: clock(),
+          fixer,
+          onReviewRound: reviewProgress,
+          maxFixRounds,
+        })
+      } finally {
+        // 证据先落到票分支，再释放工作树；主仓合并时才切得动票分支。
+        try {
+          const auditHead = await commitAuditFiles({ worktree, ticket: ticket.number })
+          if (auditHead) {
+            log({
+              level: 'info',
+              msg: '证据提交到票分支',
+              owner,
+              repo,
+              ticket: ticket.number,
+              head: auditHead,
+            })
+          }
+          const released = await workspace.release({
+            repoDir,
+            worktree,
+            branch: ticketBranch,
+          })
+          if (released.archived?.length) {
+            archived.push(...released.archived)
+            log({
+              level: 'info',
+              msg: '归档票工作树里的未跟踪文件',
+              owner,
+              repo,
+              ticket: ticket.number,
+              files: released.archived.map((row) => row.to),
+            })
+          }
+          if (released.kept) keptWorktree = released.path
+        } catch (error) {
+          log({
+            level: 'error',
+            msg: '释放票工作树失败',
+            owner,
+            repo,
+            ticket: ticket.number,
+            worktree,
+            error: errorText(error),
+          })
+          keptWorktree = worktree
+        }
+      }
+
       if (!ensured.ok) {
         const reason = ensured.reason || 'evidence_not_ready'
         if (reason === 'auth_failed') {
@@ -409,7 +511,23 @@ export function createTicketPipeline({
           missing: ensured.missing || [],
           problems: ensured.problems || [],
         })
-        return { ticket: ticket.number, ...ensured, reason }
+        return {
+          ticket: ticket.number,
+          ...ensured,
+          reason,
+          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+        }
+      }
+
+      if (keptWorktree) {
+        return {
+          ticket: ticket.number,
+          ok: false,
+          reason: 'worktree_dirty',
+          worktree: keptWorktree,
+          problems: ['票工作树有未提交的已跟踪改动，没合需求分支'],
+          ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+        }
       }
 
       const result = await merge({
@@ -455,8 +573,13 @@ export function createTicketPipeline({
         mergedSha: result.mergedSha || '',
         missing: result.missing || [],
         problems: result.problems || [],
+        archived: archived.map((row) => row.to),
       })
-      return { ticket: ticket.number, ...result }
+      return {
+        ticket: ticket.number,
+        ...result,
+        ...(archived.length ? { archived: archived.map((row) => row.to) } : {}),
+      }
     } catch (error) {
       log({
         level: 'error',
@@ -467,12 +590,6 @@ export function createTicketPipeline({
         error: errorText(error),
       })
       return { ticket: ticket.number, ok: false, reason: 'pipeline_error', error: errorText(error) }
-    } finally {
-      if (switched && originalBranch) {
-        await gitImpl(repoDir, ['checkout', originalBranch]).catch(() => {})
-      } else if (switched) {
-        await gitImpl(repoDir, ['checkout', reqBranch]).catch(() => {})
-      }
     }
   }
 
