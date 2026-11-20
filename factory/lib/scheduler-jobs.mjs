@@ -232,13 +232,16 @@ export function createListMergedYesterday({ run = runGh } = {}) {
   }
 }
 
-function decomposeBrief({ instructions, parent, spec }) {
+function decomposeBrief({ instructions, parent, spec, factoryDir }) {
+  const cli = join(factoryDir, 'bin', 'tickets.mjs')
   return [
     String(instructions || '').trim(),
     '',
     '## 这次拆票',
     '',
     `父工单：#${parent.number} ${parent.title || ''}`.trim(),
+    `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli} proposal --seams <接缝文件> --tickets <票文件>`,
+    `点头后用同一个路径建票：node ${cli} create --owner <owner> --repo <repo> --parent <父工单号> --from-proposal --point`,
     '',
     '父工单正文：',
     '',
@@ -295,6 +298,7 @@ export function createDecompose({
 } = {}) {
   const agentRunner = runner || createAgentRunner({ command })
   const agents = agentsDir || DEFAULT_AGENTS_DIR
+  const factoryDir = fileURLToPath(new URL('..', import.meta.url))
   return async function decompose({ owner, repo, parent, spec } = {}) {
     const gate = latestGate(parent?.comments || [])
     if (skip && gate && DECOMPOSE_GATES.includes(gate.kind)) {
@@ -313,7 +317,7 @@ export function createDecompose({
       name: `decompose-${parent?.number || 'parent'}`,
       cwd,
       allowedTools: DECOMPOSE_TOOLS,
-      brief: decomposeBrief({ instructions, parent, spec }),
+      brief: decomposeBrief({ instructions, parent, spec, factoryDir }),
     })
     if (!run?.ok) {
       return {
@@ -328,7 +332,7 @@ export function createDecompose({
     if (!proposal.ok) {
       return { ok: false, code: run?.code, skipped: null, reason: proposal.reason }
     }
-    return { ok: true, code: run?.code, skipped: null, tickets: proposal.tickets.length }
+    return { ok: true, code: run?.code, skipped: null, ticketCount: proposal.tickets.length }
   }
 }
 

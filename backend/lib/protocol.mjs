@@ -126,8 +126,8 @@ export function encodeAcceptance(items = []) {
  * 规范写法：`- [ ] 条目`。兼容写法：普通 `-` 或 `*` 条目，按未勾选处理。
  * `- [x]`、`- [X]` 按已勾选读回，生成时仍写回 `- [ ]`。
  * 正文里有 `## 验收条件` 时只读这一节；没有时读整段，方便直接读验收场景文件。
- * 传 `{ requireSection: true }` 时没有这一节返回空数组，父工单用这个模式，
- * 免得把「客户确认的结论」「不做清单」里的条目当成验收条件。
+ * 传 `{ requireSection: true }` 时，没有这一节返回空数组。
+ * 父工单用这个模式，免得把「客户确认的结论」「不做清单」里的条目当成验收条件。
  *
  * @param {string} text
  * @param {{requireSection?: boolean}} [options]

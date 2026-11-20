@@ -38,8 +38,8 @@ const PARENT_BODY = `## 客户原话
 - 不做在线支付
 `
 
-// 以下样例原样抄自 backend/test/protocol.test.mjs，旧实现 factory/lib/tickets.mjs
-// 对上面父工单拆出的三张票的输出，用来固定提案票单能建票。
+// 样例原样抄自 backend/test/protocol.test.mjs，
+// 是旧实现 factory/lib/tickets.mjs 对上面父工单三张票的输出。
 const LEGACY_TICKETS_MARKER =
   '<!-- factory:tickets W3sidGl0bGUiOiLpob7lrqLmiZPlvIDpk77mjqXog73nnIvliLDlvZPlpKnmsLTmnpzlkozljZblroznmoQiLCJ2ZXJ0aWNhbFNsaWNlIjoi6aG-5a6i5omT5byA6ZO-5o6l77yM55yL5Yiw5LuK5aSp55qE5rC05p6c44CB5Lu35qC85ZKM5Y2W5a6M55qE44CCIiwiYWNjZXB0YW5jZSI6WyLmiZPlvIDpk77mjqXvvIznnIvliLDlvZPlpKnmsLTmnpznmoTlkI3ljZXjgIIiLCLljZblroznmoTmsLTmnpzmoIflh7rmnaXvvIzkuI3og73kuIvljZXjgIIiXSwiYmxvY2tlZEJ5IjpbXX0seyJ0aXRsZSI6IumhvuWuouS4i-WNleaXtuiDvemAieWIsOW6l-WPliIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXml7bog73pgInliLDlupflj5bvvIzmjJHkuIDkuKrlj5botKfml7bpl7TjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaXtumAieWIsOW6l-WPlu-8jOaMkeS4gOS4quWPlui0p-aXtumXtOOAgiJdLCJibG9ja2VkQnkiOlswXX0seyJ0aXRsZSI6IuS4i-WNleaIkOWKn-eci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgCIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXmiJDlip_vvIznnIvliLDorqLljZXlj7flkozlj5botKflnLDlnYDjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaIkOWKn-WQjueci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgOOAgiJdLCJibG9ja2VkQnkiOlsi6aG-5a6i5LiL5Y2V5pe26IO96YCJ5Yiw5bqX5Y-WIl19XQ -->'
 
@@ -468,7 +468,7 @@ test('CLI create --from-proposal 读提案票单，建票成功才写点头：�
   assert.equal(store.length, 4)
 })
 
-test('golden：现有提案的隐藏票单能直接建票', async (t) => {
+test('现有提案的隐藏票单能直接建票', async (t) => {
   const { gh, store } = await startShop(t)
   await gh.createComment({
     owner: 'acme',

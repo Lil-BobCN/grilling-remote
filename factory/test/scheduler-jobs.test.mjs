@@ -169,14 +169,18 @@ function commentsGh(comments) {
   return gh
 }
 
-test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 可关', async () => {
-  const calls = []
-  const runner = {
+function okRunner(calls = []) {
+  return {
     async run(options) {
       calls.push(options)
       return { ok: true, code: 0, stdout: '' }
     },
   }
+}
+
+test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 可关', async () => {
+  const calls = []
+  const runner = okRunner(calls)
   const proposal = proposalBody()
   const parent = {
     number: 42,
@@ -199,14 +203,12 @@ test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 
   assert.match(calls[0].brief, /提案：拆票/)
   assert.match(calls[0].brief, /用户故事/)
   assert.match(calls[0].brief, /父工单：#42/)
+  assert.match(calls[0].brief, /bin\/tickets\.mjs/)
+  assert.match(calls[0].allowedTools, /Bash\(node:\*\)/)
 })
 
 test('createDecompose 成功后校验最新提案，票单能解析才 ok', async () => {
-  const runner = {
-    async run() {
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner()
   const gh = commentsGh([
     { body: '驳回：拆票 再拆一次' },
     { body: proposalBody() },
@@ -221,16 +223,12 @@ test('createDecompose 成功后校验最新提案，票单能解析才 ok', asyn
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.tickets, 1)
+  assert.equal(result.ticketCount, 1)
   assert.equal(gh.calls, 1)
 })
 
 test('createDecompose 提案缺票单 marker 判失败，不写成功', async () => {
-  const runner = {
-    async run() {
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner()
   const gh = commentsGh([{ body: '提案：拆票\n\n- 顾客打开链接能看到当天水果和卖完的' }])
   const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
 
@@ -246,11 +244,7 @@ test('createDecompose 提案缺票单 marker 判失败，不写成功', async ()
 })
 
 test('createDecompose 票单 marker 解不开也判失败', async () => {
-  const runner = {
-    async run() {
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner()
   const gh = commentsGh([{ body: '提案：拆票\n\n<!-- factory:tickets 不是JSON -->' }])
   const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
 
@@ -266,11 +260,7 @@ test('createDecompose 票单 marker 解不开也判失败', async () => {
 })
 
 test('createDecompose 跑完最新关口不是提案：拆票也判失败', async () => {
-  const runner = {
-    async run() {
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner()
   const gh = commentsGh([{ body: proposalBody() }, { body: '驳回：拆票 理由' }])
   const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
 
@@ -286,11 +276,7 @@ test('createDecompose 跑完最新关口不是提案：拆票也判失败', asyn
 })
 
 test('createDecompose 没接 GitHub 客户端时判失败，不假成功', async () => {
-  const runner = {
-    async run() {
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner()
   const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
 
   const result = await createDecompose({ runner, skip: false })({
@@ -306,12 +292,7 @@ test('createDecompose 没接 GitHub 客户端时判失败，不假成功', async
 
 test('createDecompose 已有点头：拆票时直接跳过，不再校验提案', async () => {
   const calls = []
-  const runner = {
-    async run(options) {
-      calls.push(options)
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+  const runner = okRunner(calls)
   const parent = {
     number: 42,
     title: '要个预约取货',
@@ -333,13 +314,9 @@ test('createDecompose 已有点头：拆票时直接跳过，不再校验提案'
   assert.equal(calls.length, 0)
 })
 
-test('createDecompose 已有坏提案时不跳过，重跑一次', async () => {  const calls = []
-  const runner = {
-    async run(options) {
-      calls.push(options)
-      return { ok: true, code: 0, stdout: '' }
-    },
-  }
+test('createDecompose 已有坏提案时不跳过，重跑一次', async () => {
+  const calls = []
+  const runner = okRunner(calls)
   const parent = {
     number: 42,
     title: '要个预约取货',
