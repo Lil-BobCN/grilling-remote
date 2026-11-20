@@ -7,6 +7,7 @@ import {
   checkRepoEnv,
   ensureRepoEnv,
   readRepoEnv,
+  repoEnvFromProcess,
   repoEnvPath,
 } from '../lib/repo-env.mjs'
 
@@ -196,4 +197,21 @@ test('文件内容没有宿主宽权限 token', async (t) => {
   })
   const text = await readFile(repoEnvPath(dir), 'utf8')
   assert.doesNotMatch(text, /gho_host_wide_token/)
+})
+
+test('repoEnvFromProcess 读 env 文件里的 App 配置，缺 App 时返回 null', async (t) => {
+  const dir = await repoFixture(t)
+  const file = join(dir, 'env')
+  await writeFile(
+    file,
+    'GITHUB_APP_ID=123\nGITHUB_APP_INSTALLATION_ID=456\nGITHUB_APP_PRIVATE_KEY=/tmp/github-app.pem\n',
+  )
+  const repoEnv = await repoEnvFromProcess({ env: {}, envFile: file })
+  assert.ok(repoEnv)
+  assert.equal(typeof repoEnv.ensure, 'function')
+  assert.equal(typeof repoEnv.check, 'function')
+
+  const other = join(dir, 'no-app.env')
+  await writeFile(other, 'GITHUB_OWNER=acme\n')
+  assert.equal(await repoEnvFromProcess({ env: {}, envFile: other }), null)
 })

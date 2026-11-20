@@ -1489,3 +1489,28 @@ test('点火前先补客户仓凭证并检查，缺键在贴 Sandcastle 前失�
   assert.equal(calls[0][1].owner, OWNER)
   assert.equal(calls[0][1].repo, REPO)
 })
+
+test('客户仓 .sandcastle/.env 检查失败：不调 runner，也不贴 Sandcastle', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner()
+  const repoEnv = {
+    async ensure() {},
+    async check() {
+      throw new Error('客户仓 .sandcastle/.env 缺键：GH_TOKEN')
+    },
+  }
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { repoEnv }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, false)
+  assert.match(result.error, /缺键：GH_TOKEN/)
+  assert.equal(runner.calls.length, 0)
+  assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
+})
