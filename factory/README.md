@@ -42,7 +42,9 @@
 
 默认 runner 的依赖装在 `~/.afkfactory/sandcastle`（`AFK_SANDCASTLE_HOME` 可改），不进客户仓。第一次跑一张票时执行 `npm install @ai-hero/sandcastle@0.12.0 tsx`，之后复用。
 
-镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。本机没有这个镜像时，用 `npx @ai-hero/sandcastle docker build-image --image-name <镜像名>` 建一次。
+镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。真正用的 tag 带 Dockerfile 和模板 `backend/scaffold/.sandcastle/Dockerfile` 的内容哈希，比如 `sandcastle:demo-a1b2c3d4e5f6`。哈希变了，下一次点火自动用 `npx @ai-hero/sandcastle docker build-image` 重建，不需要人工 `docker tag`。
+
+建镜像的 cwd 是客户仓，默认 build context 是客户仓里的 `.sandcastle`。要用仓根做 context 时显式传 `--dockerfile <相对客户仓的路径>`，CLI 会收到绝对路径。
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 
@@ -53,6 +55,7 @@
 ```bash
 node factory/bin/ignite.mjs --owner <owner> --repo <repo> --parent <父工单号> --ticket <子票号>
 node factory/bin/ignite.mjs ... --dry-run
+node factory/bin/ignite.mjs ... --dockerfile <相对客户仓的路径>   # 可选，context 改成仓根
 ```
 
 ## Mac 常驻

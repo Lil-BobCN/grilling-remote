@@ -725,6 +725,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         ticketBranch,
         prompt,
         image: config.image,
+        dockerfile: config.dockerfile || '',
         envFile,
         timeoutMs,
       }
