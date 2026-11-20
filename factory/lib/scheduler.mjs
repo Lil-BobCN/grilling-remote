@@ -6,12 +6,15 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { eventKey } from '../../backend/lib/protocol.mjs'
 import { readTrail } from './evidence.mjs'
 import { git } from './git.mjs'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
+import { blockingStop, findJob, jobBlocked } from './job.mjs'
 import { logLine } from './log.mjs'
 import { acquireFileLock } from './lock.mjs'
+import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
@@ -165,8 +168,8 @@ function stallActions({ parent, comments, state, hits, owner, repo }) {
         owner,
         repo,
         event: '出事',
-        key: `#${parent.number}:出事:${hit.reason}`,
-        data: { reason: hit.reason, tried: hit.detail },
+        scope: hit.reason,
+        data: { reason: hit.reason, tried: hit.detail, round: roundOf(comments) },
       }),
     )
   }
@@ -198,12 +201,12 @@ function progressFor({ parent, state, comments, tier, step, stuck, note = '' }) 
   })
 }
 
-function notifyAction({ parent, owner, repo, event, key, data, link }) {
+function notifyAction({ parent, owner, repo, event, scope = '', data, link }) {
   const facts = parentFacts(parent)
   return {
     type: 'notify',
     event,
-    key,
+    key: eventKey({ owner, repo, subject: `#${parent.number}`, event, scope }),
     data: { customer: facts.customer, requirement: facts.requirement, ...data },
     link: link || parentLink(parent, owner, repo),
   }
@@ -225,8 +228,8 @@ function needsInfoActions({ parent, comments, state, reason, owner, repo }) {
       owner,
       repo,
       event: 'needs-info',
-      key: `#${parent.number}:needs-info:${state || '无状态'}:${roundOf(comments)}`,
-      data: {},
+      scope: state || '无状态',
+      data: { round: roundOf(comments) },
     }),
   ]
 }
@@ -240,6 +243,16 @@ function selectTicket({ subIssues, closedNumbers }) {
   return ready[0] || null
 }
 
+function igniteEligible({ subIssues, jobs, now, jobPolicy }) {
+  return subIssues.filter(
+    (ticket) =>
+      !jobBlocked(findJob(jobs, { action: 'ignite', ticket: ticket.number }), {
+        now,
+        policy: jobPolicy,
+      }),
+  )
+}
+
 /**
  * 开发中挑下一张子票，返回点火动作。
  * 驳回建的修复子票、子票跑完后接上的下一张，都走这里。
@@ -247,11 +260,14 @@ function selectTicket({ subIssues, closedNumbers }) {
  * `selectTicket` 还要能挑出没有未关闭阻塞的票。
  * 没有可跑的票时返回空数组，等下一次状态变化。
  */
-function igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive }) {
+function igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive, jobs = [], now, jobPolicy = {} }) {
   const open = subIssues.filter(isOpen)
   if (open.length === 0) return []
   if (open.some(isSandcastle)) return []
-  const ticket = selectTicket({ subIssues, closedNumbers })
+  const ticket = selectTicket({
+    subIssues: igniteEligible({ subIssues: open, jobs, now, jobPolicy }),
+    closedNumbers,
+  })
   if (!ticket) return []
   if (repoBusy || activeCount >= maxActive) return []
   return [{ type: 'ignite', ticket, ticketNumber: ticket.number }]
@@ -261,8 +277,11 @@ function igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, ma
  * 子票全部完成、每张票都已合进需求分支，叫收尾。
  * 分支事实由 `collectBranchFacts` 提前算好；这里只看快照，不碰 git。
  * 收尾成功后才转 `待验收`，失败留在 `开发中` 等下一轮。
+ * 作业表里写了 stop 或还在退避时，不叫收尾，也不转状态。
  */
-function finishActions({ parent, subIssues }) {
+function finishActions({ parent, subIssues, jobs = [], now, jobPolicy = {} }) {
+  const finishJob = findJob(jobs, { action: 'finish' })
+  if (jobBlocked(finishJob, { now, policy: jobPolicy })) return []
   if (parent?.branchesMerged !== true) return []
   const order = String(parent?.order || '')
   if (!order || subIssues.length === 0) return []
@@ -284,6 +303,8 @@ export function routeParent({
   spec = null,
   closedNumbers = [],
   trails = [],
+  jobs = [],
+  jobPolicy = {},
   now,
   maxActive = 5,
   activeCount = 0,
@@ -295,6 +316,11 @@ export function routeParent({
   if (!state) {
     return needsInfoActions({ parent, comments, state, reason: '状态对不上', owner, repo })
   }
+
+  // 作业表停了线，或父工单还挂着 needs-info：这一轮什么都不推，等运营者处理。
+  // 待验收的驳回照旧处理，不被停线挡住。
+  const stopped = blockingStop(jobs)
+  if (state !== '待验收' && (stopped || hasLabel(parent, NEEDS_INFO_LABEL))) return []
 
   const small = isSmall(parent)
   const signal = latestSignal(comments)
@@ -338,7 +364,10 @@ export function routeParent({
       })
     }
     if (state === '已提交' && signal?.kind === '点头：补缺口') {
-      const ticket = selectTicket({ subIssues, closedNumbers })
+      const ticket = selectTicket({
+        subIssues: igniteEligible({ subIssues, jobs, now, jobPolicy }),
+        closedNumbers,
+      })
       if (!ticket) {
         return needsInfoActions({
           parent,
@@ -358,17 +387,21 @@ export function routeParent({
       ]
     }
     if (state === '开发中') {
-      const finish = finishActions({ parent, subIssues })
+      const finish = finishActions({ parent, subIssues, jobs, now, jobPolicy })
       if (finish.length) return finish
       const hits = stallHits({ comments, trails })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
-      return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
+      return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive, jobs, now, jobPolicy })
     }
     return []
   }
 
   if (state === '已提交') {
-    if (signal?.kind !== '点头：补缺口') return [{ type: 'runGapProposal' }]
+    if (signal?.kind !== '点头：补缺口') {
+      const gapJob = findJob(jobs, { action: 'gap-proposal' })
+      if (jobBlocked(gapJob, { now, policy: jobPolicy })) return []
+      return [{ type: 'runGapProposal' }]
+    }
     return [
       { type: 'setState', from: '已提交', to: '排队中' },
       { type: 'comment', body: progressFor({ parent, state: '排队中', comments }) },
@@ -377,14 +410,14 @@ export function routeParent({
         owner,
         repo,
         event: '该跑 to-spec',
-        key: `#${parent.number}:该跑 to-spec:${daysBetween(signal.comment?.created_at, now)}`,
-        data: {},
+        scope: String(daysBetween(signal.comment?.created_at, now)),
+        data: { days_waited: daysBetween(signal.comment?.created_at, now) },
       }),
     ]
   }
 
   if (state === '开发中') {
-    const finish = finishActions({ parent, subIssues })
+    const finish = finishActions({ parent, subIssues, jobs, now, jobPolicy })
     if (finish.length) return finish
   }
 
@@ -394,13 +427,20 @@ export function routeParent({
   }
 
   if (state === '开发中') {
-    return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive })
+    return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive, jobs, now, jobPolicy })
   }
 
   if (state === '排队中') {
-    if (spec && subIssues.length === 0) return [{ type: 'runDecompose' }]
+    if (spec && subIssues.length === 0) {
+      const decomposeJob = findJob(jobs, { action: 'decompose' })
+      if (jobBlocked(decomposeJob, { now, policy: jobPolicy })) return []
+      return [{ type: 'runDecompose' }]
+    }
     if (signal?.kind === '点头：拆票') {
-      const ticket = selectTicket({ subIssues, closedNumbers })
+      const ticket = selectTicket({
+        subIssues: igniteEligible({ subIssues, jobs, now, jobPolicy }),
+        closedNumbers,
+      })
       if (!ticket) return []
       const already = isSandcastle(ticket)
       if (!already && (repoBusy || activeCount >= maxActive)) return []
@@ -455,16 +495,16 @@ export function newTicketEvent({ parent, comments = [], owner, repo }) {
     owner,
     repo,
     event: '新单进队列',
-    key: `#${parent.number}:新单进队列`,
     data: {},
   })
 }
 
 /**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
- * 每 24 小时换一个新 key，通知模块按 key 去重，同一事实同一天只送一次。
+ * 每 24 小时换一个新 scope，通知模块按 key 去重，同一事实同一天只送一次。
+ * 给了 owner 和 repo 时 key 带仓库身份，两个客户仓同号不会相撞。
  */
-export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
+export function pendingReminder({ parent, latestGate, now, needsAnswer = [], owner = '', repo = '' }) {
   const state = stateOf(parent)
   const waitingState = state === '已提交' || state === '排队中'
   const answers = Array.isArray(needsAnswer) ? needsAnswer : []
@@ -475,7 +515,13 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
     return {
       event: '需要你答',
       days_waited: days,
-      key: `#${parent.number}:需要你答:${item.key}:${days}`,
+      key: eventKey({
+        owner,
+        repo,
+        subject: `#${parent.number}`,
+        event: '需要你答',
+        scope: `${item.key}:${days}`,
+      }),
       item,
     }
   }
@@ -483,19 +529,35 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
   if (!latestGate || !waitingState) return null
   const kind = latestGate.kind
   const at = latestGate.comment?.created_at
+  const base = { owner, repo, subject: `#${parent.number}` }
 
   if (kind === '提案：补缺口') {
     const days = daysBetween(at, now)
-    return { event: '补缺口提案', days_waited: days, key: `#${parent.number}:补缺口提案:${days}`, gate: latestGate }
+    return {
+      event: '补缺口提案',
+      days_waited: days,
+      key: eventKey({ ...base, event: '补缺口提案', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   if (kind === '点头：补缺口' && !parent?.spec && state === '排队中') {
     const days = daysBetween(at, now)
     if (days < 1) return null
-    return { event: '该跑 to-spec', days_waited: days, key: `#${parent.number}:该跑 to-spec:${days}`, gate: latestGate }
+    return {
+      event: '该跑 to-spec',
+      days_waited: days,
+      key: eventKey({ ...base, event: '该跑 to-spec', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   if (kind === '提案：拆票') {
     const days = daysBetween(at, now)
-    return { event: '拆票提案', days_waited: days, key: `#${parent.number}:拆票提案:${days}`, gate: latestGate }
+    return {
+      event: '拆票提案',
+      days_waited: days,
+      key: eventKey({ ...base, event: '拆票提案', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   return null
 }
@@ -521,7 +583,7 @@ export function digestEvent({ items = [], date = '' } = {}) {
   const day = date || items[0]?.date || ''
   return {
     v: 1,
-    key: `每日抽样:${day}`,
+    key: eventKey({ event: '每日抽样', scope: day }),
     event: '每日抽样',
     data: {
       date: day,
@@ -780,7 +842,7 @@ function mapFacts(map, parentsByNumber) {
   return { customer: facts.customer, requirement: facts.requirement || map?.title || '' }
 }
 
-export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner, repo }) {
+export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner, repo, jobs = [], jobPolicy = {} }) {
   let active = activeCount
   let repoBusy = (snapshot?.parents || []).some((parent) =>
     (parent.subIssues || []).some(stillSandcastle),
@@ -796,6 +858,10 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
       spec: parent.spec || null,
       closedNumbers: parent.closedNumbers || [],
       trails,
+      jobs: jobs.filter(
+        (row) => row?.owner === owner && row?.repo === repo && row?.parent === parent.number,
+      ),
+      jobPolicy,
       now,
       maxActive,
       activeCount: active,
@@ -822,7 +888,13 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
         {
           type: 'notify',
           event: '重传地图已更新',
-          key: `#${map.number}:重传地图已更新:${reupload.date}`,
+          key: eventKey({
+            owner,
+            repo,
+            subject: `#${map.number}`,
+            event: '重传地图已更新',
+            scope: reupload.date,
+          }),
           data: { customer: facts.customer, requirement: facts.requirement },
           link: map.html_url || parentLink(map, owner, repo),
         },
@@ -887,7 +959,7 @@ async function removeSandcastleLabel({ gh, owner, repo, ticketNumber }) {
   return { type: 'removeSandcastle', changed: true }
 }
 
-async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }) {
+async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now }) {
   const ticketNumber = action.ticketNumber ?? action.ticket?.number
   const fresh = await gh.getIssue({ owner, repo, number: ticketNumber })
   if (labelNames(fresh).includes(SANDBOX_LABEL)) {
@@ -915,6 +987,11 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }
   // 认领完成：实现跑在后台，这一轮不等它。锁跟到后台任务结束才放；
   // 进程重启后由已经贴上的 Sandcastle 标签挡住重复点火。
   config.pendingIgnitions ??= new Set()
+  const previousRows = config.jobs?.rowsFor?.({ owner, repo, parent: parent.number }) || []
+  const previous = previousRows.find(
+    (row) => row?.action === 'ignite' && row?.ticket === ticketNumber,
+  )
+  const attempt = (previous?.attempt || 0) + 1
   const task = runIgnitionInBackground({
     gh,
     owner,
@@ -922,9 +999,13 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }
     parent,
     ticket: action.ticket,
     ticketNumber,
+    attempt,
     ignite,
     lock,
     log: config.log,
+    jobs: config.jobs || null,
+    jobPolicy: config.jobPolicy || {},
+    now,
   })
   config.pendingIgnitions.add(task)
   const forget = () => config.pendingIgnitions.delete(task)
@@ -939,9 +1020,13 @@ async function runIgnitionInBackground({
   parent,
   ticket,
   ticketNumber,
+  attempt = 1,
   ignite,
   lock,
   log,
+  jobs,
+  jobPolicy,
+  now,
 }) {
   try {
     await ignite({
@@ -949,9 +1034,11 @@ async function runIgnitionInBackground({
       repo,
       parent: { number: parent.number, title: parent.title, body: parent.body },
       ticket,
+      attempt,
     })
   } catch (error) {
     await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
+    const reason = `点火失败：${String(error?.message || error)}`
     ;(log || logLine)({
       level: 'error',
       msg: '后台点火失败',
@@ -960,28 +1047,60 @@ async function runIgnitionInBackground({
       ticket: ticketNumber,
       error: String(error?.message || error),
     })
+    if (jobs) {
+      try {
+        const row = await jobs.recordFailure({
+          owner,
+          repo,
+          parent: parent.number,
+          ticket: ticketNumber,
+          action: 'ignite',
+          reason,
+          now: now || new Date(),
+          policy: jobPolicy,
+        })
+        if (row?.stop) {
+          await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+        }
+      } catch (writeError) {
+        ;(log || logLine)({
+          level: 'error',
+          msg: '点火失败没写进作业表',
+          owner,
+          repo,
+          ticket: ticketNumber,
+          error: writeError.message,
+        })
+      }
+    }
   } finally {
     await lock.release()
   }
 }
 
 function notificationPayload(event, now) {
-  return {
-    v: 1,
+  return notificationEvent({
     key: event.key,
     event: event.event,
-    occurred_at: (now instanceof Date ? now : new Date(now)).toISOString(),
-    ...(event.link ? { link: event.link } : {}),
-    data: event.data || {},
-  }
+    data: event.data,
+    link: event.link,
+    now: now instanceof Date ? now : new Date(now),
+  })
 }
 
-async function sendEvent({ notifier, event, config, now }) {
+/** 调度器这一层的发送：先查本轮已发 key，再走统一的 sendEvent。 */
+async function deliverEvent({ notifier, event, config, now }) {
   const payload = notificationPayload(event, now)
   if (config.notifiedKeys?.has(payload.key)) {
     return { type: 'notify', event: payload.event, key: payload.key, skipped: 'already-notified' }
   }
-  const result = await notifier.send(payload)
+  const result = await sendNotification(notifier, {
+    key: payload.key,
+    event: payload.event,
+    data: payload.data,
+    link: payload.link,
+    now,
+  })
   if (result?.code === 0) config.notifiedKeys?.add(payload.key)
   return { type: 'notify', event: payload.event, key: payload.key, code: result?.code }
 }
@@ -1038,7 +1157,7 @@ async function executeActions({
       })
       results.push({ type: 'comment', created })
     } else if (action.type === 'notify') {
-      results.push(await sendEvent({ notifier, event: action, config, now }))
+      results.push(await deliverEvent({ notifier, event: action, config, now }))
     } else if (action.type === 'addLabel') {
       results.push(
         await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: action.name }),
@@ -1070,7 +1189,7 @@ async function executeActions({
         )
       }
     } else if (action.type === 'ignite') {
-      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config })
+      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now })
       results.push(result)
       // 抢不到仓锁：这一轮整张票都不动，状态留给下一轮，避免没点火就先改开发中。
       if (result.skipped === 'locked') return { skipped: 'locked', results }
@@ -1173,6 +1292,396 @@ function localDateOffset(date, days) {
   return localDate(moved)
 }
 
+
+// ---- 作业表、心跳和看门狗 ----
+
+const DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_ROUND_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_HEARTBEAT_MS = 60 * 1000
+
+export class StepTimeoutError extends Error {
+  constructor(label, timeoutMs) {
+    super(`${label}超时：${timeoutMs} 毫秒没跑完`)
+    this.name = 'StepTimeoutError'
+    this.label = label
+    this.timeoutMs = timeoutMs
+  }
+}
+
+/** 跑一步：跑的时候按时写心跳，超时就抛 StepTimeoutError。 */
+export async function runJobStep({ jobs, clock = () => new Date(), config = {}, label = '这一步', task }) {
+  const timeoutMs = config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
+  const heartbeatMs = config.jobHeartbeatMs ?? DEFAULT_HEARTBEAT_MS
+  const log = config.log || logLine
+  // 计时器可注入：测试用确定性触发，不跟真实时间赛跑。
+  const timers = config.timers || {}
+  const interval = timers.setInterval || setInterval
+  const clearIntervalFn = timers.clearInterval || clearInterval
+  const timeout = timers.setTimeout || setTimeout
+  const clearTimeoutFn = timers.clearTimeout || clearTimeout
+  let beatTimer = null
+  let timeoutTimer = null
+  if (jobs && heartbeatMs > 0) {
+    beatTimer = interval(() => {
+      jobs.beat({ now: clock() }).catch((error) => {
+        log({ level: 'error', msg: '写作业心跳失败', error: error.message })
+      })
+    }, heartbeatMs)
+    beatTimer?.unref?.()
+  }
+  const work = Promise.resolve().then(task)
+  try {
+    if (timeoutMs <= 0) return await work
+    const limit = new Promise((resolve, reject) => {
+      timeoutTimer = timeout(() => reject(new StepTimeoutError(label, timeoutMs)), timeoutMs)
+      timeoutTimer?.unref?.()
+    })
+    return await Promise.race([work, limit])
+  } finally {
+    if (beatTimer) clearIntervalFn(beatTimer)
+    if (timeoutTimer) clearTimeoutFn(timeoutTimer)
+  }
+}
+
+function failureText(result) {
+  const problem =
+    (result?.problems || result?.findings || [])[0] ||
+    String(result?.stderr || result?.error || '').trim()
+  const reason = String(result?.reason || '')
+  if (reason) return problem ? `${reason}：${problem}` : reason
+  return problem || '失败'
+}
+
+/**
+ * 把这一轮的执行结果写进作业表。
+ * needs-info 和部署失败直接写 stop；其余失败按 attempt 退避，到上限也写 stop。
+ * 写 stop 时给父工单补 needs-info，运营者摘掉标签后下一轮自动放行。
+ */
+async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed, now, jobPolicy, report, notifier, config }) {
+  if (!jobs) return
+  const guard = async (work) => {
+    try {
+      return await work
+    } catch (error) {
+      report.errors.push({ repo, parent: parent.number, jobs: true, message: error.message })
+      return null
+    }
+  }
+  const ensureStopLabel = () =>
+    ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+  const failureEvent = (action, result, row, scope, reason = '作业失败') =>
+    notifyAction({
+      parent,
+      owner,
+      repo,
+      event: '出事',
+      scope,
+      data: {
+        reason,
+        tried: failureText(result),
+        attempt: row?.attempt ?? 0,
+      },
+    })
+  // 同一故障只报一次：key 稳定，attempt 放 data；到上限另发一条换 key 的升级。
+  // 收尾的验证评审失败和收尾模块自己发的「验证评审修不过」共用 key，不重复报。
+  const failureScope = (action, result) => {
+    if (action === 'finish' && result?.reason === 'review_failed') {
+      return { scope: '验证评审修不过:收尾评审', reason: '验证评审修不过' }
+    }
+    if (action === 'finish' && result?.reason === 'verify_failed') {
+      return { scope: '验证评审修不过:PR 验证', reason: '验证评审修不过' }
+    }
+    const kind = String(result?.reason || '失败').replace(/\s+/g, '-')
+    return { scope: `作业失败:${action}:${kind}`, reason: '作业失败' }
+  }
+  const notifyFailure = async (action, result, row) => {
+    if (!row || !notifier) return
+    const { scope, reason } = failureScope(action, result)
+    await guard(
+      deliverEvent({
+        notifier,
+        event: failureEvent(action, result, row, scope, reason),
+        config,
+        now,
+      }),
+    )
+    if (row.stop === 'retry-exhausted') {
+      await guard(
+        deliverEvent({
+          notifier,
+          event: failureEvent(action, result, row, `${scope}:升级`, '重试用完，作业停了'),
+          config,
+          now,
+        }),
+      )
+    }
+  }
+  const recordRetry = async (action, result) => {
+    const row = await guard(
+      jobs.recordFailure({
+        owner,
+        repo,
+        parent: parent.number,
+        action,
+        reason: failureText(result),
+        now,
+        policy: jobPolicy,
+      }),
+    )
+    if (row?.stop) await guard(ensureStopLabel())
+    await notifyFailure(action, result, row)
+  }
+  const results = executed?.results || []
+
+  const needsInfoAction =
+    actions.some((action) => action.type === 'addLabel' && action.name === NEEDS_INFO_LABEL) ||
+    results.some((row) => row.type === 'addLabel' && row.name === NEEDS_INFO_LABEL)
+  if (needsInfoAction) {
+    const gapFailure = results.find((row) => row.type === 'runGapProposal')?.result
+    const reason =
+      gapFailure?.ok === false ? `补缺口失败：${failureText(gapFailure)}` : reasonOf(parent, actions)
+    await guard(
+      jobs.stop({
+        owner,
+        repo,
+        parent: parent.number,
+        action: 'needs-info',
+        stop: 'needs-info',
+        reason,
+        now,
+      }),
+    )
+    return
+  }
+
+  const finishResult = results.find((row) => row.type === 'finish')?.result
+  if (finishResult) {
+    if (finishResult.ok === true) {
+      await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'finish', now }))
+    } else if (finishResult.deploy && finishResult.deploy.ok === false) {
+      const reason = `部署失败：${finishResult.deploy.reason || finishResult.deploy.error || '未知原因'}`
+      const row = await guard(
+        jobs.stop({
+          owner,
+          repo,
+          parent: parent.number,
+          action: 'finish',
+          stop: 'deploy-failed',
+          reason,
+          now,
+        }),
+      )
+      await guard(ensureStopLabel())
+      await guard(
+        deliverEvent({
+          notifier,
+          event: failureEvent('finish', { reason }, row, '作业失败:finish:升级', '部署失败，作业停了'),
+          config,
+          now,
+        }),
+      )
+    } else {
+      await recordRetry('finish', finishResult)
+    }
+  }
+
+  const gapResult = results.find((row) => row.type === 'runGapProposal')?.result
+  if (gapResult && gapResult.ok !== false) {
+    await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'gap-proposal', now }))
+  }
+
+  const decomposeResult = results.find((row) => row.type === 'runDecompose')?.result
+  if (decomposeResult) {
+    if (decomposeResult.ok === true) {
+      await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'decompose', now }))
+    } else {
+      await recordRetry('decompose', decomposeResult)
+    }
+  }
+
+  for (const igniteResult of results.filter((row) => row.type === 'ignite' && row.started)) {
+    await guard(
+      jobs.recordSuccess({
+        owner,
+        repo,
+        parent: parent.number,
+        ticket: igniteResult.ticket,
+        action: 'ignite',
+        now,
+      }),
+    )
+  }
+}
+
+const RETRY_ACTIONS = {
+  finish: 'finish',
+  runGapProposal: 'gap-proposal',
+  runDecompose: 'decompose',
+  ignite: 'ignite',
+}
+
+/** executeActions 整个抛错或超时：按计划里的动作记失败，下一轮先退避再试，不马上重发。 */
+async function noteJobCrash({ gh, jobs, owner, repo, parent, actions, error, now, jobPolicy, report }) {
+  if (!jobs) return
+  const reason =
+    error instanceof StepTimeoutError
+      ? `执行超时：${error.message}`
+      : `执行失败：${error?.message || error}`
+  const guard = async (work) => {
+    try {
+      return await work
+    } catch (writeError) {
+      report.errors.push({ repo, parent: parent.number, jobs: true, message: writeError.message })
+      return null
+    }
+  }
+  const ensureStopLabel = () =>
+    ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+  if (actions.some((action) => action.type === 'addLabel' && action.name === NEEDS_INFO_LABEL)) {
+    await guard(
+      jobs.stop({
+        owner,
+        repo,
+        parent: parent.number,
+        action: 'needs-info',
+        stop: 'needs-info',
+        reason,
+        now,
+      }),
+    )
+    return
+  }
+  for (const action of actions) {
+    const actionName = RETRY_ACTIONS[action.type]
+    if (!actionName) continue
+    const ticket =
+      action.type === 'ignite' ? action.ticketNumber ?? action.ticket?.number ?? null : null
+    const row = await guard(
+      jobs.recordFailure({
+        owner,
+        repo,
+        parent: parent.number,
+        ticket,
+        action: actionName,
+        reason,
+        now,
+        policy: jobPolicy,
+      }),
+    )
+    if (row?.stop) await guard(ensureStopLabel())
+  }
+}
+
+/** 流水线报认证失败：写 stop 并确保父工单挂 needs-info。 */
+async function notePipelineStops({ jobs, gh, owner, repo, parents, pipeline, now, report }) {
+  if (!jobs) return
+  for (const run of pipeline?.runs || []) {
+    if (run?.ok !== false || run.reason !== 'auth_failed') continue
+    const parent = (parents || []).find((row) =>
+      (row.subIssues || []).some((ticket) => ticket.number === run.ticket),
+    )
+    if (!parent) continue
+    try {
+      await jobs.stop({
+        owner,
+        repo,
+        parent: parent.number,
+        action: 'pipeline',
+        stop: 'auth-failed',
+        reason: `认证失败：${(run.problems || [])[0] || 'agent 认证失败'}`,
+        now,
+      })
+      await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+    } catch (error) {
+      report.errors.push({ repo, parent: parent.number, jobs: true, message: error.message })
+    }
+  }
+}
+
+/** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
+async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
+  if (!jobs) return
+  try {
+    const rows = jobs.rowsFor({ owner, repo, parent: parent.number })
+    if (!blockingStop(rows)) return
+    if (hasLabel(parent, NEEDS_INFO_LABEL)) return
+    await jobs.clearStop({ owner, repo, parent: parent.number, now })
+  } catch (error) {
+    report.errors.push({ repo, parent: parent.number, jobs: true, message: error.message })
+  }
+}
+
+/**
+ * 看门狗：一轮开始后超过 stallMs 没结束，或心跳停了 stallMs，发一次「出事」。
+ * 同一轮只发一次；一轮结束（roundStart 清空）后自然安静。
+ */
+export function createWatchdog({
+  jobs,
+  notifier,
+  clock = () => new Date(),
+  log = logLine,
+  stallMs = DEFAULT_ROUND_TIMEOUT_MS,
+  config = {},
+} = {}) {
+  config.notifiedKeys ??= new Set()
+  let timer = null
+  async function tick() {
+    if (!jobs || typeof jobs.stalledFor !== 'function') return null
+    const at = clock()
+    const stalled = jobs.stalledFor(at, { stallMs })
+    if (!stalled) return null
+    // 探活事件的身份固定：同一轮超时只报一次，轮次开始时间放 scope。
+    const key = eventKey({
+      subject: '调度器',
+      event: '出事',
+      scope: `轮次超时:${stalled.roundStart}`,
+    })
+    if (config.notifiedKeys?.has(key)) return null
+    const minutes = Math.max(1, Math.round(stalled.stalledMs / 60000))
+    const event = {
+      v: 1,
+      key,
+      event: '出事',
+      occurred_at: (at instanceof Date ? at : new Date(at)).toISOString(),
+      link: config.runsLogPath ? `file://${config.runsLogPath}` : `file://${jobs.filePath || ''}`,
+      data: {
+        customer: '工厂',
+        requirement: '调度器',
+        reason: '轮次超时',
+        tried: `这一轮从 ${stalled.roundStart} 开始，${minutes} 分钟没跑完`,
+        heartbeat: stalled.lastBeat,
+      },
+    }
+    if (typeof notifier?.send !== 'function') {
+      log({ level: 'error', msg: '轮次超时通知没发出去', reason: '没有注入 notifier' })
+      return event
+    }
+    try {
+      const result = await deliverEvent({ notifier, event, config, now: at })
+      if (result?.skipped) return null
+    } catch (error) {
+      log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
+    }
+    return event
+  }
+  return {
+    tick,
+    start(intervalMs = DEFAULT_HEARTBEAT_MS) {
+      if (timer || !(intervalMs > 0)) return
+      const interval = config.timers?.setInterval || setInterval
+      timer = interval(() => {
+        tick().catch((error) => log({ level: 'error', msg: '看门狗检查失败', error: error.message }))
+      }, intervalMs)
+      timer?.unref?.()
+    },
+    stop() {
+      const clear = config.timers?.clearInterval || clearInterval
+      if (timer) clear(timer)
+      timer = null
+    },
+  }
+}
+
 // ---- 跑一轮 ----
 
 export async function runOnce({
@@ -1190,16 +1699,13 @@ export async function runOnce({
 }) {
   const now = clock()
   const nowDate = now instanceof Date ? now : new Date(now)
+  // customers 可以直接是表，也可以是每轮调用的读取函数（常驻时按 mtime 重读）。
+  const customerRows = typeof customers === 'function' ? await customers() : customers
   config.notifiedKeys ??= new Set()
-
-  const repos = collectRepos({ gh, customers, owner: config.owner })
-  const snapshots = []
-  for (const row of repos) {
-    snapshots.push({
-      row,
-      snapshot: await collectSnapshot({ gh, owner: row.owner, repo: row.repo }),
-    })
-  }
+  const jobs = config.jobs || null
+  const jobPolicy = config.jobPolicy || {}
+  const log = config.log || logLine
+  const step = (label, task) => runJobStep({ jobs, clock, config: { ...config, log }, label, task })
 
   const report = {
     now: nowDate.toISOString(),
@@ -1210,247 +1716,329 @@ export async function runOnce({
     digest: null,
   }
 
-  for (const { row, snapshot } of snapshots) {
-    for (const action of cleanupActions(snapshot)) {
+  if (jobs) {
+    try {
+      await jobs.startRound({ now: nowDate })
+    } catch (error) {
+      report.errors.push({ jobs: true, message: error.message })
+    }
+  }
+
+  try {
+    const repos = collectRepos({ gh, customers: customerRows, owner: config.owner })
+    const snapshots = []
+    for (const row of repos) {
       try {
-        const result = await removeSandcastleLabel({
-          gh,
-          owner: row.owner,
-          repo: row.repo,
-          ticketNumber: action.ticketNumber,
+        snapshots.push({
+          row,
+          snapshot: await step(`读 ${row.repo} 快照`, () =>
+            collectSnapshot({ gh, owner: row.owner, repo: row.repo }),
+          ),
         })
-        report.cleanup.push({ repo: row.repo, ticket: action.ticketNumber, ...result })
       } catch (error) {
-        report.errors.push({ repo: row.repo, cleanup: action.ticketNumber, message: error.message })
+        report.errors.push({ repo: row.repo, snapshot: true, message: error.message })
       }
     }
-  }
 
-  let activeCount = 0
-  for (const { snapshot } of snapshots) {
-    for (const parent of snapshot.parents) {
-      for (const ticket of parent.subIssues) if (stillSandcastle(ticket)) activeCount += 1
+    for (const { row, snapshot } of snapshots) {
+      for (const action of cleanupActions(snapshot)) {
+        try {
+          const result = await removeSandcastleLabel({
+            gh,
+            owner: row.owner,
+            repo: row.repo,
+            ticketNumber: action.ticketNumber,
+          })
+          report.cleanup.push({ repo: row.repo, ticket: action.ticketNumber, ...result })
+        } catch (error) {
+          report.errors.push({ repo: row.repo, cleanup: action.ticketNumber, message: error.message })
+        }
+      }
     }
-  }
 
-  for (const { row, snapshot } of snapshots) {
-    if (config.repoRoot) {
-      try {
-        snapshot.trails = await collectTrails({
+    let activeCount = 0
+    for (const { snapshot } of snapshots) {
+      for (const parent of snapshot.parents) {
+        for (const ticket of parent.subIssues) if (stillSandcastle(ticket)) activeCount += 1
+      }
+    }
+
+    for (const { row, snapshot } of snapshots) {
+      for (const parent of snapshot.parents) {
+        await reconcileJobStops({ jobs, owner: row.owner, repo: row.repo, parent, now: nowDate, report })
+      }
+      if (config.repoRoot) {
+        try {
+          snapshot.trails = await collectTrails({
+            repoDir: join(config.repoRoot, row.repo),
+            parents: snapshot.parents,
+          })
+        } catch (error) {
+          report.errors.push({ repo: row.repo, trails: true, message: error.message })
+        }
+        await collectBranchFacts({
           repoDir: join(config.repoRoot, row.repo),
           parents: snapshot.parents,
         })
-      } catch (error) {
-        report.errors.push({ repo: row.repo, trails: true, message: error.message })
       }
-      await collectBranchFacts({
-        repoDir: join(config.repoRoot, row.repo),
-        parents: snapshot.parents,
-      })
-    }
-    let pipeline = null
-    if (typeof ticketPipeline === 'function') {
-      try {
-        pipeline = await ticketPipeline({
-          gh,
-          owner: row.owner,
-          repo: row.repo,
-          parents: snapshot.parents,
-          repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
-        })
-      } catch (error) {
-        report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
-      }
-    }
-
-    const routed = routeRepo({
-      snapshot,
-      now: nowDate,
-      maxActive: config.maxActive ?? 5,
-      activeCount,
-      owner: row.owner,
-      repo: row.repo,
-    })
-    activeCount = routed.activeCount
-
-    const parents = []
-    for (const { parent, actions } of routed.decisions) {
-      let executed = { skipped: null, results: [] }
-      if (actions.length) {
+      let pipeline = null
+      if (typeof ticketPipeline === 'function') {
         try {
-          executed = await executeActions({
+          pipeline = await step(`跑 ${row.repo} 流水线`, () =>
+            ticketPipeline({
+              gh,
+              owner: row.owner,
+              repo: row.repo,
+              parents: snapshot.parents,
+              repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
+            }),
+          )
+        } catch (error) {
+          report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
+        }
+      }
+      await notePipelineStops({
+        jobs,
+        gh,
+        owner: row.owner,
+        repo: row.repo,
+        parents: snapshot.parents,
+        pipeline,
+        now: nowDate,
+        report,
+      })
+
+      const routed = routeRepo({
+        snapshot,
+        now: nowDate,
+        maxActive: config.maxActive ?? 5,
+        activeCount,
+        owner: row.owner,
+        repo: row.repo,
+        jobs: jobs ? jobs.all() : [],
+        jobPolicy,
+      })
+      activeCount = routed.activeCount
+
+      const parents = []
+      for (const { parent, actions } of routed.decisions) {
+        let executed = { skipped: null, results: [] }
+        if (actions.length) {
+          try {
+            executed = await step(`执行父工单 #${parent.number} 的动作`, () =>
+              executeActions({
+                gh,
+                owner: row.owner,
+                repo: row.repo,
+                parent,
+                actions,
+                ignite,
+                decompose,
+                gapProposal,
+                createFixTicket,
+                finish,
+                notifier,
+                config,
+                now: nowDate,
+              }),
+            )
+          } catch (error) {
+            report.errors.push({ repo: row.repo, parent: parent.number, message: error.message })
+            executed = { skipped: null, results: [], error: error.message }
+            await noteJobCrash({
+              gh,
+              jobs,
+              owner: row.owner,
+              repo: row.repo,
+              parent,
+              actions,
+              error,
+              now: nowDate,
+              jobPolicy,
+              report,
+            })
+          }
+          await noteJobResults({
             gh,
+            jobs,
             owner: row.owner,
             repo: row.repo,
             parent,
             actions,
-            ignite,
-            decompose,
-            gapProposal,
-            createFixTicket,
-            finish,
+            executed,
+            now: nowDate,
+            jobPolicy,
+            report,
             notifier,
             config,
-            now: nowDate,
           })
+        }
+        parents.push({
+          parent: parent.number,
+          decision: decisionOf(actions),
+          reason: reasonOf(parent, actions),
+          actions: actions.map(summarizeAction),
+          executed,
+        })
+      }
+      const maps = []
+      for (const { map, actions } of routed.maps) {
+        let executed = { skipped: null, results: [] }
+        try {
+          executed = await step(`执行地图 #${map.number} 的动作`, () =>
+            executeActions({
+              gh,
+              owner: row.owner,
+              repo: row.repo,
+              parent: map,
+              actions,
+              ignite,
+              decompose,
+              gapProposal,
+              createFixTicket,
+              notifier,
+              config,
+              now: nowDate,
+            }),
+          )
         } catch (error) {
-          report.errors.push({ repo: row.repo, parent: parent.number, message: error.message })
+          report.errors.push({ repo: row.repo, map: map.number, message: error.message })
           executed = { skipped: null, results: [], error: error.message }
         }
+        maps.push({
+          map: map.number,
+          decision: actions.length ? 'notify' : 'wait',
+          actions: actions.map(summarizeAction),
+          executed,
+        })
       }
-      parents.push({
-        parent: parent.number,
-        decision: decisionOf(actions),
-        reason: reasonOf(parent, actions),
-        actions: actions.map(summarizeAction),
-        executed,
-      })
-    }
-    const maps = []
-    for (const { map, actions } of routed.maps) {
-      let executed = { skipped: null, results: [] }
-      try {
-        executed = await executeActions({
-          gh,
+      report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps, pipeline })
+
+      for (const parent of snapshot.parents) {
+        const newTicket = newTicketEvent({
+          parent,
+          comments: parent.comments || [],
           owner: row.owner,
           repo: row.repo,
-          parent: map,
-          actions,
-          ignite,
-          decompose,
-          gapProposal,
-          createFixTicket,
-          notifier,
-          config,
-          now: nowDate,
         })
-      } catch (error) {
-        report.errors.push({ repo: row.repo, map: map.number, message: error.message })
-        executed = { skipped: null, results: [], error: error.message }
-      }
-      maps.push({
-        map: map.number,
-        decision: actions.length ? 'notify' : 'wait',
-        actions: actions.map(summarizeAction),
-        executed,
-      })
-    }
-    report.repos.push({ repo: row.repo, fullName: row.fullName, parents, maps, pipeline })
+        if (newTicket) {
+          try {
+            const result = await deliverEvent({ notifier, event: newTicket, config, now: nowDate })
+            report.notifications.push({
+              repo: row.repo,
+              parent: parent.number,
+              event: newTicket.event,
+              key: newTicket.key,
+              ...result,
+            })
+          } catch (error) {
+            report.errors.push({
+              repo: row.repo,
+              parent: parent.number,
+              event: newTicket.event,
+              message: error.message,
+            })
+          }
+        }
 
-    for (const parent of snapshot.parents) {
-      const newTicket = newTicketEvent({
-        parent,
-        comments: parent.comments || [],
-        owner: row.owner,
-        repo: row.repo,
-      })
-      if (newTicket) {
+        let answers = []
         try {
-          const result = await sendEvent({ notifier, event: newTicket, config, now: nowDate })
+          answers = await resolveNeedsAnswer(config, {
+            owner: row.owner,
+            repo: row.repo,
+            parent,
+            snapshot,
+          })
+        } catch (error) {
+          report.errors.push({
+            repo: row.repo,
+            parent: parent.number,
+            needsAnswer: true,
+            message: error.message,
+          })
+        }
+        const reminder = pendingReminder({
+          parent,
+          latestGate: latestGate(parent.comments || []),
+          now: nowDate,
+          needsAnswer: answers,
+          owner: row.owner,
+          repo: row.repo,
+        })
+        if (!reminder) continue
+        const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
+        try {
+          const result = await deliverEvent({ notifier, event, config, now: nowDate })
           report.notifications.push({
             repo: row.repo,
             parent: parent.number,
-            event: newTicket.event,
-            key: newTicket.key,
+            event: event.event,
+            key: event.key,
             ...result,
           })
         } catch (error) {
           report.errors.push({
             repo: row.repo,
             parent: parent.number,
-            event: newTicket.event,
+            event: event.event,
             message: error.message,
           })
         }
       }
+    }
 
-      let answers = []
+    if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
       try {
-        answers = await resolveNeedsAnswer(config, {
-          owner: row.owner,
-          repo: row.repo,
-          parent,
-          snapshot,
-        })
+        const result = await config.previewSweep({ now: nowDate })
+        report.previewSweep = { ok: true, ...result }
       } catch (error) {
-        report.errors.push({
-          repo: row.repo,
-          parent: parent.number,
-          needsAnswer: true,
-          message: error.message,
-        })
+        report.errors.push({ previewSweep: true, message: error.message })
+        report.previewSweep = { ok: false, error: error.message }
       }
-      const reminder = pendingReminder({
-        parent,
-        latestGate: latestGate(parent.comments || []),
-        now: nowDate,
-        needsAnswer: answers,
-      })
-      if (!reminder) continue
-      const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
+      // 每天只试一次：helper 不在或失败，留到明天，不每 30 秒重试。
+      config.lastPreviewSweepDate = localDate(nowDate)
+    }
+
+    if (dueDigest({ now: nowDate, lastSentDate: config.lastSentDate })) {
+      const date = localDateOffset(nowDate, -1)
+      let items = []
+      let queryFailed = false
+      if (typeof config.listMergedYesterday === 'function') {
+        try {
+          const rows = await config.listMergedYesterday({
+            now: nowDate,
+            repos: snapshots.map(({ row }) => row),
+          })
+          if (Array.isArray(rows)) items = rows
+        } catch (error) {
+          queryFailed = true
+          report.errors.push({ digest: true, listMergedYesterday: true, message: error.message })
+        }
+      }
+      const event = digestEvent({ items, date })
+      let result = { sent: false, count: items.length }
+      if (event) {
+        try {
+          result = { sent: true, count: items.length, ...(await deliverEvent({ notifier, event, config, now: nowDate })) }
+        } catch (error) {
+          report.errors.push({ digest: true, message: error.message })
+          result = { sent: false, count: items.length, error: error.message }
+        }
+      }
+      config.lastSentDate = queryFailed ? config.lastSentDate : localDate(nowDate)
+      report.digest = { due: true, date, ...(queryFailed ? { queryFailed: true } : {}), ...result }
+    }
+
+    return report
+  } finally {
+    if (jobs) {
       try {
-        const result = await sendEvent({ notifier, event, config, now: nowDate })
-        report.notifications.push({
-          repo: row.repo,
-          parent: parent.number,
-          event: event.event,
-          key: event.key,
-          ...result,
-        })
+        await jobs.endRound({ now: clock() })
       } catch (error) {
-        report.errors.push({
-          repo: row.repo,
-          parent: parent.number,
-          event: event.event,
-          message: error.message,
-        })
+        report.errors.push({ jobs: true, message: error.message })
       }
     }
   }
-
-  if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
-    try {
-      const result = await config.previewSweep({ now: nowDate })
-      report.previewSweep = { ok: true, ...result }
-    } catch (error) {
-      report.errors.push({ previewSweep: true, message: error.message })
-      report.previewSweep = { ok: false, error: error.message }
-    }
-    // 每天只试一次：helper 不在或失败，留到明天，不每 30 秒重试。
-    config.lastPreviewSweepDate = localDate(nowDate)
-  }
-
-  if (dueDigest({ now: nowDate, lastSentDate: config.lastSentDate })) {
-    const date = localDateOffset(nowDate, -1)
-    let items = []
-    let queryFailed = false
-    if (typeof config.listMergedYesterday === 'function') {
-      try {
-        const rows = await config.listMergedYesterday({
-          now: nowDate,
-          repos: snapshots.map(({ row }) => row),
-        })
-        if (Array.isArray(rows)) items = rows
-      } catch (error) {
-        queryFailed = true
-        report.errors.push({ digest: true, listMergedYesterday: true, message: error.message })
-      }
-    }
-    const event = digestEvent({ items, date })
-    let result = { sent: false, count: items.length }
-    if (event) {
-      try {
-        result = { sent: true, count: items.length, ...(await sendEvent({ notifier, event, config, now: nowDate })) }
-      } catch (error) {
-        report.errors.push({ digest: true, message: error.message })
-        result = { sent: false, count: items.length, error: error.message }
-      }
-    }
-    config.lastSentDate = queryFailed ? config.lastSentDate : localDate(nowDate)
-    report.digest = { due: true, date, ...(queryFailed ? { queryFailed: true } : {}), ...result }
-  }
-
-  return report
 }
 
 function sleep(ms, signal) {
@@ -1467,23 +2055,46 @@ function sleep(ms, signal) {
   })
 }
 
-/** 每 30 秒一轮。单轮失败记一行 JSON 日志，不退出。 */
+/**
+ * 每 30 秒一轮。单轮失败记一行 JSON 日志，不退出。
+ * 接上作业表时同时开看门狗：一轮跑太久或心跳停了就发「出事」。
+ */
 export async function runLoop({
   intervalMs = 30000,
   signal,
   log = logLine,
   run = runOnce,
   onReport,
+  watchdog,
   ...options
 }) {
-  while (!signal?.aborted) {
-    try {
-      const report = await run(options)
-      if (typeof onReport === 'function') await onReport(report)
-    } catch (error) {
-      log({ level: 'error', msg: '调度器这一轮失败', error: error.message })
+  const config = options.config || {}
+  const activeWatchdog =
+    watchdog !== undefined
+      ? watchdog
+      : config.jobs
+        ? createWatchdog({
+            jobs: config.jobs,
+            notifier: options.notifier ?? config.notifier,
+            clock: options.clock || (() => new Date()),
+            log,
+            stallMs: config.roundTimeoutMs ?? DEFAULT_ROUND_TIMEOUT_MS,
+            config,
+          })
+        : null
+  activeWatchdog?.start?.(config.watchdogIntervalMs ?? DEFAULT_HEARTBEAT_MS)
+  try {
+    while (!signal?.aborted) {
+      try {
+        const report = await run(options)
+        if (typeof onReport === 'function') await onReport(report)
+      } catch (error) {
+        log({ level: 'error', msg: '调度器这一轮失败', error: error.message })
+      }
+      if (signal?.aborted) break
+      await sleep(intervalMs, signal)
     }
-    if (signal?.aborted) break
-    await sleep(intervalMs, signal)
+  } finally {
+    activeWatchdog?.stop?.()
   }
 }

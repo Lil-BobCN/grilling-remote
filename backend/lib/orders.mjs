@@ -6,6 +6,12 @@ import { gitSync, readJson, withFileLock, writeJsonAtomic } from './store.mjs'
 export const SYNC_ALERT_MS = 10 * 60 * 1000
 export const PENDING_PATHSPEC = 'orders/*.sync-pending'
 export const MESSAGE_TYPES = ['校验未通过', '待客户验收', '满 24 小时']
+export const IMPORT_IMPORTED = 'imported'
+export const IMPORT_FAILED = 'import_failed'
+export const IMPORT_PARTIAL = 'import_partial'
+export const IMPORT_NEEDS_OPERATOR = 'needs_operator'
+export const IMPORT_FAILURE_NEXT_STEP =
+  '文件已经保存，不用重新上传。运营者会处理导入问题，处理好后这单继续；一直没动静就微信找客服。'
 const PENDING_SUFFIX = '.sync-pending'
 
 export function ordersDir(config) {
@@ -182,6 +188,8 @@ export function publicOrder(order) {
     missing: order.missing,
     trial: order.trial,
     feedback: order.feedback,
+    import_status: order.import_status || '',
+    import_failure: order.import_failure || null,
     transitions: order.transitions,
   }
 }
@@ -223,6 +231,8 @@ export async function recordUpload(config, account, upload) {
       feedback: '',
       missing: [],
       messages: [],
+      import_status: '',
+      import_failure: null,
       closed_at: null,
       uploaded_at: null,
     }
@@ -267,6 +277,8 @@ export async function recordUpload(config, account, upload) {
       transitions,
       missing: upload.validation.missing,
       uploaded_at: upload.validation.passed ? now : previous.uploaded_at ?? null,
+      import_status: '',
+      import_failure: null,
     }
 
     await writeJsonAtomic(join(ordersDir(config), `${next.id}.json`), next)
@@ -313,6 +325,28 @@ export async function updateOrder(config, orderId, patch) {
   })
   if (sync.error) await noteSyncFailure(config, order, sync.error)
   return { order, sync }
+}
+
+/**
+ * 把一次导入失败写成订单终态，订单页据此显示失败原因和下一步。
+ * `status` 取 `import_failed` 或 `needs_operator`；后者是地图旧格式这类要人看的失败。
+ */
+export async function markImportFailure(
+  config,
+  orderId,
+  { status = IMPORT_FAILED, reason = status, message = '', uploadId = '', at = new Date().toISOString() } = {},
+) {
+  return updateOrder(config, orderId, {
+    import_status: status,
+    import_failure: {
+      status,
+      reason,
+      message: String(message || ''),
+      next_step: IMPORT_FAILURE_NEXT_STEP,
+      at,
+      upload_id: uploadId,
+    },
+  })
 }
 
 /**

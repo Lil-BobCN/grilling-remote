@@ -887,6 +887,7 @@ export const en = {
       },
       internal: {
         未建单: 'No ticket yet',
+        导入失败: 'Import failed',
         排队中: 'Queued',
         开发中: 'In development',
         待验收: 'Awaiting review',
@@ -924,6 +925,11 @@ export const en = {
         invalidNote:
           'Upload again when it is fixed. It continues on the same order; you do not need to restate your requirements.',
         reupload: 'Upload again',
+        importFailedTitle: 'Import did not succeed',
+        importFailedBody:
+          'We received the files, but an error occurred while importing them, so work has not started. The files are saved; you do not need to upload again.',
+        importFailedNext:
+          'Our team will fix the import and this order will continue. If it stays quiet for a long time, message support on WeChat.',
         rejectedTitle: 'This round fixes what you raised last round.',
         rejectedBody:
           'Once work starts, it begins again at “Work started”. We will let you try it when it is done.',
@@ -1231,10 +1237,13 @@ export const en = {
     branches: {
       校验未通过: 'Check failed',
       已驳回: 'Revision requested',
+      导入失败: 'Import failed',
     },
     lede: {
       noProgress: 'No progress has been recorded for this order yet. Check back in a moment.',
       invalid: 'We have your files, but a few things are still needed before a ticket can be created.',
+      importFailed:
+        'We have your files, but the import hit an error. You do not need to upload again; we are on it.',
       round: (n) => `This is round ${n}.`,
       doing: (done, total) =>
         `Working on piece ${done} of ${total}. We will message you on WeChat when it is done.`,
@@ -1244,6 +1253,7 @@ export const en = {
     subline: {
       none: 'No progress yet',
       invalid: 'No ticket yet; waiting for your files',
+      importFailed: 'Import failed; our team is on it',
       rejected: 'Fixing last round\'s issues',
       done: 'Contact support to transfer the repo',
       trial: 'Waiting for your review',

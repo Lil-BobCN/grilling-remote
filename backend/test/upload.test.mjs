@@ -12,6 +12,7 @@ import {
   makeWorkspace,
   makeZipFromEntries,
   readZip,
+  seedAdmin,
   seedCustomer,
   startServer,
   upload,
@@ -362,6 +363,29 @@ test('内容不全返回 200 和 missing，补好后同一轮重传', async () =
   }
 })
 
+test('缺客户原话的包在订单 missing 里提示', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  const server = await startServer(config)
+  try {
+    const { cookie } = await login(server.base)
+    const { zipPath } = await makeZipFromEntries([
+      {
+        name: '.scratch/demo/需求草稿.md',
+        kind: 'file',
+        payload: '# demo 需求草稿\n\nStatus: 已问完\n\n## 1. 客户原话\n',
+      },
+      { name: '.scratch/demo/验收场景.md', kind: 'file', payload: '客户确认：2026-11-15\n' },
+    ])
+    const response = await upload(server.base, cookie, await readZip(zipPath))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.match(body.orders[0].missing.join('\n'), /客户原话/)
+  } finally {
+    await server.close()
+  }
+})
+
 test('地图型需求完整包通过', async () => {
   const { config } = await makeConfig()
   await seedCustomer(config)
@@ -559,6 +583,26 @@ test('订单列表和详情只看自己的单', async () => {
 
     const missing = await fetch(`${server.base}/app/api/orders/o-9999`, { headers: { Cookie: cookie } })
     assert.equal(missing.status, 404)
+  } finally {
+    await server.close()
+  }
+})
+
+test('管理员账号没有客户档案时上传返回 422，不建死单', async () => {
+  const { config } = await makeConfig()
+  await seedCustomer(config)
+  await seedAdmin(config)
+  const server = await startServer(config)
+  try {
+    const admin = await login(server.base, 'admin@example.com', PASSWORD)
+    const workspace = await makeWorkspace()
+    const response = await upload(server.base, admin.cookie, await readZip(workspace.zipPath))
+    assert.equal(response.status, 422)
+    const body = await response.json()
+    assert.match(body.message, /客户账号/)
+    assert.match(body.message, /显式映射/)
+    await assert.rejects(readFile(join(config.dataDir, 'orders', 'o-0001.json')))
+    assert.deepEqual(await readdir(config.uploadDir), [])
   } finally {
     await server.close()
   }

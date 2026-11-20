@@ -7,12 +7,25 @@
  * 这里不把宿主的 `GH_TOKEN`、`ANTHROPIC_AUTH_TOKEN` 等拼进脚本或子进程环境。
  */
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const SANDCASTLE_VERSION = '0.12.0'
 export const DEFAULT_MODEL = 'ccs-claude-deepseek--deepseek-v4-flash[1M]'
+
+/** 客户仓模板里的 Dockerfile；镜像 tag 的哈希把这份模板也算进去。 */
+const SCAFFOLD_DOCKERFILE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'backend',
+  'scaffold',
+  '.sandcastle',
+  'Dockerfile',
+)
 
 const ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'SHELL', 'USER']
 
@@ -114,22 +127,81 @@ async function ensureDeps({ home, env, exec }) {
   return { installed: true }
 }
 
-export async function defaultBuildImage({ image, home, env, exec }) {
-  const inspect = await exec('docker', ['image', 'inspect', '--format', '{{.Id}}', image], {
-    cwd: home,
+/** 镜像 tag 带 Dockerfile 和模板的内容哈希；仓库名保留，名字只变 tag。 */
+function hashTaggedImage(image, hash) {
+  const value = String(image || '')
+  const slash = value.lastIndexOf('/')
+  const colon = value.lastIndexOf(':')
+  const tagged = colon > slash
+  const repo = tagged ? value.slice(0, colon) : value
+  const tag = tagged ? value.slice(colon + 1) : ''
+  const suffix = String(hash).slice(0, 12)
+  return `${repo}:${tag ? `${tag}-${suffix}` : suffix}`
+}
+
+/** Dockerfile 内容和模板一起算哈希；任一变化都换 tag，下次点火重建。 */
+function imageContentHash(dockerfileText, templateText) {
+  return createHash('sha256')
+    .update('dockerfile\0')
+    .update(String(dockerfileText ?? ''))
+    .update('\0template\0')
+    .update(String(templateText ?? ''))
+    .digest('hex')
+}
+
+async function readTextOrEmpty(path) {
+  try {
+    return await readFile(path, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 在客户仓里建镜像。cwd 是客户仓，默认 context 是 `<repoDir>/.sandcastle`；
+ * 需要仓根做 context 时显式传 `dockerfile`，CLI 会收到绝对路径。
+ * tag 由 Dockerfile 内容和模板哈希生成，内容变了自动换 tag 并重建。
+ */
+export async function defaultBuildImage({
+  image,
+  repoDir,
+  home = process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle'),
+  env,
+  exec,
+  dockerfile = '',
+  templatePath = SCAFFOLD_DOCKERFILE,
+}) {
+  if (!repoDir) throw new Error('建镜像需要 repoDir')
+  const dockerfilePath = dockerfile
+    ? isAbsolute(dockerfile)
+      ? dockerfile
+      : resolve(repoDir, dockerfile)
+    : join(repoDir, '.sandcastle', 'Dockerfile')
+  const hash = imageContentHash(
+    await readTextOrEmpty(dockerfilePath),
+    await readTextOrEmpty(templatePath),
+  )
+  const taggedImage = hashTaggedImage(image, hash)
+
+  const inspect = await exec('docker', ['image', 'inspect', '--format', '{{.Id}}', taggedImage], {
+    cwd: repoDir,
     env: baseEnv(env),
   })
-  if (inspect.code === 0) return { built: false, image }
-
-  const result = await exec(
-    'npx',
-    ['@ai-hero/sandcastle', 'docker', 'build-image', '--image-name', image],
-    { cwd: home, env: baseEnv(env) },
-  )
-  if (result.code !== 0) {
-    throw new Error(`建镜像 ${image} 失败（退出码 ${result.code}）：${tail(result)}`)
+  if (inspect.code === 0 && String(inspect.stdout || '').trim()) {
+    return { built: false, image: taggedImage, hash }
   }
-  return { built: true, image }
+
+  // 用 runner 目录里已装的 CLI，cwd 仍是客户仓；走 npx 会在客户仓重新下载。
+  const args = ['docker', 'build-image', '--image-name', taggedImage]
+  if (dockerfile) args.push('--dockerfile', dockerfilePath)
+  const result = await exec(join(home, 'node_modules', '.bin', 'sandcastle'), args, {
+    cwd: repoDir,
+    env: baseEnv(env),
+  })
+  if (result.code !== 0) {
+    throw new Error(`建镜像 ${taggedImage} 失败（退出码 ${result.code}）：${tail(result)}`)
+  }
+  return { built: true, image: taggedImage, hash }
 }
 
 export function renderRunScript({ model, imageName, prompt, ticketBranch }) {
@@ -139,15 +211,34 @@ export function renderRunScript({ model, imageName, prompt, ticketBranch }) {
     '',
     '// 凭证只从 .sandcastle/.env 取，Sandcastle 只转发这个文件里出现过的键。',
     '// GH_TOKEN 也在 .sandcastle/.env 里，只限当前客户仓；不读宿主环境变量。',
-    'const result = await run({',
-    `  agent: claudeCode(${JSON.stringify(model)}),`,
-    `  sandbox: docker({ imageName: ${JSON.stringify(imageName)} }),`,
-    `  promptFile: ${JSON.stringify(prompt)},`,
-    `  branchStrategy: { type: 'branch', branch: ${JSON.stringify(ticketBranch)} },`,
-    '})',
-    'console.log(`AFK_RESULT:${JSON.stringify({ commits: result.commits, branch: result.branch })}`)',
+    '// 脏工作树会被 Sandcastle 保留，路径要通过 preservedWorktreePath 交给工厂清理。',
+    'try {',
+    '  const result = await run({',
+    `    agent: claudeCode(${JSON.stringify(model)}),`,
+    `    sandbox: docker({ imageName: ${JSON.stringify(imageName)} }),`,
+    `    promptFile: ${JSON.stringify(prompt)},`,
+    `    branchStrategy: { type: 'branch', branch: ${JSON.stringify(ticketBranch)} },`,
+    '  })',
+    '  console.log(`AFK_RESULT:${JSON.stringify({ commits: result.commits, branch: result.branch, preservedWorktreePath: result.preservedWorktreePath })}`)',
+    '} catch (error) {',
+    '  console.log(`AFK_RESULT:${JSON.stringify({ commits: [], branch: undefined, preservedWorktreePath: error?.preservedWorktreePath, error: String(error?.message || error) })}`)',
+    '  throw error',
+    '}',
     '',
   ].join('\n')
+}
+
+function tryParseResult(stdout) {
+  const line = String(stdout || '')
+    .split(/\r?\n/)
+    .reverse()
+    .find((row) => row.startsWith('AFK_RESULT:'))
+  if (!line) return null
+  try {
+    return JSON.parse(line.slice('AFK_RESULT:'.length))
+  } catch {
+    return null
+  }
 }
 
 function parseResult(stdout, ticketBranch) {
@@ -156,10 +247,18 @@ function parseResult(stdout, ticketBranch) {
     .reverse()
     .find((row) => row.startsWith('AFK_RESULT:'))
   if (!line) throw new Error('Sandcastle 没有输出 AFK_RESULT')
-  const parsed = JSON.parse(line.slice('AFK_RESULT:'.length))
+  let parsed
+  try {
+    parsed = JSON.parse(line.slice('AFK_RESULT:'.length))
+  } catch {
+    throw new Error(`Sandcastle 的 AFK_RESULT 不是合法 JSON：${line.slice(0, 200)}`)
+  }
   return {
     commits: Array.isArray(parsed?.commits) ? parsed.commits : [],
     branch: parsed?.branch || ticketBranch,
+    ...(parsed?.preservedWorktreePath
+      ? { preservedWorktreePath: parsed.preservedWorktreePath }
+      : {}),
   }
 }
 
@@ -170,6 +269,7 @@ function parseResult(stdout, ticketBranch) {
  * @param {object} [options.env] 宿主环境；只用 PATH、HOME 这类进程键，不转发凭证
  * @param {Function} [options.exec] 外部命令替身 `(command, args, {cwd, env, onStart}) => {code, stdout, stderr}`
  * @param {Function} [options.buildImage] 建镜像替身
+ * @param {string} [options.templatePath] 客户仓 Dockerfile 模板，参与镜像 tag 哈希
  */
 export function createSandcastleRunner({
   home = process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle'),
@@ -177,10 +277,11 @@ export function createSandcastleRunner({
   env = process.env,
   exec = defaultExec,
   buildImage = defaultBuildImage,
+  templatePath = SCAFFOLD_DOCKERFILE,
 } = {}) {
   /** 装依赖、备镜像、写脚本。不计入点火两分钟回执。 */
   async function prepare(args) {
-    const { repoDir, ticketBranch, prompt, envFile, image } = args
+    const { repoDir, ticketBranch, prompt, envFile, image, dockerfile } = args
     if (!repoDir || !ticketBranch || !prompt) {
       throw new Error('runner 缺少 repoDir、ticketBranch 或 prompt')
     }
@@ -192,18 +293,28 @@ export function createSandcastleRunner({
     const deps = await ensureDeps({ home, env, exec })
 
     const imageName = image || envValues.SANDCASTLE_IMAGE || `sandcastle:${basename(repoDir)}`
-    const built = await buildImage({ image: imageName, home, env, exec })
+    const built = await buildImage({
+      image: imageName,
+      repoDir,
+      dockerfile: dockerfile || '',
+      templatePath,
+      home,
+      env,
+      exec,
+    })
+    const actualImage = built?.image || imageName
 
     const ticketNumber = String(ticketBranch).split('/').pop().replace(/[^A-Za-z0-9._-]/g, '-')
     const scriptPath = join(home, `run-${ticketNumber}.mts`)
     await writeFile(
       scriptPath,
-      renderRunScript({ model, imageName, prompt, ticketBranch }),
+      renderRunScript({ model, imageName: actualImage, prompt, ticketBranch }),
       'utf8',
     )
 
     return {
-      imageName,
+      imageName: actualImage,
+      hash: String(built?.hash || ''),
       scriptPath,
       installed: Boolean(deps?.installed),
       built: Boolean(built?.built),
@@ -224,7 +335,10 @@ export function createSandcastleRunner({
     })
 
     if (result.code !== 0) {
-      throw new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
+      const error = new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
+      const parsed = tryParseResult(result.stdout)
+      if (parsed?.preservedWorktreePath) error.preservedWorktreePath = parsed.preservedWorktreePath
+      throw error
     }
     return parseResult(result.stdout, ticketBranch)
   }

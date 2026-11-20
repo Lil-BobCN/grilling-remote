@@ -7,11 +7,13 @@
  * 部署失败重试一次；两次都失败就保留上一版，发「出事」通知，不返回成功。
  */
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
+import { eventKey } from '../../backend/lib/protocol.mjs'
 import { git } from './git.mjs'
+import { sendEvent } from './notify.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -88,14 +90,20 @@ function normalizeTries(tries) {
   return cleaned
 }
 
+/** 共享健康判据：只有 HTTP 200 算健康。000、401、502 都不算。 */
+export function healthy(code) {
+  return code === 200 || code === '200'
+}
+
 function healthOk(result) {
-  if (result === false || result === null) return false
+  if (typeof result === 'number' || typeof result === 'string') return healthy(result)
+  if (result === false || result === null || result === undefined) return false
   if (result && typeof result === 'object' && result.ok === false) return false
   return true
 }
 
-function deployKey(orderId, event, version, at) {
-  return [orderId || '成品', event, version, at].filter(Boolean).join(':')
+function deployKey(orderId, event, version) {
+  return eventKey({ subject: orderId || '成品', event, scope: version })
 }
 
 /** 部署失败的「出事」通知。通知失败不影响已经做出的判断。 */
@@ -107,20 +115,21 @@ export async function notifyDeployFailure({
   reason = '部署失败',
   tried,
   link = '',
+  attempt = 1,
 } = {}) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send({
-      v: 1,
-      key: key || deployKey('', '出事', reason, new Date().toISOString()),
+    await sendEvent(notifier, {
+      key: key || deployKey('', '出事', reason),
       event: '出事',
-      occurred_at: new Date().toISOString(),
+      now: new Date(),
       link,
       data: {
         customer: customer || '未知客户',
         requirement: requirement || '成品部署',
         reason,
         tried,
+        attempt,
       },
     })
   } catch {
@@ -131,11 +140,10 @@ export async function notifyDeployFailure({
 async function notifyDeployDone({ notifier, key, customer, requirement, address, version, pr, link }) {
   if (typeof notifier?.send !== 'function') return
   try {
-    await notifier.send({
-      v: 1,
-      key: key || deployKey('', '部署完成', version, ''),
+    await sendEvent(notifier, {
+      key: key || deployKey('', '部署完成', version),
       event: '部署完成',
-      occurred_at: new Date().toISOString(),
+      now: new Date(),
       link,
       data: {
         customer,
@@ -187,7 +195,7 @@ export async function deployProduct({
     const tried = `交付地址拼不出来：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId, '出事', '部署失败', new Date().toISOString()),
+      key: deployKey(orderId, '出事', '部署失败'),
       customer,
       requirement: requirement || product,
       tried,
@@ -218,6 +226,13 @@ export async function deployProduct({
   const image = `${address}:${textVersion}`
   const remoteTar = remote || `/tmp/afk-deploy-${address}-${textVersion}.tar`
   const requirementName = requirement || product
+  // 应用自己的 env 契约放在仓库根 .env.example；有就传给服务器 product-init，
+  // 没有（旧仓）就用 helper 自带的模板契约。
+  const envExample = join(repoDir, '.env.example')
+  const hasEnvExample = await readFile(envExample).then(
+    () => true,
+    () => false,
+  )
   const failures = []
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -239,15 +254,21 @@ export async function deployProduct({
 
       // product-init 幂等：第一次建目录、数据库和 Caddy 路由；已有的 .env 不动，
       // 换镜像和失败恢复都交给 product-deploy。
-      await helper(['product-init', address, '--image', builtImage])
+      const initArgs = ['product-init', address, '--image', builtImage]
+      if (hasEnvExample) {
+        const remoteEnvExample = `/tmp/afk-env-example-${address}.example`
+        await transfer({ tar: envExample, remote: remoteEnvExample })
+        initArgs.push('--env-example', remoteEnvExample)
+      }
+      await helper(initArgs)
       await helper(['product-deploy', address, '--image', builtImage])
 
-      const healthy = await healthCheck({ address })
-      if (!healthOk(healthy)) throw new Error(`健康检查没过：https://${address}/`)
+      const healthResult = await healthCheck({ address })
+      if (!healthOk(healthResult)) throw new Error(`健康检查没过：https://${address}/`)
 
       await notifyDeployDone({
         notifier,
-        key: deployKey(orderId, '部署完成', textVersion, ''),
+        key: deployKey(orderId, '部署完成', textVersion),
         customer,
         requirement: requirementName,
         address,
@@ -280,11 +301,12 @@ export async function deployProduct({
   const tried = failures.join('；')
   await notifyDeployFailure({
     notifier,
-    key: deployKey(orderId, '出事', '部署失败', new Date().toISOString()),
+    key: deployKey(orderId, '出事', '部署失败'),
     customer,
     requirement: requirementName,
     tried,
     link,
+    attempt: 2,
   })
   return { ok: false, reason: '部署失败', tried, address, version: textVersion, attempts: 2 }
 }
@@ -314,14 +336,14 @@ export async function rollbackProduct({
   try {
     await helper(['product-rollback', address])
     stage = '回滚后健康检查'
-    const healthy = await healthCheck({ address })
-    if (!healthOk(healthy)) throw new Error(`健康检查没过：https://${address}/`)
+    const healthResult = await healthCheck({ address })
+    if (!healthOk(healthResult)) throw new Error(`健康检查没过：https://${address}/`)
     return { ok: true, address }
   } catch (error) {
     const tried = `${stage}：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId || address, '出事', '回滚失败', new Date().toISOString()),
+      key: deployKey(orderId || address, '出事', '回滚失败'),
       customer: customer || address,
       requirement,
       reason: '回滚失败',

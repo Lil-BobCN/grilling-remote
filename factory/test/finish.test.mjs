@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { appendTrail } from '../lib/evidence.mjs'
-import { runFinish } from '../bin/finish.mjs'
+import { cleanupRequirement, runFinish } from '../bin/finish.mjs'
 import { collectRequirementState, finishRequirement, mergeRisk, prBody } from '../lib/finish.mjs'
 import { git } from '../lib/git.mjs'
 import { createGithub } from '../lib/github.mjs'
@@ -378,11 +378,17 @@ test('子票全合完、收尾评审和验证都过：建 PR、合主干、通�
         return gh.mergePull({ owner, repo, number: pr.number, mergeMethod: method })
       },
       notifier: { send: async (event) => sent.push(event) },
-      cleanup: async (ctx) => calls.push(['cleanup', ctx]),
+      cleanup: async (ctx) => {
+        calls.push(['cleanup', ctx])
+        return { removed: ['ticket-1'], kept: [], archived: ['.audit/archive/20261120T000000Z-ticket-1/首页.png'] }
+      },
     })
 
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.mergeSha, 'merge-1')
+    assert.deepEqual(result.cleanup.archived, [
+      '.audit/archive/20261120T000000Z-ticket-1/首页.png',
+    ])
 
     const pulls = fake.state.pulls.get(`${OWNER}/${REPO}`)
     assert.equal(pulls.length, 1)
@@ -546,7 +552,9 @@ test('fixer 修过仍不过：通知「出事」，不合主干，不放宽', as
     assert.ok(!calls.some(([kind]) => kind === 'cleanup'))
     const incident = sent.find((event) => event.event === '出事')
     assert.ok(incident)
+    assert.equal(incident.key, `${OWNER}/${REPO}:#${state.parent.number}:出事:验证评审修不过:收尾评审`)
     assert.equal(incident.data.reason, '验证评审修不过')
+    assert.equal(incident.data.attempt, 1)
     assert.ok(incident.data.tried.includes('两轮没过'), incident.data.tried)
     assert.ok(incident.data.tried.includes('验收条件第 2 条没做'), incident.data.tried)
   } finally {
@@ -1036,4 +1044,67 @@ test('verify 两轮都挂：发「出事」、不合 PR、不再重跑', async (
     await fake.close()
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('收尾清理删干净工作树，脏的归档后删，改了已跟踪文件的保留', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'afk-finish-cleanup-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const dir = join(root, 'demo')
+  await mkdir(dir, { recursive: true })
+  await git(dir, ['init', '-b', 'main'])
+  await git(dir, ['config', 'user.name', 'AFK Test'])
+  await git(dir, ['config', 'user.email', 'test@afkfactory.space'])
+  await writeFile(join(dir, 'README.md'), 'base\n')
+  await git(dir, ['add', '-A'])
+  await git(dir, ['commit', '-m', 'base'])
+  await git(dir, ['checkout', '-b', 'req/order-1'])
+  await writeFile(join(dir, 'req.txt'), '需求分支\n')
+  await git(dir, ['add', '-A'])
+  await git(dir, ['commit', '-m', 'FACTORY: 需求分支'])
+  await git(dir, ['checkout', 'main'])
+
+  const reqWorktree = join(root, 'req-worktree')
+  await git(dir, ['worktree', 'add', reqWorktree, 'req/order-1'])
+
+  const worktreesDir = join(dir, '.sandcastle', 'worktrees')
+  await mkdir(worktreesDir, { recursive: true })
+
+  const clean = join(worktreesDir, 'ticket-1')
+  await git(dir, ['worktree', 'add', '-b', 'ticket/1', clean, 'req/order-1'])
+
+  const untrackedOnly = join(worktreesDir, 'ticket-2')
+  await git(dir, ['worktree', 'add', '-b', 'ticket/2', untrackedOnly, 'req/order-1'])
+  await writeFile(join(untrackedOnly, '首页.png'), 'png-bytes')
+
+  const trackedDirty = join(worktreesDir, 'ticket-3')
+  await git(dir, ['worktree', 'add', '-b', 'ticket/3', trackedDirty, 'req/order-1'])
+  await writeFile(join(trackedDirty, 'README.md'), '未提交\n')
+
+  const summary = await cleanupRequirement({ repoDir: dir, reqBranch: 'req/order-1' })
+
+  const exists = async (path) => {
+    try {
+      await stat(path)
+      return true
+    } catch {
+      return false
+    }
+  }
+  assert.equal(await exists(reqWorktree), false, '需求分支工作树要删')
+  assert.equal(await exists(clean), false, '干净票工作树要删')
+  assert.equal(await exists(untrackedOnly), false, '只有未跟踪文件的票工作树归档后删')
+  assert.equal(await exists(trackedDirty), true, '改了已跟踪文件的票工作树要保留')
+  assert.equal(await readFile(join(trackedDirty, 'README.md'), 'utf8'), '未提交\n')
+
+  const archived = (await readdir(join(dir, '.audit', 'archive'), { recursive: true })).filter(
+    (name) => name.endsWith('首页.png'),
+  )
+  assert.equal(archived.length, 1, `归档目录里没有首页.png：${archived.join('、')}`)
+  assert.equal(
+    await readFile(join(dir, '.audit', 'archive', archived[0]), 'utf8'),
+    'png-bytes',
+  )
+
+  assert.equal(summary.kept.length, 1)
+  assert.equal(await realpath(summary.kept[0]), await realpath(trackedDirty))
 })

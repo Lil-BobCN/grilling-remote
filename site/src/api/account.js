@@ -158,6 +158,8 @@ export function normalizeOrder(raw) {
     missing: Array.isArray(raw?.missing) ? raw.missing.filter(Boolean) : [],
     trial: Array.isArray(raw?.trial) ? raw.trial.filter(Boolean) : [],
     feedback: raw?.feedback ?? raw?.rejection?.feedback ?? '',
+    importStatus: raw?.import_status ?? raw?.importStatus ?? '',
+    importFailure: raw?.import_failure ?? raw?.importFailure ?? null,
     messages: Array.isArray(raw?.messages) ? raw.messages : [],
     transitions: Array.isArray(rows)
       ? rows.map(normalizeTransition).filter((entry) => entry.line)

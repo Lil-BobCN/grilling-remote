@@ -114,6 +114,7 @@ class WorkStatePoller:
                 "last_activity_at": entry.get("last_activity_at"),
                 "note": entry.get("note"),
                 "pr": entry.get("pr"),
+                "prs": entry.get("prs"),
             }
         data = {
             "updated_at": stamp,
@@ -167,12 +168,14 @@ class WorkStatePoller:
                 "last_activity_at": activity,
                 "note": note or None,
                 "pr": self._linked_pr(wts),
+                "prs": self._linked_prs(wts),
             }
         return result
 
-    def _linked_pr(self, worktrees):
-        """取一张票关联的 PR；多棵 worktree 时优先已合并的那条。"""
-        picked = None
+    def _linked_prs(self, worktrees):
+        """收集一张票关联的全部 PR，按 PR 号去重；同一号以 merged 状态为准。"""
+        prs = []
+        index = {}
         for wt in worktrees:
             pr = wt.get("linkedPR")
             if not isinstance(pr, dict) or not pr.get("number"):
@@ -183,11 +186,24 @@ class WorkStatePoller:
                 "title": pr.get("title"),
                 "url": pr.get("url"),
             }
+            number = entry["number"]
+            if number not in index:
+                index[number] = len(prs)
+                prs.append(entry)
+                continue
+            current = prs[index[number]]
+            if (str(entry.get("state") or "").lower() == "merged"
+                    and str(current.get("state") or "").lower() != "merged"):
+                prs[index[number]] = entry
+        return prs
+
+    def _linked_pr(self, worktrees):
+        """取一张票关联的 PR；多棵 worktree 时优先已合并的那条。"""
+        prs = self._linked_prs(worktrees)
+        for pr in prs:
             if str(pr.get("state") or "").lower() == "merged":
-                return entry
-            if picked is None:
-                picked = entry
-        return picked
+                return pr
+        return prs[0] if prs else None
 
     def _local_ticket_id(self, tid):
         """GitHub 号换成中台本地票号；本地号能直接命中时原样返回。"""

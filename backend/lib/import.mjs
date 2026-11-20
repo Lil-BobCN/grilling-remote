@@ -7,8 +7,12 @@
  *    `docs/requirements/<需求名>/`，推 main，推 `req/<订单号>` 分支，建父工单。
  * 3. 回写订单的工单链接、软件简称和分支，回写 `customers.json.repos[软件简称]`。
  *
- * 失败不删快照：`meta.status` 改成 `import_failed`，写 `operator_alert`。
- * 地图 `Decisions so far` 出现行首「已废」或「已被取代」时改成 `needs_operator`，不建单。
+ * 导入按订单逐张处理：一单失败只写这单的 `import_status`/`import_failure`，
+ * 其余单接着做；有成功也有失败时上传记 `import_partial`，每单结果写 `meta.results`。
+ * 全部失败按失败种类记 `import_failed` 或 `needs_operator`。
+ *
+ * 失败不删快照：`meta.status` 写失败状态，写 `operator_alert`。
+ * 地图 `Decisions so far` 出现行首「已废」或「已被取代」的订单转 `needs_operator`，不建单。
  * 成功改成 `imported`，快照留给 Mac 拉取桥存档，桥删远端。
  */
 import { execFile } from 'node:child_process'
@@ -19,7 +23,16 @@ import { sendValidationMail } from './customer-mail.mjs'
 import { readCustomers, setCustomerRepo } from './customers.mjs'
 import { createGithubApi } from './github-api.mjs'
 import { logLine } from './log.mjs'
-import { readOrders, updateOrder } from './orders.mjs'
+import {
+  IMPORT_FAILED,
+  IMPORT_IMPORTED,
+  IMPORT_NEEDS_OPERATOR,
+  IMPORT_PARTIAL,
+  markImportFailure,
+  readOrder,
+  readOrders,
+  updateOrder,
+} from './orders.mjs'
 import { renderParentIssue } from './parent-issue.mjs'
 import { scaffoldCustomerRepo } from './scaffold.mjs'
 import { createSpecLock } from './spec-lock.mjs'
@@ -351,6 +364,8 @@ export async function reuploadOrder({
     product,
     branch,
     import_sha256: sha256,
+    import_status: IMPORT_IMPORTED,
+    import_failure: null,
   })
   if (repos[product] !== repoName) {
     await setCustomerRepo(config, account.id, product, repoName)
@@ -451,6 +466,8 @@ export async function importOrder({
     product,
     branch,
     import_sha256: sha256,
+    import_status: IMPORT_IMPORTED,
+    import_failure: null,
   })
 
   if (repos[product] !== repoName) {
@@ -519,33 +536,28 @@ async function backfillRepos(config, account, orders) {
   }
 }
 
-async function findLockedReupload({ specLock, account, orders, owner }) {
-  if (!specLock) return null
+async function isLockedReupload({ specLock, account, order, owner }) {
+  if (!specLock) return false
   const repos =
     account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
       ? account.repos
       : {}
-  for (const order of orders) {
-    const product = order.product || order.requirement
-    const repo = repos[product] || repoFromIssue(order.issue) || `${account.short_name}-${product}`
-    let locked = false
-    try {
-      locked = await specLock({ owner, repo, requirement: order.requirement })
-    } catch (error) {
-      logLine({
-        ts: new Date().toISOString(),
-        level: 'warning',
-        msg: '重传导入锁单检查读不到 GitHub，按未锁放行',
-        owner,
-        repo,
-        requirement: order.requirement,
-        error: String(error && error.message ? error.message : error),
-      })
-      locked = false
-    }
-    if (locked) return order
+  const product = order.product || order.requirement
+  const repo = repos[product] || repoFromIssue(order.issue) || `${account.short_name}-${product}`
+  try {
+    return Boolean(await specLock({ owner, repo, requirement: order.requirement }))
+  } catch (error) {
+    logLine({
+      ts: new Date().toISOString(),
+      level: 'warning',
+      msg: '重传导入锁单检查读不到 GitHub，按未锁放行',
+      owner,
+      repo,
+      requirement: order.requirement,
+      error: String(error && error.message ? error.message : error),
+    })
+    return false
   }
-  return null
 }
 
 async function importUpload({
@@ -581,9 +593,20 @@ async function importUpload({
 
   const pending = uploadOrders.filter((order) => order.validation?.passed !== false && !order.issue)
   const passedOrders = uploadOrders.filter((order) => order.validation?.passed !== false)
+  const results = new Map()
+  for (const order of uploadOrders) {
+    if (order.validation?.passed === false) {
+      results.set(order.id, resultFor(order, 'validation_failed'))
+    }
+  }
   if (passedOrders.length === 0) {
     // 全部内容校验未通过：只存快照，按 7 天保留期清掉，不按导入成功处理。
-    const next = { ...meta, status: 'validation_failed' }
+    const next = {
+      ...meta,
+      status: 'validation_failed',
+      results: uploadOrders.map((order) => results.get(order.id)),
+      operator_alert: undefined,
+    }
     await writeJsonAtomic(join(dir, 'meta.json'), next)
     return next
   }
@@ -595,79 +618,123 @@ async function importUpload({
     if (await isSmallRequirement(dir, order.requirement)) continue
     reuploadOrders.push(order)
   }
-  const lockedOrder = await findLockedReupload({ specLock, account, orders: reuploadOrders, owner })
-  if (lockedOrder) {
-    // 上传端已拦；这里兜底：锁单后同目录不能再改，不覆盖父工单和快照。
-    const next = {
-      ...meta,
-      status: 'needs_operator',
-      operator_alert: {
-        reason: 'requirement_locked',
-        message: `需求「${lockedOrder.requirement}」已经锁单（spec 已发布），这次重传没有覆盖父工单和快照。请新建需求目录再上传。`,
-        at: stamp,
-      },
-    }
-    await writeJsonAtomic(join(dir, 'meta.json'), next)
-    return next
+  const failures = []
+  const okIds = new Set()
+
+  function resultFor(order, status, extra = {}) {
+    return { order_id: order.id, requirement: order.requirement, status, at: stamp, ...extra }
   }
 
-  for (const order of [...pending, ...reuploadOrders]) {
-    const scratchDir = join(dir, 'work', 'scratch', order.requirement)
-    const rendered = await renderParentIssue({
-      scratchDir,
-      shortName: account.short_name,
-      requirement: order.requirement,
-      owner,
-      repo: (account.repos && account.repos[order.product || order.requirement]) || `${account.short_name}-${order.product || order.requirement}`,
+  async function recordFailure(order, failure) {
+    await tryMarkOrderFailure(config, order, { ...failure, uploadId: meta.id, at: stamp })
+    const entry = resultFor(order, failure.status, {
+      reason: failure.reason,
+      message: failure.message,
     })
-    if (rendered.deprecated) {
-      const next = {
-        ...meta,
-        status: 'needs_operator',
-        operator_alert: {
+    results.set(order.id, entry)
+    failures.push(entry)
+  }
+
+  const attempts = [
+    ...pending.map((order) => ({ order, reupload: false })),
+    ...reuploadOrders.map((order) => ({ order, reupload: true })),
+  ]
+  for (const { order, reupload } of attempts) {
+    try {
+      if (reupload && (await isLockedReupload({ specLock, account, order, owner }))) {
+        // 上传端已拦；这里兜底：锁单后同目录不能再改，不覆盖父工单和快照。
+        await recordFailure(order, {
+          status: IMPORT_NEEDS_OPERATOR,
+          reason: 'requirement_locked',
+          message: `需求「${order.requirement}」已经锁单（spec 已发布），这次重传没有覆盖父工单和快照。请新建需求目录再上传。`,
+        })
+        continue
+      }
+      const scratchDir = join(dir, 'work', 'scratch', order.requirement)
+      const rendered = await renderParentIssue({
+        scratchDir,
+        shortName: account.short_name,
+        requirement: order.requirement,
+        owner,
+        repo:
+          (account.repos && account.repos[order.product || order.requirement]) ||
+          `${account.short_name}-${order.product || order.requirement}`,
+      })
+      if (rendered.deprecated) {
+        await recordFailure(order, {
+          status: IMPORT_NEEDS_OPERATOR,
           reason: 'deprecated_map_decisions',
           message: `需求「${order.requirement}」的地图 Decisions so far 里有行首「已废」或「已被取代」，是旧格式回传件。没有建仓建单，快照已保留。`,
-          at: stamp,
-        },
+        })
+        continue
       }
-      await writeJsonAtomic(join(dir, 'meta.json'), next)
-      return next
+      if (reupload) {
+        await reuploadOrder({
+          config,
+          gh,
+          account,
+          order,
+          uploadDir: dir,
+          remoteUrlFor,
+          owner,
+          commentAt: meta.at || stamp,
+          sha256: meta.sha256,
+        })
+      } else {
+        await importOrder({
+          config,
+          gh,
+          scaffold,
+          account,
+          order,
+          uploadDir: dir,
+          remoteUrlFor,
+          owner,
+          sha256: meta.sha256,
+        })
+      }
+      results.set(order.id, resultFor(order, IMPORT_IMPORTED))
+      okIds.add(order.id)
+    } catch (error) {
+      const failure = {
+        status: IMPORT_FAILED,
+        reason: error?.step || IMPORT_FAILED,
+        message: String(error && error.message ? error.message : error),
+      }
+      await recordFailure(order, failure)
+      logLine({
+        ts: stamp,
+        level: 'error',
+        msg: '回传导入单票失败，其余订单继续',
+        upload: meta.id,
+        order_id: order.id,
+        reason: failure.reason,
+        error: failure.message,
+      })
     }
   }
 
-  for (const order of pending) {
-    await importOrder({
-      config,
-      gh,
-      scaffold,
-      account,
-      order,
-      uploadDir: dir,
-      remoteUrlFor,
-      owner,
-      sha256: meta.sha256,
-    })
+  // 已经有工单、这次没有重活要做的单，仍算导入成功。
+  for (const order of passedOrders) {
+    if (results.has(order.id)) continue
+    results.set(order.id, resultFor(order, IMPORT_IMPORTED))
+    okIds.add(order.id)
   }
 
-  for (const order of reuploadOrders) {
-    await reuploadOrder({
-      config,
-      gh,
-      account,
-      order,
-      uploadDir: dir,
-      remoteUrlFor,
-      owner,
-      commentAt: meta.at || stamp,
-      sha256: meta.sha256,
-    })
-  }
+  const importedOrders = passedOrders.filter((order) => okIds.has(order.id))
+  await backfillRepos(config, account, importedOrders)
 
-  await backfillRepos(config, account, passedOrders)
+  let status = IMPORT_IMPORTED
+  if (importedOrders.length === 0) {
+    const kinds = new Set(failures.map((item) => item.status))
+    status = kinds.size === 1 ? [...kinds][0] : IMPORT_FAILED
+  } else if (failures.length > 0) {
+    status = IMPORT_PARTIAL
+  }
 
   // 给 Mac 上的补缺口 Agent：#460 要从 inbox 的 meta 找到仓、父工单和分支。
   const freshOrders = await readOrders(config)
-  const imported = passedOrders.map((order) => {
+  const imported = importedOrders.map((order) => {
     const fresh = freshOrders.find((item) => item.id === order.id) || order
     const product = fresh.product || fresh.requirement
     const repo =
@@ -685,15 +752,48 @@ async function importUpload({
     }
   })
 
+  let operatorAlert
+  if (failures.length > 0) {
+    const reason =
+      status === IMPORT_PARTIAL
+        ? IMPORT_PARTIAL
+        : failures.length === 1
+          ? failures[0].reason
+          : status
+    const message =
+      failures.length === 1
+        ? failures[0].message
+        : failures
+            .map((item) => `订单 ${item.order_id}「${item.requirement}」：${item.message}`)
+            .join('\n')
+    operatorAlert = { reason, message, at: stamp }
+  }
+
   const next = {
     ...meta,
-    status: 'imported',
+    status,
     orders: uploadOrders.map((order) => order.id),
+    results: uploadOrders.map((order) => results.get(order.id)).filter(Boolean),
     imported,
-    imported_at: stamp,
+    operator_alert: operatorAlert,
+    ...(importedOrders.length > 0 ? { imported_at: stamp } : {}),
   }
   await writeJsonAtomic(join(dir, 'meta.json'), next)
   return next
+}
+
+async function tryMarkOrderFailure(config, order, failure) {
+  try {
+    await markImportFailure(config, order.id, failure)
+  } catch (error) {
+    logLine({
+      ts: new Date().toISOString(),
+      level: 'error',
+      msg: '导入失败回写订单时出错',
+      order_id: order.id,
+      error: String(error && error.message ? error.message : error),
+    })
+  }
 }
 
 async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, specLock, now }) {
@@ -727,8 +827,23 @@ async function scan({ config, gh, scaffold, mailSender, remoteUrlFor, specLock, 
     } catch (error) {
       // 导入途中可能已经写过邮件去重记录，合并磁盘上的最新 meta，别覆盖掉。
       const latest = (await readJson(join(dir, 'meta.json'), null)) || {}
-      const failed = importFailure({ ...meta, ...latest }, now.toISOString(), error)
+      const stamp = now.toISOString()
+      const failed = importFailure({ ...meta, ...latest }, stamp, error)
       await writeJsonAtomic(join(dir, 'meta.json'), failed)
+      for (const id of Array.isArray(failed.orders) ? failed.orders : []) {
+        const order = await readOrder(config, id)
+        if (!order) continue
+        // 已经建好工单的单不回退；校验未通过的单保留原状态和缺口。
+        if (order.validation?.passed === false) continue
+        if (order.issue || order.import_status === IMPORT_IMPORTED) continue
+        await tryMarkOrderFailure(config, order, {
+          status: IMPORT_FAILED,
+          reason: failed.reason,
+          message: failed.operator_alert.message,
+          uploadId: failed.id,
+          at: stamp,
+        })
+      }
       results.push({ id: name, status: failed.status, error: failed.operator_alert.message })
       logLine({
         ts: now.toISOString(),

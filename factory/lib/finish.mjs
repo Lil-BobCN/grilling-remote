@@ -7,6 +7,7 @@
  */
 import { dirname } from 'node:path'
 import { git } from './git.mjs'
+import { sendEvent } from './notify.mjs'
 import { hasLabel } from './scheduler.mjs'
 import { parentCustomer, parentRequirement } from './ignition.mjs'
 import {
@@ -312,22 +313,24 @@ function factsOf(parentIssue) {
   return { customer, requirement }
 }
 
-async function notifyIncident({ notifier, parentIssue, owner, repo, tag, tried }) {
+async function notifyIncident({ notifier, parentIssue, owner, repo, tag, tried, attempt = 1 }) {
   if (typeof notifier?.send !== 'function') return
-  const at = new Date()
   const facts = factsOf(parentIssue)
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${parentIssue.number}:出事:验证评审修不过:${tag}:${at.toISOString()}`,
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${parentIssue.number}`,
       event: '出事',
-      occurred_at: at.toISOString(),
+      scope: `验证评审修不过:${tag}`,
+      now: new Date(),
       link: issueLink(parentIssue, owner, repo),
       data: {
         customer: facts.customer,
         requirement: facts.requirement,
         reason: '验证评审修不过',
         tried,
+        attempt,
       },
     })
   } catch {
@@ -428,6 +431,7 @@ export async function finishRequirement({
   notifier,
   cleanup,
   small,
+  attempt = 1,
   maxFixRounds = resolveMaxFixRounds(),
 } = {}) {
   const parentIssue = parent?.parent
@@ -477,6 +481,7 @@ export async function finishRequirement({
         repo,
         tag: '收尾评审',
         tried: `收尾评审没过${findings.length ? `：${findings.join('；')}` : ''}`,
+        attempt,
       })
       return { ok: false, reason: 'review_failed', findings }
     }
@@ -502,6 +507,7 @@ export async function finishRequirement({
         repo,
         tag: '收尾评审',
         tried: `收尾评审两轮没过${findings.length ? `：${findings.join('；')}` : ''}${fixNote ? `。${fixNote}` : ''}`,
+        attempt,
       })
       return { ok: false, reason: 'review_failed', findings }
     }
@@ -530,14 +536,23 @@ export async function finishRequirement({
     const mergeSha = pr.merge_commit_sha || ''
     if (!mergeSha) return { ok: false, reason: 'merged_pr_sha_missing', pr }
     let warning = ''
+    let cleanupInfo = null
     if (typeof cleanup === 'function') {
       try {
-        await cleanup({ repoDir, reqBranch })
+        cleanupInfo = await cleanup({ repoDir, reqBranch })
       } catch (error) {
         warning = `合完了，但清理 worktree 失败：${errorText(error)}`
       }
     }
-    return { ok: true, pr, mergeSha, risk, alreadyMerged: true, ...(warning ? { warning } : {}) }
+    return {
+      ok: true,
+      pr,
+      mergeSha,
+      risk,
+      alreadyMerged: true,
+      ...(cleanupInfo ? { cleanup: cleanupInfo } : {}),
+      ...(warning ? { warning } : {}),
+    }
   }
 
   const verifyBranch = pr?.head?.ref || reqBranch
@@ -590,6 +605,7 @@ export async function finishRequirement({
       repo,
       tag,
       tried: `${label}${problems.length ? `：${problems.join('；')}` : ''}${fixNote ? `。${fixNote}` : ''}`,
+      attempt,
     })
     return {
       ok: false,
@@ -614,11 +630,13 @@ export async function finishRequirement({
   const number = prNumber(pr)
   if (typeof notifier?.send === 'function') {
     try {
-      await notifier.send({
-        v: 1,
-        key: `#${parentIssue.number}:自己合并:PR-${number ?? '?'}`,
+      await sendEvent(notifier, {
+        owner,
+        repo,
+        subject: `#${parentIssue.number}`,
         event: '自己合并',
-        occurred_at: new Date().toISOString(),
+        scope: `PR-${number ?? '?'}`,
+        now: new Date(),
         link: pr?.html_url || issueLink(parentIssue, owner, repo),
         data: { customer: facts.customer, requirement: facts.requirement, pr: number },
       })
@@ -628,13 +646,21 @@ export async function finishRequirement({
   }
 
   let warning = ''
+  let cleanupInfo = null
   if (typeof cleanup === 'function') {
     try {
-      await cleanup({ repoDir, reqBranch })
+      cleanupInfo = await cleanup({ repoDir, reqBranch })
     } catch (error) {
       warning = `合完了，但清理 worktree 失败：${errorText(error)}`
     }
   }
 
-  return { ok: true, pr, mergeSha, risk, ...(warning ? { warning } : {}) }
+  return {
+    ok: true,
+    pr,
+    mergeSha,
+    risk,
+    ...(cleanupInfo ? { cleanup: cleanupInfo } : {}),
+    ...(warning ? { warning } : {}),
+  }
 }

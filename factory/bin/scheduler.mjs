@@ -16,15 +16,17 @@
  * 每轮把 `{ts, executed, errors}` 追加到 `AFK_SCHEDULER_LOG`（默认 `~/.afkfactory/scheduler/runs.jsonl`）。
  * 测试可以注入 `gh`、`notifier`、`ignite`、`runner`、`openPr` 和 `config`。
  */
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
+import { ConfigError, createCustomersReader, loadConfig } from '../lib/config.mjs'
 import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
 import { createGhOpenPr, createIgnite, parentOrder } from '../lib/ignition.mjs'
+import { createJobStore, defaultJobsPath } from '../lib/job.mjs'
 import { logLine } from '../lib/log.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
@@ -183,6 +185,11 @@ export async function run(
     lockDir: injectedLockDir,
     runLog: injectedRunLog,
     ghRun: injectedGhRun,
+    customers: injectedCustomers,
+    readFile: injectedReadFile,
+    jobsFile: injectedJobsFile,
+    jobs: injectedJobs,
+    intervalMs: injectedIntervalMs,
     config: configOverrides = {},
   } = {},
 ) {
@@ -195,7 +202,13 @@ export async function run(
   const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
   if (!owner) throw new Error('缺 --owner（或环境变量 GITHUB_OWNER）')
 
-  const customers = JSON.parse(await readFile(customersPath, 'utf8'))
+  const loadCustomers =
+    injectedCustomers === undefined
+      ? createCustomersReader(customersPath, { readFile: injectedReadFile })
+      : typeof injectedCustomers === 'function'
+        ? injectedCustomers
+        : async () => injectedCustomers
+  const customers = await loadCustomers()
   const token = process.env.GITHUB_TOKEN || ''
   const client = gh || createGithub({ token })
   const notify = notifier || createNotifier({ home: process.env.NOTIFIER_HOME })
@@ -214,6 +227,23 @@ export async function run(
   const maxActive = Number(process.env.MAX_ACTIVE) || 5
   const timeoutMs = Number(process.env.AFK_IGNITE_TIMEOUT_MS) || 120000
   const maxFixRounds = resolveMaxFixRounds(process.env.AFK_MAX_FIX_ROUNDS)
+  const jobsPath = injectedJobsFile || process.env.AFK_JOBS_FILE || defaultJobsPath()
+  let jobs = injectedJobs || configOverrides.jobs || null
+  if (!jobs && !dryRun) {
+    jobs = createJobStore({ filePath: jobsPath })
+    try {
+      await jobs.load()
+    } catch (error) {
+      // 读坏了也要跑：这一轮按空表走，错误写进日志让人看到。
+      const write = configOverrides.log || ((fields) => console.error(JSON.stringify(fields)))
+      write({
+        level: 'error',
+        msg: '作业表读不了，这一轮按空表跑',
+        file: jobsPath,
+        error: error.message,
+      })
+    }
+  }
 
   if (dryRun) {
     const now = clock ? clock() : new Date()
@@ -227,6 +257,16 @@ export async function run(
     repoRoot,
     lockDir,
     maxActive,
+    jobs,
+    runsLogPath: runLogPath,
+    jobPolicy: configOverrides.jobPolicy ?? {
+      maxAttempts: Number(process.env.AFK_JOB_MAX_ATTEMPTS) || undefined,
+      backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
+    },
+    stepTimeoutMs: Number(process.env.AFK_STEP_TIMEOUT_MS) || undefined,
+    jobHeartbeatMs: Number(process.env.AFK_JOB_HEARTBEAT_MS) || undefined,
+    roundTimeoutMs: Number(process.env.AFK_ROUND_TIMEOUT_MS) || undefined,
+    watchdogIntervalMs: Number(process.env.AFK_HEARTBEAT_MS) || undefined,
     ...configOverrides,
     needsAnswer: configOverrides.needsAnswer ?? createNeedsAnswer({ run: injectedGhRun || runGh }),
     listMergedYesterday:
@@ -238,6 +278,7 @@ export async function run(
     decompose ||
     createDecompose({
       repoRoot,
+      gh: client,
       command: process.env.AFK_AGENT_COMMAND || 'claude',
     })
   const createFixTicketFn =
@@ -287,6 +328,9 @@ export async function run(
       const order = parentOrder(parent?.body)
       const branch = reqBranch || (order ? `req/${order}` : '')
       if (!branch) return { ok: false, reason: 'no-order' }
+      const finishJob = jobs
+        ? jobs.rowsFor({ owner, repo, parent: parent.number }).find((row) => row.action === 'finish')
+        : null
       const result = await runFinish(
         {
           owner,
@@ -296,7 +340,7 @@ export async function run(
           main: 'main',
           'repo-dir': join(repoRoot, repo),
         },
-        { gh: client, notifier: notify },
+        { gh: client, notifier: notify, attempt: (finishJob?.attempt || 0) + 1 },
       )
       return { ...result.output, ok: result.exitCode === 0, exitCode: result.exitCode }
     })
@@ -315,16 +359,22 @@ export async function run(
     config,
   }
 
+  // 每轮都走读取器：mtime 没变就复用，变了就重读并重新校验。
+  options.customers = loadCustomers
+
   if (once) {
     const report = await runOnceImpl(options)
     for (const line of parentLines(report)) out(JSON.stringify(line))
+    // 没挂到任何父工单上的错误（作业表读写等）走 stderr，不污染 --once 的 JSONL。
+    const orphans = report.errors.filter((error) => !error.repo)
+    if (orphans.length) console.error(JSON.stringify({ errors: orphans }))
     // 点火在后台跑；--once 是手工跑一次，等它跑完再退出，进程结束不丢活。
     await Promise.allSettled([...(config.pendingIgnitions || [])])
     return report
   }
 
   await runLoop({
-    intervalMs: Number(process.env.SCHEDULER_INTERVAL_MS) || 30000,
+    intervalMs: injectedIntervalMs ?? (Number(process.env.SCHEDULER_INTERVAL_MS) || 30000),
     signal,
     run: runOnceImpl,
     onReport: async (report) => {
@@ -336,8 +386,39 @@ export async function run(
   return null
 }
 
+/** 把 env 文件里缺的键补进进程环境，模型始终显式设成解析后的值。 */
+function applyConfigEnv(loaded) {
+  for (const [key, value] of Object.entries(loaded.values)) {
+    if (process.env[key] === undefined || process.env[key] === '') {
+      process.env[key] = String(value)
+    }
+  }
+  if (loaded.model?.name) process.env.ANTHROPIC_MODEL = loaded.model.name
+}
+
+/**
+ * 命令行启动：先读 env 文件并自检，再进调度循环。
+ * 缺 token、helper、模型或 customers 形状不对时，在这里失败退出。
+ */
+export async function start(
+  argv = process.argv.slice(2),
+  { env = process.env, envFile, probeModel, readFile, ...runOptions } = {},
+) {
+  const loaded = await loadConfig({ env, envFile, probeModel, readFile })
+  applyConfigEnv(loaded)
+  const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
+  if (!owner) {
+    const target = loaded.found ? `${loaded.envFile} 里也没有` : `${loaded.envFile} 不存在`
+    throw new ConfigError(`缺 GITHUB_OWNER：--owner 和进程环境都没有，${target}`, {
+      key: 'GITHUB_OWNER',
+      file: loaded.envFile,
+    })
+  }
+  return run(argv, { ...runOptions, readFile })
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  run().catch((error) => {
+  start().catch((error) => {
     console.error(error.message)
     process.exit(1)
   })

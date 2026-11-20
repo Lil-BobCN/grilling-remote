@@ -53,6 +53,25 @@ test('校验未通过的包过 7 天清掉，没到期的留着，已通过的�
   assert.ok(await stat(imported))
 })
 
+test('导入失败、部分失败和待运营者的上传过 7 天清掉，没到期留着', async () => {
+  const { config } = await makeConfig()
+  const now = Date.parse('2026-11-15T12:00:00Z')
+  const old = '2026-11-01T12:00:00Z'
+  const recent = '2026-11-14T12:00:00Z'
+  const statuses = ['import_failed', 'import_partial', 'needs_operator']
+  const expired = []
+  const fresh = []
+  for (const status of statuses) {
+    expired.push(await uploadDir(config, `upload-old-${status}`, { status, at: old }))
+    fresh.push(await uploadDir(config, `upload-recent-${status}`, { status, at: recent }))
+  }
+
+  const removed = await cleanupExpired(config, now)
+  assert.equal(removed, statuses.length)
+  for (const dir of expired) await assert.rejects(stat(dir))
+  for (const dir of fresh) assert.ok(await stat(dir))
+})
+
 test('没有上传目录时不报错', async () => {
   const { config } = await makeConfig()
   const { rm } = await import('node:fs/promises')

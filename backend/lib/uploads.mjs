@@ -2,10 +2,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HttpError } from './errors.mjs'
+import { readCustomers } from './customers.mjs'
 import { readBody } from './http.mjs'
 import { logLine } from './log.mjs'
 import { parseMultipart } from './multipart.mjs'
 import { publicOrder, readOrders, recordUpload } from './orders.mjs'
+import { FAILED_UPLOAD_STATUSES } from './protocol.mjs'
 import { createSpecLock } from './spec-lock.mjs'
 import { ensureDir, readJson, writeJsonAtomic } from './store.mjs'
 import { validateRequirement } from './validate-package.mjs'
@@ -69,6 +71,21 @@ function knownRepos(account) {
     if (name && value.trim()) known[name] = value.trim()
   }
   return known
+}
+
+/**
+ * 受理前查客户白名单：登录账号必须在 customers.json 里有一行。
+ * 管理员账号默认没有客户行，直接 422，不建死单；
+ * 要替客户上传，先用客户账号，或把这个账号显式映射到一行客户档案。
+ */
+async function requireCustomer(config, account) {
+  const rows = await readCustomers(config)
+  const row = rows.find((item) => item.id === account.id)
+  if (row) return row
+  throw new HttpError(
+    422,
+    '这个账号没有客户档案，上传不会建单。请用客户账号登录上传；要给管理员账号开上传，需要把它显式映射到一行客户档案。',
+  )
 }
 
 function repoNameFor(account, product) {
@@ -242,10 +259,12 @@ async function checkUploadWindow({ config, account, products, uploadDir, now }) 
 }
 
 export async function handleUpload({ req, config, session, limiters, ip }) {
+  const customer = await requireCustomer(config, session.account)
+
   if (!limiters.uploadsIp.allow(ip)) {
     throw new HttpError(429, '上传太频繁，过几分钟再试')
   }
-  if (!limiters.uploadsUser.allow(session.account.id)) {
+  if (!limiters.uploadsUser.allow(customer.id)) {
     throw new HttpError(429, '上传太频繁，过几分钟再试')
   }
 
@@ -286,7 +305,7 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
     filename,
     size: file.data.length,
     sha256,
-    user: { id: session.account.id, short_name: session.account.short_name || '' },
+    user: { id: customer.id, short_name: customer.short_name || '' },
     status: 'received',
   }
 
@@ -307,7 +326,7 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
     (name) => name && !name.includes('/') && !name.includes('\\') && name !== '..',
   )
   const resolved = resolveProducts({
-    account: session.account,
+    account: customer,
     software: result.software || '',
     requirements: names,
     now,
@@ -333,7 +352,7 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
 
   const blocked = await checkUploadWindow({
     config,
-    account: session.account,
+    account: customer,
     products: resolved.products,
     uploadDir: dir,
     now,
@@ -352,7 +371,7 @@ export async function handleUpload({ req, config, session, limiters, ip }) {
   const orders = []
   for (const { requirement: name, product } of resolved.products) {
     const validation = await validateRequirement(join(dir, 'work', 'scratch', name), { finished })
-    const { order } = await recordUpload(config, session.account, {
+    const { order } = await recordUpload(config, customer, {
       requirement: name,
       product,
       title: name,
@@ -385,7 +404,7 @@ export async function cleanupExpired(config, now = Date.now()) {
     return 0
   }
 
-  const removable = new Set(['failed', 'validation_failed'])
+  const removable = new Set(FAILED_UPLOAD_STATUSES)
   let removed = 0
   for (const name of names) {
     if (!name.startsWith('upload-')) continue

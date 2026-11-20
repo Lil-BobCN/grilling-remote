@@ -10,10 +10,12 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
+import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
+import { createRepoWorkspace } from './repo-workspace.mjs'
 import { hasLabel, labelNames, SMALL_LABEL } from './scheduler.mjs'
 
 const execFileAsync = promisify(execFile)
@@ -94,15 +96,6 @@ function defaultRepoRoot() {
   return join(homedir(), '.afkfactory', 'repos')
 }
 
-async function exists(path) {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function runGit(args, { cwd, env } = {}) {
   return git(cwd || process.cwd(), args, { env, timeoutMs: 120000 })
 }
@@ -120,58 +113,6 @@ export function createGitPush() {
     await runGit(['push', '-u', 'origin', branch], { cwd: repoDir, env })
     return { branch }
   }
-}
-
-/** 客户仓 checkout：没有就 clone，有就 fetch，然后切到需求分支。 */
-async function ensureRepoCheckout({
-  config,
-  owner,
-  repo,
-  reqBranch,
-  pushBranch = createGitPush(),
-}) {
-  const root = config.repoRoot || defaultRepoRoot()
-  const repoDir = join(root, repo)
-  const url = remoteUrlFor(config, owner, repo)
-  const env = gitAuthEnv(url, config.token)
-  const remoteRef = `origin/${reqBranch}`
-
-  if (await exists(join(repoDir, '.git'))) {
-    await runGit(['fetch', 'origin'], { cwd: repoDir, env })
-
-    // 本地需求分支可能带着上一次合并但没推到 origin。
-    // 直接 checkout -B 会把它重置掉，所以先推；推不了就报错，不静默丢。
-    const localHead = await runGit(
-      ['rev-parse', '--verify', '--quiet', `refs/heads/${reqBranch}`],
-      { cwd: repoDir },
-    ).catch(() => '')
-    if (localHead) {
-      const ahead = Number(
-        (await runGit(['rev-list', '--count', `${remoteRef}..${reqBranch}`], {
-          cwd: repoDir,
-        }).catch(() => '0')) || 0,
-      )
-      if (ahead > 0) {
-        try {
-          await pushBranch({ config, repoDir, owner, repo, branch: reqBranch })
-        } catch (error) {
-          throw new Error(
-            `本地 ${reqBranch} 有 ${ahead} 个提交没推到 origin：${String(error?.message || error)}。没有重置本地分支，先解决推送再点火。`,
-          )
-        }
-      }
-    }
-  } else {
-    await mkdir(root, { recursive: true })
-    await runGit(['clone', url, repoDir], { env })
-  }
-
-  const found = await runGit(['rev-parse', '--verify', '--quiet', `refs/remotes/${remoteRef}`], {
-    cwd: repoDir,
-  }).catch(() => '')
-  if (!found) throw new Error(`客户仓里没有需求分支 ${reqBranch}`)
-  await runGit(['checkout', '-B', reqBranch, remoteRef], { cwd: repoDir })
-  return repoDir
 }
 
 /** 锁文件里的 pid 还活着且不是自己，说明别的进程正在跑这个仓。 */
@@ -489,13 +430,22 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
   const log = config.log || logLine
   const timeoutMs = config.timeoutMs ?? 120000
   const pushBranch = typeof push === 'function' ? push : createGitPush()
+  // 客户仓、票分支、工作树的唯一 owner；点火不再自己拼路径。
+  const workspace = createRepoWorkspace({
+    repoRoot: config.repoRoot || defaultRepoRoot(),
+    lockDir: config.lockDir || defaultLockDir(),
+    token: config.token || '',
+    remoteUrlFor: ({ owner, repo }) => remoteUrlFor(config, owner, repo),
+    pushBranch: ({ repoDir, owner, repo, branch }) =>
+      pushBranch({ config, repoDir, owner, repo, branch }),
+  })
 
   function now() {
     const value = clock()
     return value instanceof Date ? value : new Date(value)
   }
 
-  async function markTimeout({ owner, repo, ticket, customer, requirement, reqBranch, ticketBranch }) {
+  async function markTimeout({ owner, repo, ticket, customer, requirement, reqBranch, ticketBranch, attempt = 1 }) {
     const at = now()
     const link =
       ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`
@@ -532,13 +482,14 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send({
-          v: 1,
-          key: `#${ticket.number}:点火超时:${at.toISOString()}`,
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
           event: '点火超时',
-          occurred_at: at.toISOString(),
+          now: at,
           link,
-          data: { customer, requirement },
+          data: { customer, requirement, attempt },
         })
       }
     } catch (error) {
@@ -575,6 +526,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     requirement,
     stage,
     error,
+    attempt = 1,
   }) {
     const at = now()
     const message = oneLine(error) || '未知错误'
@@ -585,17 +537,20 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
 
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send({
-          v: 1,
-          key: `#${ticket.number}:出事:点火失败:${at.toISOString()}`,
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
           event: '出事',
-          occurred_at: at.toISOString(),
+          scope: '点火失败',
+          now: at,
           link,
           data: {
             customer,
             requirement,
             reason: oneLine(`点火失败：${stage}：${message}`),
             tried: oneLine(`${stage}阶段报错：${message}`),
+            attempt,
           },
         })
       }
@@ -642,7 +597,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
   }
 
-  async function ignite({ owner = config.owner, repo, parent, ticket }) {
+  async function ignite({ owner = config.owner, repo, parent, ticket, attempt = 1 }) {
     const order = parentOrder(parent?.body)
     const requirement =
       parentRequirement(parent?.body) || parent?.requirement || parent?.title || ''
@@ -653,8 +608,70 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       : `ticket/${ticket.number}`
     let pushedBranch = ticketBranch
     let runCommits = []
+    const repoDir = join(config.repoRoot || defaultRepoRoot(), repo)
+    let worktree = ''
+    let archived = []
+    let cleaned = false
     // 失败时用来写清是哪一步出的事：准备、运行、推送、开 PR。
     let stage = '准备'
+
+    /** 归档未跟踪文件后释放工作树；abort 用在失败路径，release 用在正常路径。 */
+    async function tidyWorktree({ abort = false, path = worktree }) {
+      if (!path || cleaned) return
+      try {
+        const released = abort
+          ? await workspace.abort({ repoDir, worktree: path, branch: ticketBranch })
+          : await workspace.release({ repoDir, worktree: path, branch: ticketBranch })
+        cleaned = true
+        archived = released.archived || []
+        if (archived.length) {
+          log({
+            level: 'info',
+            msg: '归档票工作树里的未跟踪文件',
+            owner,
+            repo,
+            ticket: ticket.number,
+            worktree: released.path || path,
+            files: archived.map((row) => row.to),
+          })
+        }
+        if (released.errors?.length) {
+          log({
+            level: 'error',
+            msg: '归档票工作树失败，保留现场',
+            owner,
+            repo,
+            ticket: ticket.number,
+            worktree: released.path || path,
+            errors: released.errors,
+          })
+        }
+        if (released.kept) {
+          log({
+            level: 'warning',
+            msg: '票工作树有未提交改动，保留',
+            owner,
+            repo,
+            ticket: ticket.number,
+            worktree: released.path || path,
+            dirty: Boolean(released.dirty),
+          })
+          worktree = released.path || path
+        } else {
+          worktree = ''
+        }
+      } catch (error) {
+        log({
+          level: 'error',
+          msg: '清票工作树失败',
+          owner,
+          repo,
+          ticket: ticket.number,
+          worktree: path,
+          error: String(error?.message || error),
+        })
+      }
+    }
 
     try {
       if (!order) throw new Error('父工单正文里没有 <!-- factory:order=... --> 标记')
@@ -666,7 +683,6 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         return { ok: false, skipped: 'blocked', reqBranch, requirement }
       }
 
-      const repoDir = join(config.repoRoot || defaultRepoRoot(), repo)
       const lockPath = join(config.lockDir || defaultLockDir(), `${owner}__${repo}.lock`)
       if (await lockHeldByOther(lockPath, config.lockStaleMs)) {
         await removeSandcastleIfPresent({ gh, owner, repo, number: ticket.number, log })
@@ -689,9 +705,16 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         }
       }
 
-      await ensureRepoCheckout({ config, owner, repo, reqBranch, pushBranch })
+      await workspace.ensure({ owner, repo, reqBranch })
       await ensureSandcastleLabel({ gh, owner, repo, number: ticket.number })
       await setTicketInProgress({ gh, owner, repo, number: ticket.number })
+
+      const preparedTicket = await workspace.prepareTicket({
+        repoDir,
+        base: reqBranch,
+        ticketBranch,
+      })
+      worktree = preparedTicket.worktree
 
       const promptText = await buildPromptForTicket({
         gh,
@@ -710,21 +733,17 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       const prompt = join(promptDir, `prompt-${ticket.number}.md`)
       await writeFile(prompt, promptText, 'utf8')
 
-      const worktree = join(
-        repoDir,
-        '.sandcastle',
-        'worktrees',
-        ticketBranch.replace(/\//g, '-'),
-      )
+      const worktreePath = preparedTicket.worktree
       const envFile = join(repoDir, '.sandcastle', '.env')
 
       const runnerArgs = {
         repoDir,
-        worktree,
+        worktree: worktreePath,
         branch: reqBranch,
         ticketBranch,
         prompt,
         image: config.image,
+        dockerfile: config.dockerfile || '',
         envFile,
         timeoutMs,
       }
@@ -752,6 +771,8 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           ticket: ticket.number,
           reqBranch,
           ticketBranch,
+          image: prepared?.imageName,
+          imageHash: prepared?.hash,
         })
       }
 
@@ -774,8 +795,12 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       }
 
       if (outcome.kind === 'timeout') {
-        // 超时后不再等这次 run；它晚到的结果不写回工单，等人处理。
-        runPromise.catch(() => {})
+        // 超时后不再等这次 run；它晚到时在后台归档并释放票工作树，结果不写回工单。
+        runPromise
+          .then((late) =>
+            tidyWorktree({ path: String(late?.preservedWorktreePath || '') || worktree }),
+          )
+          .catch(() => tidyWorktree({ abort: true }))
         await markTimeout({
           owner,
           repo,
@@ -784,6 +809,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           reqBranch,
           ticketBranch,
+          attempt,
         })
         await markIgnitionFailure({
           owner,
@@ -794,11 +820,25 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           stage: '点火超时',
           error: '两分钟没收到回执',
+          attempt,
         })
         return { ok: false, timeout: true, reqBranch, ticketBranch }
       }
 
       const result = outcome.kind === 'done' ? outcome.value : await runPromise
+      const preservedWorktreePath = String(result?.preservedWorktreePath || '')
+      if (preservedWorktreePath) {
+        log({
+          level: 'info',
+          msg: 'Sandcastle 保留了工作树',
+          owner,
+          repo,
+          ticket: ticket.number,
+          worktree: preservedWorktreePath,
+        })
+      }
+      // 脏文件先归档，再释放；改了已跟踪文件的工作树保留，路径回传给下一环。
+      await tidyWorktree({ path: preservedWorktreePath || worktree })
       const commits = normalizeCommits(result?.commits)
       runCommits = commits
       pushedBranch = result?.branch || ticketBranch
@@ -828,8 +868,9 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           stage: '没有提交',
           error: '这次 run 没有产生提交',
+          attempt,
         })
-        return { ok: false, error: 'no-commits', reqBranch, ticketBranch }
+        return { ok: false, error: 'no-commits', reqBranch, ticketBranch, archived }
       }
 
       stage = '推送'
@@ -892,9 +933,30 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         pr: prUrl,
         afkResult: result,
       })
-      return { ok: true, branch: pushedBranch, commits, prUrl }
+      return {
+        ok: true,
+        branch: pushedBranch,
+        commits,
+        prUrl,
+        archived,
+        ...(worktree ? { worktree } : {}),
+      }
     } catch (error) {
       const message = String(error?.message || error)
+      // runner 把 Sandcastle 抛出的保留路径挂在 error 上，不能丢。
+      const preservedWorktreePath = String(error?.preservedWorktreePath || '')
+      if (preservedWorktreePath) {
+        log({
+          level: 'info',
+          msg: 'Sandcastle 保留了工作树',
+          owner,
+          repo,
+          ticket: ticket.number,
+          worktree: preservedWorktreePath,
+        })
+      }
+      // 失败现场：未跟踪文件先归档，再连脏工作树一起删；已经释放过的不重复动。
+      await tidyWorktree({ abort: true, path: preservedWorktreePath || worktree })
       await ensureCommentOnce(gh, {
         owner,
         repo,
@@ -922,8 +984,9 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         requirement,
         stage,
         error: message,
+        attempt,
       })
-      return { ok: false, error: message, reqBranch, ticketBranch }
+      return { ok: false, error: message, reqBranch, ticketBranch, archived }
     }
   }
 

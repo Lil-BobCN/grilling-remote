@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `lib/github.mjs` | GitHub REST 客户端 | 基础 |
 | `lib/git.mjs` | 本地 git 操作 | 基础 |
+| `lib/config.mjs` | 启动配置：读 env 文件、校验键、解析 helper 和模型 | I-0212 |
 | `lib/scaffold.mjs` | 建客户仓和模板应用 | #458（在 `backend/`） |
 | `lib/map-issues.mjs` | 按 `map.md` 建地图 issue 和决定票 | #460、#462 |
 | `lib/scheduler.mjs` | 30 秒一轮的路由表 | #463、#470 |
@@ -41,7 +42,17 @@
 
 默认 runner 的依赖装在 `~/.afkfactory/sandcastle`（`AFK_SANDCASTLE_HOME` 可改），不进客户仓。第一次跑一张票时执行 `npm install @ai-hero/sandcastle@0.12.0 tsx`，之后复用。
 
-镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没有就用 `sandcastle:<仓名>`。本机没有这个镜像时，用 `npx @ai-hero/sandcastle docker build-image --image-name <镜像名>` 建一次。
+镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没写就用 `sandcastle:<仓名>`。
+实际镜像名带内容哈希，比如 `sandcastle:demo-a1b2c3d4e5f6`。
+哈希算两样内容：客户仓的 Dockerfile，和模板 `backend/scaffold/.sandcastle/Dockerfile`。
+任一处改了，下一次点火自动重建。
+镜像内容仍取客户仓的 Dockerfile；模板变了但客户仓没同步时，重建不改变内容。
+构建用 runner 目录里已装的 CLI（`~/.afkfactory/sandcastle/node_modules/.bin/sandcastle`），不走网络。
+不再需要人工 `docker tag`。
+
+建镜像的工作目录（cwd）是客户仓。
+默认构建上下文（build context）是客户仓里的 `.sandcastle`。
+要用仓根当构建上下文，显式传 `--dockerfile <相对客户仓的路径>`，CLI 会收到绝对路径。
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 
@@ -52,11 +63,12 @@
 ```bash
 node factory/bin/ignite.mjs --owner <owner> --repo <repo> --parent <父工单号> --ticket <子票号>
 node factory/bin/ignite.mjs ... --dry-run
+node factory/bin/ignite.mjs ... --dockerfile <相对客户仓的路径>   # 可选，context 改成仓根
 ```
 
 ## Mac 常驻
 
-`factory/bin/install-launchd.mjs` 把两个 launchd 任务装到运营者 Mac：
+`factory/bin/install-launchd.mjs` 把两个 launchd 任务装到运营者 Mac。安装会写 plist 和 wrapper，调 `launchctl` 加载，再检查任务真的起来了。退出码 0 才算装好。
 
 | Label | 跑什么 | 日志 |
 | --- | --- | --- |
@@ -67,13 +79,31 @@ node factory/bin/ignite.mjs ... --dry-run
 
 ```bash
 node factory/bin/install-launchd.mjs --repo-root <仓库路径>
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.pull-inbox.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.scheduler.plist
 ```
 
-安装只复制 plist 和 wrapper，不加载任务。重装后先 `launchctl bootout gui/$(id -u)/<Label>`，再 bootstrap。
+装完复查：
 
-两个 wrapper 都 source `~/.afkfactory/env`，需要的键：`AFK_SERVER`、`AFK_SSH_KEY`、`GITHUB_OWNER`、`GITHUB_TOKEN`（细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写）。token 不写进 plist。
+```bash
+node factory/bin/install-launchd.mjs --verify
+```
+
+`--verify` 只读，检查 plist 在不在、`launchctl print` 能不能看到任务、scheduler 的进程还在不在、pull-inbox 上次退出码，以及有没有 launchd 之外的调度器进程。缺一项就列出任务名，退出码非零。
+
+重装直接再跑一次安装。脚本先 `bootout` 旧任务，再 `bootstrap` 新 plist。
+
+常驻只用 launchd 这一条路。不要再用 `nohup` 手工起一份调度器，两份同时跑会重复点火。
+
+两个 wrapper 都 source `~/.afkfactory/env`。env 文件路径可用 `AFK_ENV_FILE` 换。需要的键：
+
+- `AFK_SERVER`（或写完整命令的 `AFK_HELPER`）
+- `AFK_SSH_KEY`
+- `GITHUB_OWNER`
+- `GITHUB_TOKEN`
+- `ANTHROPIC_MODEL`（或 `AFK_AGENT_MODEL`）
+
+`GITHUB_TOKEN` 用细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写。token 不写进 plist。
+
+调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。运行中每轮看 `customers.json` 的 mtime，变了就重读并重新校验；形状不对当轮报错，不沿用旧表。
 
 调度器状态只在 GitHub。进程重启后按标签和阻塞边重新推导，不重复点火。
 

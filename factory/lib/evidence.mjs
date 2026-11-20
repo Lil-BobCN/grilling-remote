@@ -13,8 +13,10 @@
  */
 import { appendFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { CLEAN_CHECK_MARKER } from './clean-check.mjs'
 import { GitError, git, mergeNoFf, pushOrigin } from './git.mjs'
 import { ensureLabel } from './issues.mjs'
+import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
 import { progressLine } from './progress.mjs'
 
@@ -319,7 +321,7 @@ async function commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket }) {
  * 验证者写完 trail 行再提交时，head 会变成只改 audit 的提交；
  * 证据指向它前面那个代码提交，仍算当前。
  */
-async function lastCodeCommit(repoDir, headSha) {
+export async function lastCodeCommit(repoDir, headSha) {
   let sha = headSha
   if (!sha) {
     try {
@@ -409,6 +411,21 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
 
   if (!rows.some((row) => row.phase === 'test' && row.result === 'pass')) {
     missing.push('测试（phase=test result=pass）')
+  } else {
+    // 有干净检查行时，它必须指向当前 head；旧提交的测试不能替新提交作证。
+    const cleanChecks = rows.filter(
+      (row) =>
+        row.phase === 'test' &&
+        row.result === 'pass' &&
+        String(row.why || '').includes(CLEAN_CHECK_MARKER),
+    )
+    const shas = [head, codeHead].filter(Boolean)
+    const fresh = cleanChecks.some((row) =>
+      shas.some((sha) => mentionsSha(row.why, sha) || mentionsSha(row.decision, sha)),
+    )
+    if (cleanChecks.length > 0 && !fresh) {
+      missing.push(`测试（干净检查的 pass 行没有指向当前 head ${head || '未知'}）`)
+    }
   }
   if (missingAxes.reviewStandard) {
     missing.push('评审·标准（phase=review decision 含「标准」）')
@@ -665,19 +682,29 @@ function freshFor(row, shas) {
   })
 }
 
-/**
- * 指向当前 head 或最后一个代码提交的 pass verify 行。
- * D3 用它判断「已经有人验过这个 head 了」，同一 head 不再重跑。
- */
-export async function freshVerifyRows({ trail, headSha = '', repoDir = '' } = {}) {
+async function freshRowsByPhase({ trail, headSha = '', repoDir = '', phase }) {
   const rows = normalizeTrail(trail)
   let head = headSha
   if (!head && repoDir) head = await git(repoDir, ['rev-parse', 'HEAD']).catch(() => '')
   const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
   const shas = [head, codeHead].filter(Boolean)
-  return rows.filter(
-    (row) => row.phase === 'verify' && row.result === 'pass' && freshFor(row, shas),
-  )
+  return rows.filter((row) => row.phase === phase && row.result === 'pass' && freshFor(row, shas))
+}
+
+/**
+ * 指向当前 head 或最后一个代码提交的 pass verify 行。
+ * D3 用它判断「已经有人验过这个 head 了」，同一 head 不再重跑。
+ */
+export async function freshVerifyRows(options = {}) {
+  return freshRowsByPhase({ ...options, phase: 'verify' })
+}
+
+/**
+ * 指向当前 head 或最后一个代码提交的 pass test 行。
+ * 干净检查用它判断这个 head 的测试是否已经跑过；旧 head 的测试不算数。
+ */
+export async function freshTestRows(options = {}) {
+  return freshRowsByPhase({ ...options, phase: 'test' })
 }
 
 /** 从 trail 行读验证者 id；旧行没写时返回空串。 */
@@ -736,21 +763,23 @@ export async function freshVerifiers({ trail, headSha = '', repoDir = '' } = {})
   return ids
 }
 
-async function notifyIncident({ notifier, ticket, reason, tried, link }) {
+async function notifyIncident({ notifier, ticket, owner = '', repo = '', reason, tried, link }) {
   if (typeof notifier?.send !== 'function') return
-  const at = new Date()
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${ticket.number}:出事:${reason}:${at.toISOString()}`,
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${ticket.number}`,
       event: '出事',
-      occurred_at: at.toISOString(),
+      scope: reason,
+      now: new Date(),
       link,
       data: {
         customer: ticket.customer || '未知客户',
         requirement: ticket.requirement || ticket.title || '',
         reason,
         tried,
+        round: ticket.round ?? 1,
       },
     })
   } catch {
@@ -997,6 +1026,8 @@ export async function mergeTicket({
       await notifyIncident({
         notifier,
         ticket,
+        owner,
+        repo,
         reason: '验证评审修不过',
         tried: `预览起不来：${started?.error || '未知原因'}`,
         link,
@@ -1057,6 +1088,8 @@ export async function mergeTicket({
         await notifyIncident({
           notifier,
           ticket,
+          owner,
+          repo,
           reason: '三圈没进展',
           tried: `冲突解不了：${conflictFiles.join('、')}。${resolved?.error || ''}`.trim(),
           link,
@@ -1087,6 +1120,8 @@ export async function mergeTicket({
       await notifyIncident({
         notifier,
         ticket,
+        owner,
+        repo,
         reason: '验证评审修不过',
         tried: `合并后复验没过${problemsOf(verified).length ? `：${problemsOf(verified).join('；')}` : ''}`,
         link,

@@ -11,7 +11,9 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { FAILED_UPLOAD_STATUSES } from '../../backend/lib/protocol.mjs'
 import { logLine } from './log.mjs'
+import { notificationEvent } from './notify.mjs'
 
 const UPLOAD_ID = /^upload-[A-Za-z0-9._-]+$/
 const ALLOWED_FILES = new Set(['meta.json', 'package.zip'])
@@ -150,6 +152,42 @@ export function createSshRemote({
 }
 
 /**
+ * 回传件的运营者通知。
+ *
+ * 导入失败用 `import_failed` 事件；其余带 `operator_alert` 的状态仍按「出事」发。
+ * key 带上传号，同一上传的同一告警只发一次；时间用告警时间，不用拉取时间。
+ *
+ * @param {object} options
+ * @param {object} options.meta 上传的 meta.json
+ * @param {object} [options.alert] `meta.operator_alert`
+ * @param {string} [options.link] 通知里的链接，默认管理页
+ * @param {Date} [options.now]
+ */
+export function importEvent({ meta, alert = {}, link = '', now = new Date() }) {
+  const status = String(meta?.status || '')
+  const eventName = status === 'import_failed' ? 'import_failed' : '出事'
+  const requirement =
+    (Array.isArray(meta?.requirements)
+      ? meta.requirements.map((item) => item?.name).filter(Boolean).join('、')
+      : '') || meta?.id || ''
+  const reason = String(alert?.reason || status || '导入失败')
+  const at = alert?.at || now
+  return notificationEvent({
+    subject: `inbox:${meta?.id || 'upload'}`,
+    event: eventName,
+    scope: eventName === 'import_failed' ? '' : reason,
+    now: at instanceof Date ? at : new Date(at),
+    link,
+    data: {
+      customer: meta?.user?.short_name || '客户',
+      requirement,
+      reason,
+      tried: alert?.message || '导入步骤报错，详情看服务器日志',
+    },
+  })
+}
+
+/**
  * 拉一轮。
  * @param {object} options
  * @param {object} options.remote 远端适配器
@@ -212,8 +250,8 @@ export async function pullInbox({
     const allowed =
       status === 'ready' ||
       status === 'imported' ||
-      status === 'validation_failed' ||
-      (status === 'failed' && meta.operator_alert)
+      (FAILED_UPLOAD_STATUSES.includes(status) &&
+        (status !== 'failed' || meta.operator_alert))
     if (!allowed) continue
 
     const dir = join(inboxDir, id)
@@ -222,7 +260,15 @@ export async function pullInbox({
     const previous = (await readJsonOrNull(archivePath)) || {}
 
     const zipPath = join(dir, 'package.zip')
-    const copyPackage = status === 'ready' || status === 'imported' || status === 'validation_failed'
+    // 失败终态也要把包存档：服务器 7 天后会删原包，本地只剩 meta 就补不回来。
+    // `failed` 故意不在内：那次没进导入，只转发提醒，不占本地存档。
+    const copyPackage =
+      status === 'ready' ||
+      status === 'imported' ||
+      status === 'validation_failed' ||
+      status === 'import_failed' ||
+      status === 'import_partial' ||
+      status === 'needs_operator'
     let complete = copyPackage ? await fileComplete(zipPath, meta) : false
     if (copyPackage && !complete) {
       const bytes = await remote.read(id, 'package.zip')

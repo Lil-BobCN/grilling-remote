@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createServer } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { loadConfig } from '../lib/config.mjs'
 import { createHandler } from '../lib/app.mjs'
 import { hashPassword } from '../lib/auth.mjs'
@@ -15,6 +16,24 @@ const zipScript = fileURLToPath(new URL('./make-zip.py', import.meta.url))
 
 export const PASSWORD = 'correct horse battery'
 export const EMAIL = 'boss@example.com'
+
+/**
+ * 每个测试文件一个空闲端口，给 scaffold 的 scripts/verify.sh 用。
+ * 测试文件并行跑，共用一个端口会互相踩；文件进程各自设 VERIFY_PORT 就分开。
+ */
+export async function isolateVerifyPort() {
+  if (process.env.VERIFY_PORT) return process.env.VERIFY_PORT
+  const port = await new Promise((resolve, reject) => {
+    const server = createNetServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address()
+      server.close(() => resolve(port))
+    })
+  })
+  process.env.VERIFY_PORT = String(port)
+  return process.env.VERIFY_PORT
+}
 
 export async function makeConfig(overrides = {}) {
   const root = await mkdtemp(join(tmpdir(), 'afkapp-test-'))
@@ -200,6 +219,11 @@ export async function makeWorkspace({
       await writeFile(
         join(issues, '01.md'),
         `# 01\n\nType: grilling\nStatus: ${complete ? 'resolved' : 'claimed'}\n\n## Question\n\n到店取还是送货？\n\n## 结论\n\n到店取。\n`,
+        'utf8',
+      )
+      await writeFile(
+        join(requirement, '问答记录.md'),
+        '# 问答记录\n\n## 客户原话\n\n> 「想要一个预约取货的小程序。」\n\n日期：2026-11-15\n',
         'utf8',
       )
     }

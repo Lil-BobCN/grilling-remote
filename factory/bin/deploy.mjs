@@ -121,7 +121,8 @@ async function sshLoadImage({ tar }) {
   return output
 }
 
-async function httpHealthCheck({ address }) {
+/** 默认健康检查：返回 HTTP 状态码，由 deploy/rollback 用共享判据 `healthy` 判断。 */
+export async function httpHealthCheck({ address }) {
   const url = process.env.AFK_HEALTH_URL || `https://${address}/`
   const response = await fetch(url, {
     redirect: 'follow',
@@ -129,8 +130,7 @@ async function httpHealthCheck({ address }) {
   }).catch((error) => {
     throw new Error(`${url} 连不上：${errorText(error)}`)
   })
-  if (!response.ok) throw new Error(`${url} 回 ${response.status}`)
-  return true
+  return response.status
 }
 
 async function sshSendDeliveryMail({ orderId, address, tries }) {

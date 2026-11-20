@@ -13,7 +13,7 @@ import { startFakeGithub } from '../../factory/test/fake-github.mjs'
 import { createGithubApi } from '../lib/github-api.mjs'
 import { importOnce } from '../lib/import.mjs'
 import { readOrders } from '../lib/orders.mjs'
-import { login, makeConfig, seedCustomer, startServer, upload } from './helpers.mjs'
+import { login, isolateVerifyPort, makeConfig, seedCustomer, startServer, upload } from './helpers.mjs'
 
 const execFileAsync = promisify(execFile)
 const ZIP_SCRIPT = fileURLToPath(new URL('./make-zip.py', import.meta.url))
@@ -27,6 +27,7 @@ const V1_QUOTE =
 const V2_QUOTE = `${V1_QUOTE}门口也贴一张二维码。`
 
 async function setup(t) {
+  await isolateVerifyPort()
   const { config, root } = await makeConfig()
   await seedCustomer(config)
   const fake = await startFakeGithub({ repos: [] })

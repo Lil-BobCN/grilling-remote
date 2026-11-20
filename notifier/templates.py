@@ -100,6 +100,13 @@ def _ignite_timeout(data, link):
     )
 
 
+def _import_failed(data, link):
+    return (
+        f"{data['customer']} · {data['requirement']} · 回传导入失败",
+        f"导入没成：{data['tried']}。快照和订单已保留，处理后归档。{link}",
+    )
+
+
 def _daily_sample(data, link):
     parts = []
     for item in data["items"]:
@@ -137,6 +144,9 @@ EVENTS: dict[str, EventSpec] = {
         (PUSH,), ("customer", "requirement"), True, _needs_info),
     "点火超时": EventSpec(
         (EMAIL,), ("customer", "requirement"), True, _ignite_timeout),
+    "import_failed": EventSpec(
+        (PUSH, EMAIL), ("customer", "requirement", "reason", "tried"),
+        True, _import_failed),
     "每日抽样": EventSpec((PUSH,), ("date", "items"), False, _daily_sample),
 }
 
@@ -194,7 +204,7 @@ def render_event(event: str, data: Any, link: str | None) -> tuple[str, str]:
     spec = EVENTS.get(event)
     if spec is None:
         raise EventError(
-            f"未知事件「{event}」，按 docs/通知.md 的「事件表」的 12 类")
+            f"未知事件「{event}」，按 docs/通知.md 的「事件表」的 13 类")
     if not isinstance(data, dict):
         raise EventError("data 必须是对象")
     _validate(event, spec, data, link)
