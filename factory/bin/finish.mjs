@@ -16,8 +16,8 @@
  * 把地址写进订单的 `delivery` 和 `delivery_url`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
-import { readFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { readFile, realpath } from 'node:fs/promises'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createAgentRunner, FIXER_TOOLS } from '../lib/agent-runner.mjs'
 import { runReviewAudit, runVerifyAudit } from '../lib/audit-agents.mjs'
@@ -34,6 +34,7 @@ import { ensureCommentOnce } from '../lib/issues.mjs'
 import { eventKey } from '../../backend/lib/protocol.mjs'
 import { createNotifier } from '../lib/notify.mjs'
 import { parseProgress, progressLine } from '../lib/progress.mjs'
+import { createRepoWorkspace, parseWorktreeList } from '../lib/repo-workspace.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
 import { deployWithDefaults, markDeliveredWithDefaults, publishZipWithDefaults } from './deploy.mjs'
 
@@ -144,19 +145,47 @@ function deliveryComment({ address, version, codeZipUrl }) {
   return lines.join('\n')
 }
 
-/** 合并后清理绑定在需求分支上的 worktree。当前目录不删。 */
+/**
+ * 合并后清理工作树：需求分支上的、票的，都清。当前目录不删。
+ * 票工作树走 repo-workspace.mjs 的释放规则：干净删，只有未跟踪文件的先归档再删，
+ * 改了已跟踪文件的保留现场。返回删掉、保留和归档的清单。
+ */
 export async function cleanupRequirement({ repoDir, reqBranch }) {
-  const output = await git(repoDir, ['worktree', 'list', '--porcelain']).catch(() => '')
-  const current = resolve(repoDir)
-  for (const block of output.split(/\r?\n\r?\n/)) {
-    const lines = block.split(/\r?\n/)
-    const path = lines.find((line) => line.startsWith('worktree '))?.slice('worktree '.length)
-    const branch = lines.find((line) => line.startsWith('branch '))?.slice('branch '.length)
-    if (!path || branch !== `refs/heads/${reqBranch}`) continue
-    if (resolve(path) === current) continue
-    await git(repoDir, ['worktree', 'remove', '--force', path]).catch(() => {})
+  const rows = parseWorktreeList(
+    await git(repoDir, ['worktree', 'list', '--porcelain']).catch(() => ''),
+  )
+  // git 把 worktree 路径写成真实路径，比较前统一 realpath，兼容 /var 和 /private/var。
+  const real = async (path) => realpath(path).catch(() => resolve(path))
+  const current = await real(repoDir)
+  const worktreesDir = await real(join(repoDir, '.sandcastle', 'worktrees'))
+  const workspace = createRepoWorkspace()
+  const summary = { removed: [], kept: [], archived: [] }
+
+  for (const row of rows) {
+    if (!row.path || (await real(row.path)) === current) continue
+    if (row.branch === reqBranch) {
+      await git(repoDir, ['worktree', 'remove', '--force', row.path]).catch(() => {})
+      summary.removed.push(row.path)
+      continue
+    }
+    const path = await real(row.path)
+    if (path !== worktreesDir && !path.startsWith(`${worktreesDir}${sep}`)) continue
+    const released = await workspace
+      .release({ repoDir, worktree: row.path, branch: row.branch })
+      .catch(() => null)
+    if (!released) {
+      summary.kept.push(row.path)
+      continue
+    }
+    if (released.archived?.length) {
+      summary.archived.push(...released.archived.map((entry) => entry.to))
+    }
+    if (released.kept) summary.kept.push(released.path)
+    else summary.removed.push(released.path)
   }
+
   await git(repoDir, ['worktree', 'prune']).catch(() => {})
+  return summary
 }
 
 /**

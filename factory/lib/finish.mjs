@@ -536,14 +536,23 @@ export async function finishRequirement({
     const mergeSha = pr.merge_commit_sha || ''
     if (!mergeSha) return { ok: false, reason: 'merged_pr_sha_missing', pr }
     let warning = ''
+    let cleanupInfo = null
     if (typeof cleanup === 'function') {
       try {
-        await cleanup({ repoDir, reqBranch })
+        cleanupInfo = await cleanup({ repoDir, reqBranch })
       } catch (error) {
         warning = `合完了，但清理 worktree 失败：${errorText(error)}`
       }
     }
-    return { ok: true, pr, mergeSha, risk, alreadyMerged: true, ...(warning ? { warning } : {}) }
+    return {
+      ok: true,
+      pr,
+      mergeSha,
+      risk,
+      alreadyMerged: true,
+      ...(cleanupInfo ? { cleanup: cleanupInfo } : {}),
+      ...(warning ? { warning } : {}),
+    }
   }
 
   const verifyBranch = pr?.head?.ref || reqBranch
@@ -637,13 +646,21 @@ export async function finishRequirement({
   }
 
   let warning = ''
+  let cleanupInfo = null
   if (typeof cleanup === 'function') {
     try {
-      await cleanup({ repoDir, reqBranch })
+      cleanupInfo = await cleanup({ repoDir, reqBranch })
     } catch (error) {
       warning = `合完了，但清理 worktree 失败：${errorText(error)}`
     }
   }
 
-  return { ok: true, pr, mergeSha, risk, ...(warning ? { warning } : {}) }
+  return {
+    ok: true,
+    pr,
+    mergeSha,
+    risk,
+    ...(cleanupInfo ? { cleanup: cleanupInfo } : {}),
+    ...(warning ? { warning } : {}),
+  }
 }

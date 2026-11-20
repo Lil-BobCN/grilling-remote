@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -311,6 +311,44 @@ test('两分钟没回执：写点火超时评论、打标签、发通知，摘 S
   assert.match(progress[0], /细阶段：点火失败/)
 })
 
+test('点火超时后 run 晚到结束：后台归档并释放票工作树', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  const runner = fakeRunner(async (args) => {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await writeFile(join(args.worktree, '晚到截图.png'), 'png')
+    return {
+      commits: [{ sha: 'abc123' }],
+      branch: args.ticketBranch,
+      preservedWorktreePath: args.worktree,
+    }
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { timeoutMs: 30 }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+  assert.equal(result.timeout, true)
+
+  const deadline = Date.now() + 3000
+  let left = ''
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  } while (left.includes('.sandcastle/worktrees') && Date.now() < deadline)
+  assert.ok(!left.includes('.sandcastle/worktrees'), `晚到的 run 结束后还有残留：\n${left}`)
+
+  const archived = (
+    await readdir(join(repoDir, '.audit', 'archive'), { recursive: true })
+  ).filter((name) => name.endsWith('晚到截图.png'))
+  assert.equal(archived.length, 1, `晚到的截图没归档：${archived.join('、')}`)
+})
+
 test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评论', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
@@ -375,6 +413,122 @@ test('点火成功：贴 Sandcastle、写 prompt、跑 runner、开 PR、写评�
   assert.match(comments[0], /2 个提交/)
   assert.match(comments[0], /pull\/7/)
   assert.equal(notifier.calls.length, 0)
+})
+
+test('点火完成后票工作树释放，主仓还停在需求分支', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  let duringRun = null
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    duringRun = {
+      branch: await git(args.repoDir, ['branch', '--show-current']),
+      worktrees: await git(args.repoDir, ['worktree', 'list', '--porcelain']),
+    }
+    return { commits: [{ sha: 'abc123' }], branch: args.ticketBranch }
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(duringRun.branch, REQ_BRANCH, '点火时主仓不能切走需求分支')
+  assert.match(
+    duringRun.worktrees,
+    new RegExp(`worktrees/ticket-${ticket.number}`),
+    'run 开始时票工作树要在场',
+  )
+
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `点火后还有工作树残留：\n${left}`)
+})
+
+test('Sandcastle 返回 preservedWorktreePath：未跟踪截图先归档再释放', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  const logs = []
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    await mkdir(join(args.worktree, 'shots'), { recursive: true })
+    await writeFile(join(args.worktree, 'shots', '首页.png'), 'png-bytes')
+    return {
+      commits: [{ sha: 'abc123' }],
+      branch: args.ticketBranch,
+      preservedWorktreePath: args.worktree,
+    }
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.archived.length, 1, JSON.stringify(result.archived))
+  assert.equal(result.archived[0].from, 'shots/首页.png')
+  assert.match(
+    result.archived[0].to,
+    new RegExp(`^\\.audit/archive/[0-9]{8}T[0-9]{6}Z-ticket-${ticket.number}/shots/首页\\.png$`),
+  )
+  assert.equal(await readFile(join(repoDir, result.archived[0].to), 'utf8'), 'png-bytes')
+
+  const archivedLog = logs.find((row) => row.msg === '归档票工作树里的未跟踪文件')
+  assert.ok(archivedLog, '归档路径要写进日志')
+  assert.deepEqual(archivedLog.files, [result.archived[0].to])
+
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `归档后还有工作树残留：\n${left}`)
+})
+
+test('Sandcastle 保留了改了已跟踪文件的工作树：不删，回传路径', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const repoDir = join(fixture.root, 'repos', REPO)
+  const logs = []
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    await writeFile(join(args.worktree, 'src', 'app.mjs'), 'export const APP = "DIRTY"\n')
+    return {
+      commits: [{ sha: 'abc123' }],
+      branch: args.ticketBranch,
+      preservedWorktreePath: args.worktree,
+    }
+  })
+  t.after(() => git(repoDir, ['worktree', 'remove', '--force', join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`)]).catch(() => {}))
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { log: (row) => logs.push(row) }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    push: fakePush().push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.worktree, join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`))
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(left.includes(result.worktree), '改了已跟踪文件的工作树要保留')
+  assert.equal(
+    await readFile(join(result.worktree, 'src', 'app.mjs'), 'utf8'),
+    'export const APP = "DIRTY"\n',
+  )
+  assert.ok(
+    logs.some((row) => row.msg === '票工作树有未提交改动，保留'),
+    '保留现场要写日志',
+  )
 })
 
 test('点火成功先 push 票分支，PR head 用 push 的分支', async (t) => {
@@ -629,8 +783,11 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
     body: progressLine({ path: '其余', tier: '开发中', step: '开工', round: 1, stuck: false }),
   })
   const logs = []
-  const runner = fakeRunner(async () => {
-    throw new Error('容器起不来')
+  const runner = fakeRunner(async (args) => {
+    await writeFile(join(args.worktree, '失败截图.png'), 'png')
+    const error = new Error('容器起不来')
+    error.preservedWorktreePath = args.worktree
+    throw error
   })
   const pr = fakeOpenPr()
   const notifier = fakeNotifier()
@@ -646,13 +803,34 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
   assert.equal(result.ok, false)
   assert.match(result.error, /容器起不来/)
   assert.equal(pr.calls.length, 0)
+  assert.equal(result.archived.length, 1, '失败现场的未跟踪文件要先归档')
+  assert.equal(
+    await readFile(join(fixture.root, 'repos', REPO, result.archived[0].to), 'utf8'),
+    'png',
+  )
+  const left = await git(join(fixture.root, 'repos', REPO), ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `点火失败后还有工作树残留：\n${left}`)
   const comments = commentsOf(fake, ticket.number)
   assert.equal(comments.length, 1)
   assert.ok(comments[0].startsWith('点火失败'))
   assert.match(comments[0], /容器起不来/)
-  assert.equal(logs.length, 1)
-  assert.equal(logs[0].level, 'error')
-  assert.equal(logs[0].msg, '点火失败')
+  const failureLog = logs.find((row) => row.msg === '点火失败')
+  assert.ok(failureLog)
+  assert.equal(failureLog.level, 'error')
+  const worktreePath = join(
+    fixture.root,
+    'repos',
+    REPO,
+    '.sandcastle',
+    'worktrees',
+    `ticket-${ticket.number}`,
+  )
+  assert.ok(
+    logs.some(
+      (row) => row.msg === 'Sandcastle 保留了工作树' && row.worktree === worktreePath,
+    ),
+    'runner 抛错带的 preservedWorktreePath 要读出来',
+  )
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:待验收'))
   assert.ok(!labelsOf(fake, ticket.number).includes('Sandcastle'))
   assert.ok(labelsOf(fake, ticket.number).includes('状态:开发中'))
@@ -950,6 +1128,48 @@ test('sandcastle runner：首次装依赖、镜像取 .env、脚本不带宿主 
   assert.equal(run.options.env.GH_TOKEN, undefined)
   assert.equal(run.options.env.ANTHROPIC_AUTH_TOKEN, undefined)
   assert.equal(run.options.env.HOME, '/Users/example')
+})
+
+test('sandcastle runner：run 结果带回 preservedWorktreePath', async (t) => {
+  const fixture = await runnerFixture(t)
+  await seedInstalledSandcastle(fixture.home)
+  const preserved = join(fixture.repoDir, '.sandcastle', 'worktrees', 'ticket-5')
+  const runner = createSandcastleRunner({
+    home: fixture.home,
+    env: { PATH: '/usr/bin', HOME: '/Users/example' },
+    exec: async (command, args, options = {}) => {
+      if (command.endsWith('/tsx')) {
+        options.onStart?.()
+        return {
+          code: 0,
+          stdout: `AFK_RESULT:${JSON.stringify({
+            commits: [{ sha: 'abc123' }],
+            branch: 'ticket/5',
+            preservedWorktreePath: preserved,
+          })}\n`,
+          stderr: '',
+        }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+    buildImage: async () => ({}),
+  })
+
+  const prepared = await runner.prepare({
+    repoDir: fixture.repoDir,
+    ticketBranch: 'ticket/5',
+    prompt: fixture.prompt,
+    envFile: join(fixture.repoDir, '.sandcastle', '.env'),
+  })
+  const result = await runner.run({
+    repoDir: fixture.repoDir,
+    ticketBranch: 'ticket/5',
+    prepared,
+  })
+
+  assert.equal(result.preservedWorktreePath, preserved)
+  const script = await readFile(prepared.scriptPath, 'utf8')
+  assert.match(script, /preservedWorktreePath/, '脚本要把 Sandcastle 的保留路径打出来')
 })
 
 test('sandcastle runner：依赖已装就不重装，镜像没配时用 sandcastle:<repo>', async (t) => {
