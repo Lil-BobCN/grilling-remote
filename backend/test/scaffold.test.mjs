@@ -38,6 +38,7 @@ const REQUIRED_FILES = [
   'AGENTS.md',
   '.gitignore',
   '.dockerignore',
+  '.env.example',
   'Dockerfile',
   'package.json',
   'docs/agents/issue-tracker.md',
@@ -117,6 +118,16 @@ test('新仓生成全套文件、初始提交并推送到 main', async (t) => {
   const packageJson = JSON.parse(await readFile(join(workDir, 'package.json'), 'utf8'))
   assert.equal(packageJson.name, 'acme-shuiguo')
   assert.equal(packageJson.type, 'module')
+
+  // env 契约必须覆盖应用实际读的键，多一个少一个都算漂移。
+  const envExample = await readFile(join(workDir, '.env.example'), 'utf8')
+  const serverSource = await readFile(join(workDir, 'src/server.mjs'), 'utf8')
+  const envKeys = [...serverSource.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1])
+  assert.ok(envKeys.length > 0, '源码里没找到 process.env')
+  for (const key of new Set(envKeys)) {
+    assert.match(envExample, new RegExp(`^${key}=`, 'm'), `.env.example 缺 ${key}`)
+  }
+  assert.ok(!envExample.includes('{{'), '.env.example 还有没替换的占位符')
 
   const clone = join(scratch, 'clone')
   await execFileAsync('git', ['clone', bare, clone])

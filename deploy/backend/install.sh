@@ -23,7 +23,7 @@ ENV_EXAMPLE=$HERE/app.env.example
 SUDO_USER_NAME=${AFK_SUDO_USER:-dev}
 UPLOAD_SUDO_FILE=/etc/sudoers.d/afk-uploads
 
-for file in "$CADDYFILE" "$SERVICE_FILE" "$IMPORT_SERVICE_FILE" "$IMPORT_TIMER_FILE" "$UPLOAD_HELPER" "$ENV_EXAMPLE"; do
+for file in "$CADDYFILE" "$SERVICE_FILE" "$IMPORT_SERVICE_FILE" "$IMPORT_TIMER_FILE" "$UPLOAD_HELPER" "$ENV_EXAMPLE" "$HERE/../lib/health.sh" "$HERE/../lib/fingerprint.sh"; do
   [[ -f $file ]] || { echo "缺文件：$file" >&2; exit 1; }
 done
 
@@ -64,12 +64,15 @@ echo "装好 afkapp.service 和 afk-import.timer；afkapp 还没 enable，等第
 echo "第一版发布后启动导入定时器：systemctl start afk-import.timer"
 
 echo "== 运维脚本"
-# 这里只在装机时跑。以后改这三个脚本，按 docs/后端服务.md 的「发布」一节换 /data/app/bin/ 里的旧版。
+# 这里只在装机时跑。以后改这些脚本，按 docs/后端服务.md 的「发布」一节换 /data/app/bin/ 里的旧版。
 install -d -m 755 /data/app/bin
 for script in deploy.sh rollback.sh check.sh; do
   install -m 755 -o root -g root "$HERE/$script" "/data/app/bin/$script"
 done
-echo "脚本放到了 /data/app/bin/"
+for lib in health.sh fingerprint.sh; do
+  install -m 644 -o root -g root "$HERE/../lib/$lib" "/data/app/bin/$lib"
+done
+echo "脚本和共享库放到了 /data/app/bin/"
 
 echo "== 回传件拉取 helper"
 install -m 755 -o root -g root "$UPLOAD_HELPER" /usr/local/sbin/afk-uploads
