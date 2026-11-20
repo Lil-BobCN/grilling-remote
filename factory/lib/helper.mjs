@@ -4,15 +4,14 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { resolveHelperCommand } from './config.mjs'
 
 const execFileAsync = promisify(execFile)
 
+/** helper 命令的来源顺序：AFK_HELPER、AFK_SSH_TARGET、AFK_SERVER，最后本机 PATH。 */
 export function helperCommand(env = process.env) {
-  if (env.AFK_HELPER?.trim()) return env.AFK_HELPER.trim().split(/\s+/)
-  if (env.AFK_SSH_TARGET?.trim()) {
-    return ['ssh', env.AFK_SSH_TARGET.trim(), 'sudo', '/usr/local/sbin/afk-product']
-  }
-  return ['afk-product']
+  const resolved = resolveHelperCommand(env)
+  return resolved ? resolved.command : ['afk-product']
 }
 
 /** 跑一次 `afk-product`，返回 stdout。 */

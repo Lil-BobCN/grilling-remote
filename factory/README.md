@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `lib/github.mjs` | GitHub REST 客户端 | 基础 |
 | `lib/git.mjs` | 本地 git 操作 | 基础 |
+| `lib/config.mjs` | 启动配置：读 env 文件、校验键、解析 helper 和模型 | I-0212 |
 | `lib/scaffold.mjs` | 建客户仓和模板应用 | #458（在 `backend/`） |
 | `lib/map-issues.mjs` | 按 `map.md` 建地图 issue 和决定票 | #460、#462 |
 | `lib/scheduler.mjs` | 30 秒一轮的路由表 | #463、#470 |
@@ -73,7 +74,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.scheduler
 
 安装只复制 plist 和 wrapper，不加载任务。重装后先 `launchctl bootout gui/$(id -u)/<Label>`，再 bootstrap。
 
-两个 wrapper 都 source `~/.afkfactory/env`，需要的键：`AFK_SERVER`、`AFK_SSH_KEY`、`GITHUB_OWNER`、`GITHUB_TOKEN`（细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写）。token 不写进 plist。
+两个 wrapper 都 source `~/.afkfactory/env`，需要的键：`AFK_SERVER`（或写完整命令的 `AFK_HELPER`）、`AFK_SSH_KEY`、`GITHUB_OWNER`、`GITHUB_TOKEN`（细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写）、`ANTHROPIC_MODEL`（或 `AFK_AGENT_MODEL`）。token 不写进 plist。env 文件路径可用 `AFK_ENV_FILE` 换。
+
+调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。
 
 调度器状态只在 GitHub。进程重启后按标签和阻塞边重新推导，不重复点火。
 
