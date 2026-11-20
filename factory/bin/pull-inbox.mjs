@@ -11,7 +11,8 @@
  *   AFK_UPLOADS_HELPER 服务器上的 helper 路径，默认 /usr/local/sbin/afk-uploads
  *   AFK_INBOX         本地存档目录，默认当前目录下的 inbox
  *   AFK_CUSTOMERS_FILE 本机 customers.json 路径，默认 inbox 的上一层
- *   NOTIFIER_COMMAND  有 operator_alert 时调的通知命令，默认 `python3 -m notifier send`
+ *   NOTIFIER_COMMAND  通知命令，默认 python3
+ *   NOTIFIER_HOME     通知模块的运行目录，默认 ~/.grilling/notifier
  *   SITE_BASE         通知里的链接前缀，默认 https://afkfactory.space
  *
  * 每轮还会把服务器 `/data/customers/customers.json` 同步到本机，给调度器读。
@@ -21,13 +22,10 @@
  * deploy/backend/install.sh 装好，不开放任意路径。
  * 脚本只在本地副本完整并且 `meta.status === 'imported'` 时删远端目录。
  */
-import { randomUUID } from 'node:crypto'
-import { rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { spawn } from 'node:child_process'
-import { createSshRemote, pullInbox } from '../lib/inbox.mjs'
+import { createSshRemote, importEvent, pullInbox } from '../lib/inbox.mjs'
 import { logLine } from '../lib/log.mjs'
+import { createNotifier } from '../lib/notify.mjs'
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name)
@@ -37,52 +35,14 @@ function option(name, fallback) {
   return value
 }
 
-function notifierEvent({ meta, alert }) {
-  const requirement =
-    (Array.isArray(meta.requirements) ? meta.requirements.map((item) => item.name).filter(Boolean).join('、') : '') ||
-    meta.id
-  const siteBase = (process.env.SITE_BASE || 'https://afkfactory.space').replace(/\/+$/, '')
-  return {
-    v: 1,
-    key: `inbox:${meta.id}:${alert.at || ''}:${alert.reason || ''}`,
-    event: '出事',
-    occurred_at: alert.at || new Date().toISOString(),
-    link: `${siteBase}/app/admin`,
-    data: {
-      customer: meta.user?.short_name || '客户',
-      requirement,
-      reason: alert.reason || '回传导入',
-      tried: alert.message || '导入步骤报错，详情看服务器日志',
-    },
-  }
-}
-
-function runNotifier(commandLine, args) {
-  return new Promise((resolveRun, reject) => {
-    const child = spawn(commandLine, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-    let stderr = ''
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolveRun()
-      else reject(new Error(`通知命令退出码 ${code}：${stderr.trim()}`))
-    })
-  })
-}
-
-async function notifyOperator({ meta, alert }) {
-  const event = notifierEvent({ meta, alert })
-  const file = join(tmpdir(), `afk-notify-${randomUUID()}.json`)
-  await writeFile(file, `${JSON.stringify(event, null, 2)}\n`, 'utf8')
-  try {
-    const commandLine = process.env.NOTIFIER_COMMAND || 'python3'
-    const args =
-      commandLine === 'python3' ? ['-m', 'notifier', 'send', '--event-file', file] : ['--event-file', file]
-    await runNotifier(commandLine, args)
-  } finally {
-    await rm(file, { force: true })
+function notifyOperator(notifier) {
+  return async function sendImportEvent({ meta, alert }) {
+    const siteBase = (process.env.SITE_BASE || 'https://afkfactory.space').replace(/\/+$/, '')
+    const event = importEvent({ meta, alert, link: `${siteBase}/app/admin` })
+    const result = await notifier.send(event)
+    if (!result || result.code !== 0) {
+      throw new Error(`通知命令退出码 ${result?.code ?? '?'}：${String(result?.stdout || '').trim()}`)
+    }
   }
 }
 
@@ -101,8 +61,17 @@ async function main() {
     key: process.env.AFK_SSH_KEY || '',
     helper: process.env.AFK_UPLOADS_HELPER || '/usr/local/sbin/afk-uploads',
   })
+  const notifier = createNotifier({
+    command: process.env.NOTIFIER_COMMAND || 'python3',
+    home: process.env.NOTIFIER_HOME,
+  })
 
-  const result = await pullInbox({ remote, inboxDir, customersPath, notify: notifyOperator })
+  const result = await pullInbox({
+    remote,
+    inboxDir,
+    customersPath,
+    notify: notifyOperator(notifier),
+  })
   logLine({
     level: 'info',
     msg: '回传件拉取结束',

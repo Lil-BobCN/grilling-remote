@@ -290,7 +290,7 @@ test('两分钟没回执：写点火超时评论、打标签、发通知，摘 S
 
   const timeout = notifier.calls.find((event) => event.event === '点火超时')
   assert.ok(timeout, '没有发点火超时通知')
-  assert.deepEqual(timeout.data, { customer: OWNER, requirement: 'yuyue-quhuo' })
+  assert.deepEqual(timeout.data, { customer: OWNER, requirement: 'yuyue-quhuo', attempt: 1 })
   assert.match(timeout.link, new RegExp(`/issues/${ticket.number}$`))
 
   const incident = notifier.calls.find((event) => event.event === '出事')
@@ -1201,4 +1201,44 @@ test('buildPrompt：第一行 /tdd，分节放 spec、票三段、AGENTS、featu
   assert.match(prompt, /FEATURE-MAP-MARKER/)
   assert.match(prompt, /## src\/app\.mjs/)
   assert.match(prompt, /APP-SOURCE-MARKER/)
+})
+
+test('同一票连续 5 次点火超时：故障 key 稳定，attempt 进 data，只送达一次', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner(() => new Promise(() => {}))
+  const delivered = new Map()
+  const calls = []
+  const notifier = {
+    async send(event) {
+      calls.push(event)
+      if (!delivered.has(event.key)) delivered.set(event.key, event)
+      return { code: 0 }
+    },
+  }
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, { timeoutMs: 40 }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier,
+    clock: () => new Date('2026-11-17T10:00:00+08:00'),
+  })
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt })
+    assert.equal(result.timeout, true, `第 ${attempt} 次要超时`)
+  }
+
+  const timeoutKey = `${OWNER}/${REPO}:#${ticket.number}:点火超时`
+  const incidentKey = `${OWNER}/${REPO}:#${ticket.number}:出事:点火失败`
+  assert.deepEqual([...delivered.keys()].sort(), [incidentKey, timeoutKey].sort(), '只送达一次')
+  const timeoutCalls = calls.filter((event) => event.event === '点火超时')
+  assert.deepEqual(
+    timeoutCalls.map((event) => event.data.attempt),
+    [1, 2, 3, 4, 5],
+    '次数放 data，key 不带时间戳',
+  )
+  assert.equal(new Set(timeoutCalls.map((event) => event.key)).size, 1)
+  assert.equal(delivered.get(timeoutKey).data.customer, OWNER)
+  assert.equal(delivered.get(incidentKey).data.reason.includes('两分钟没收到回执'), true)
 })

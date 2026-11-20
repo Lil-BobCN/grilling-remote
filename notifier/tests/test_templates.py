@@ -67,6 +67,15 @@ def samples():
             {"customer": "B 店", "requirement": "预约送货"},
             "https://example.test/1",
         ),
+        "import_failed": (
+            {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "reason": "import_failed",
+                "tried": "customers.json 里找不到客户 a-0001",
+            },
+            "https://example.test/app/admin",
+        ),
         "每日抽样": (
             {
                 "date": "2026-11-15",
@@ -82,16 +91,34 @@ def samples():
 
 class TestTemplates(unittest.TestCase):
     def test_event_count_and_channels(self):
-        self.assertEqual(len(EVENTS), 12)
+        self.assertEqual(len(EVENTS), 13)
         self.assertEqual(EVENTS["出事"].channels, (PUSH, EMAIL))
         self.assertEqual(EVENTS["点火超时"].channels, (EMAIL,))
         self.assertEqual(EVENTS["每日抽样"].channels, (PUSH,))
-        for event in ("补缺口提案", "该跑 to-spec", "拆票提案", "需要你答"):
+        for event in ("补缺口提案", "该跑 to-spec", "拆票提案", "需要你答", "import_failed"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH, EMAIL))
         for event in ("新单进队列", "重传地图已更新", "自己合并", "部署完成", "needs-info"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH,))
+
+    def test_import_failed_renders_exact(self):
+        title, body = render_event(
+            "import_failed",
+            {
+                "customer": "B 店",
+                "requirement": "预约送货",
+                "reason": "import_failed",
+                "tried": "customers.json 里找不到客户 a-0001",
+            },
+            "https://example.test/app/admin",
+        )
+        self.assertEqual(title, "B 店 · 预约送货 · 回传导入失败")
+        self.assertEqual(
+            body,
+            "导入没成：customers.json 里找不到客户 a-0001。"
+            "快照和订单已保留，处理后归档。https://example.test/app/admin",
+        )
 
     def test_waiting_events_render_exact(self):
         cases = [

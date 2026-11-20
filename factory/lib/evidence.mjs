@@ -16,6 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { CLEAN_CHECK_MARKER } from './clean-check.mjs'
 import { GitError, git, mergeNoFf, pushOrigin } from './git.mjs'
 import { ensureLabel } from './issues.mjs'
+import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
 import { progressLine } from './progress.mjs'
 
@@ -762,21 +763,23 @@ export async function freshVerifiers({ trail, headSha = '', repoDir = '' } = {})
   return ids
 }
 
-async function notifyIncident({ notifier, ticket, reason, tried, link }) {
+async function notifyIncident({ notifier, ticket, owner = '', repo = '', reason, tried, link }) {
   if (typeof notifier?.send !== 'function') return
-  const at = new Date()
   try {
-    await notifier.send({
-      v: 1,
-      key: `#${ticket.number}:出事:${reason}:${at.toISOString()}`,
+    await sendEvent(notifier, {
+      owner,
+      repo,
+      subject: `#${ticket.number}`,
       event: '出事',
-      occurred_at: at.toISOString(),
+      scope: reason,
+      now: new Date(),
       link,
       data: {
         customer: ticket.customer || '未知客户',
         requirement: ticket.requirement || ticket.title || '',
         reason,
         tried,
+        round: ticket.round ?? 1,
       },
     })
   } catch {
@@ -1023,6 +1026,8 @@ export async function mergeTicket({
       await notifyIncident({
         notifier,
         ticket,
+        owner,
+        repo,
         reason: '验证评审修不过',
         tried: `预览起不来：${started?.error || '未知原因'}`,
         link,
@@ -1083,6 +1088,8 @@ export async function mergeTicket({
         await notifyIncident({
           notifier,
           ticket,
+          owner,
+          repo,
           reason: '三圈没进展',
           tried: `冲突解不了：${conflictFiles.join('、')}。${resolved?.error || ''}`.trim(),
           link,
@@ -1113,6 +1120,8 @@ export async function mergeTicket({
       await notifyIncident({
         notifier,
         ticket,
+        owner,
+        repo,
         reason: '验证评审修不过',
         tried: `合并后复验没过${problemsOf(verified).length ? `：${problemsOf(verified).join('；')}` : ''}`,
         link,

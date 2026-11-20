@@ -6,6 +6,7 @@
  */
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { eventKey } from '../../backend/lib/protocol.mjs'
 import { readTrail } from './evidence.mjs'
 import { git } from './git.mjs'
 import { latestGate } from './gate.mjs'
@@ -13,6 +14,7 @@ import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { blockingStop, findJob, jobBlocked } from './job.mjs'
 import { logLine } from './log.mjs'
 import { acquireFileLock } from './lock.mjs'
+import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
 import { parseProgress, progressLine } from './progress.mjs'
@@ -166,8 +168,8 @@ function stallActions({ parent, comments, state, hits, owner, repo }) {
         owner,
         repo,
         event: '出事',
-        key: `#${parent.number}:出事:${hit.reason}`,
-        data: { reason: hit.reason, tried: hit.detail },
+        scope: hit.reason,
+        data: { reason: hit.reason, tried: hit.detail, round: roundOf(comments) },
       }),
     )
   }
@@ -199,12 +201,12 @@ function progressFor({ parent, state, comments, tier, step, stuck, note = '' }) 
   })
 }
 
-function notifyAction({ parent, owner, repo, event, key, data, link }) {
+function notifyAction({ parent, owner, repo, event, scope = '', data, link }) {
   const facts = parentFacts(parent)
   return {
     type: 'notify',
     event,
-    key,
+    key: eventKey({ owner, repo, subject: `#${parent.number}`, event, scope }),
     data: { customer: facts.customer, requirement: facts.requirement, ...data },
     link: link || parentLink(parent, owner, repo),
   }
@@ -226,8 +228,8 @@ function needsInfoActions({ parent, comments, state, reason, owner, repo }) {
       owner,
       repo,
       event: 'needs-info',
-      key: `#${parent.number}:needs-info:${state || '无状态'}:${roundOf(comments)}`,
-      data: {},
+      scope: state || '无状态',
+      data: { round: roundOf(comments) },
     }),
   ]
 }
@@ -408,8 +410,8 @@ export function routeParent({
         owner,
         repo,
         event: '该跑 to-spec',
-        key: `#${parent.number}:该跑 to-spec:${daysBetween(signal.comment?.created_at, now)}`,
-        data: {},
+        scope: String(daysBetween(signal.comment?.created_at, now)),
+        data: { days_waited: daysBetween(signal.comment?.created_at, now) },
       }),
     ]
   }
@@ -493,16 +495,16 @@ export function newTicketEvent({ parent, comments = [], owner, repo }) {
     owner,
     repo,
     event: '新单进队列',
-    key: `#${parent.number}:新单进队列`,
     data: {},
   })
 }
 
 /**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
- * 每 24 小时换一个新 key，通知模块按 key 去重，同一事实同一天只送一次。
+ * 每 24 小时换一个新 scope，通知模块按 key 去重，同一事实同一天只送一次。
+ * 给了 owner 和 repo 时 key 带仓库身份，两个客户仓同号不会相撞。
  */
-export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
+export function pendingReminder({ parent, latestGate, now, needsAnswer = [], owner = '', repo = '' }) {
   const state = stateOf(parent)
   const waitingState = state === '已提交' || state === '排队中'
   const answers = Array.isArray(needsAnswer) ? needsAnswer : []
@@ -513,7 +515,13 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
     return {
       event: '需要你答',
       days_waited: days,
-      key: `#${parent.number}:需要你答:${item.key}:${days}`,
+      key: eventKey({
+        owner,
+        repo,
+        subject: `#${parent.number}`,
+        event: '需要你答',
+        scope: `${item.key}:${days}`,
+      }),
       item,
     }
   }
@@ -521,19 +529,35 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [] }) {
   if (!latestGate || !waitingState) return null
   const kind = latestGate.kind
   const at = latestGate.comment?.created_at
+  const base = { owner, repo, subject: `#${parent.number}` }
 
   if (kind === '提案：补缺口') {
     const days = daysBetween(at, now)
-    return { event: '补缺口提案', days_waited: days, key: `#${parent.number}:补缺口提案:${days}`, gate: latestGate }
+    return {
+      event: '补缺口提案',
+      days_waited: days,
+      key: eventKey({ ...base, event: '补缺口提案', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   if (kind === '点头：补缺口' && !parent?.spec && state === '排队中') {
     const days = daysBetween(at, now)
     if (days < 1) return null
-    return { event: '该跑 to-spec', days_waited: days, key: `#${parent.number}:该跑 to-spec:${days}`, gate: latestGate }
+    return {
+      event: '该跑 to-spec',
+      days_waited: days,
+      key: eventKey({ ...base, event: '该跑 to-spec', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   if (kind === '提案：拆票') {
     const days = daysBetween(at, now)
-    return { event: '拆票提案', days_waited: days, key: `#${parent.number}:拆票提案:${days}`, gate: latestGate }
+    return {
+      event: '拆票提案',
+      days_waited: days,
+      key: eventKey({ ...base, event: '拆票提案', scope: String(days) }),
+      gate: latestGate,
+    }
   }
   return null
 }
@@ -559,7 +583,7 @@ export function digestEvent({ items = [], date = '' } = {}) {
   const day = date || items[0]?.date || ''
   return {
     v: 1,
-    key: `每日抽样:${day}`,
+    key: eventKey({ event: '每日抽样', scope: day }),
     event: '每日抽样',
     data: {
       date: day,
@@ -864,7 +888,13 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
         {
           type: 'notify',
           event: '重传地图已更新',
-          key: `#${map.number}:重传地图已更新:${reupload.date}`,
+          key: eventKey({
+            owner,
+            repo,
+            subject: `#${map.number}`,
+            event: '重传地图已更新',
+            scope: reupload.date,
+          }),
           data: { customer: facts.customer, requirement: facts.requirement },
           link: map.html_url || parentLink(map, owner, repo),
         },
@@ -957,6 +987,11 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
   // 认领完成：实现跑在后台，这一轮不等它。锁跟到后台任务结束才放；
   // 进程重启后由已经贴上的 Sandcastle 标签挡住重复点火。
   config.pendingIgnitions ??= new Set()
+  const previousRows = config.jobs?.rowsFor?.({ owner, repo, parent: parent.number }) || []
+  const previous = previousRows.find(
+    (row) => row?.action === 'ignite' && row?.ticket === ticketNumber,
+  )
+  const attempt = (previous?.attempt || 0) + 1
   const task = runIgnitionInBackground({
     gh,
     owner,
@@ -964,6 +999,7 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
     parent,
     ticket: action.ticket,
     ticketNumber,
+    attempt,
     ignite,
     lock,
     log: config.log,
@@ -984,6 +1020,7 @@ async function runIgnitionInBackground({
   parent,
   ticket,
   ticketNumber,
+  attempt = 1,
   ignite,
   lock,
   log,
@@ -997,6 +1034,7 @@ async function runIgnitionInBackground({
       repo,
       parent: { number: parent.number, title: parent.title, body: parent.body },
       ticket,
+      attempt,
     })
   } catch (error) {
     await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
@@ -1041,22 +1079,28 @@ async function runIgnitionInBackground({
 }
 
 function notificationPayload(event, now) {
-  return {
-    v: 1,
+  return notificationEvent({
     key: event.key,
     event: event.event,
-    occurred_at: (now instanceof Date ? now : new Date(now)).toISOString(),
-    ...(event.link ? { link: event.link } : {}),
-    data: event.data || {},
-  }
+    data: event.data,
+    link: event.link,
+    now: now instanceof Date ? now : new Date(now),
+  })
 }
 
-async function sendEvent({ notifier, event, config, now }) {
+/** 调度器这一层的发送：先查本轮已发 key，再走统一的 sendEvent。 */
+async function deliverEvent({ notifier, event, config, now }) {
   const payload = notificationPayload(event, now)
   if (config.notifiedKeys?.has(payload.key)) {
     return { type: 'notify', event: payload.event, key: payload.key, skipped: 'already-notified' }
   }
-  const result = await notifier.send(payload)
+  const result = await sendNotification(notifier, {
+    key: payload.key,
+    event: payload.event,
+    data: payload.data,
+    link: payload.link,
+    now,
+  })
   if (result?.code === 0) config.notifiedKeys?.add(payload.key)
   return { type: 'notify', event: payload.event, key: payload.key, code: result?.code }
 }
@@ -1113,7 +1157,7 @@ async function executeActions({
       })
       results.push({ type: 'comment', created })
     } else if (action.type === 'notify') {
-      results.push(await sendEvent({ notifier, event: action, config, now }))
+      results.push(await deliverEvent({ notifier, event: action, config, now }))
     } else if (action.type === 'addLabel') {
       results.push(
         await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: action.name }),
@@ -1313,7 +1357,7 @@ function failureText(result) {
  * needs-info 和部署失败直接写 stop；其余失败按 attempt 退避，到上限也写 stop。
  * 写 stop 时给父工单补 needs-info，运营者摘掉标签后下一轮自动放行。
  */
-async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed, now, jobPolicy, report }) {
+async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed, now, jobPolicy, report, notifier, config }) {
   if (!jobs) return
   const guard = async (work) => {
     try {
@@ -1325,6 +1369,53 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
   }
   const ensureStopLabel = () =>
     ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+  const failureEvent = (action, result, row, scope, reason = '作业失败') =>
+    notifyAction({
+      parent,
+      owner,
+      repo,
+      event: '出事',
+      scope,
+      data: {
+        reason,
+        tried: failureText(result),
+        attempt: row?.attempt ?? 0,
+      },
+    })
+  // 同一故障只报一次：key 稳定，attempt 放 data；到上限另发一条换 key 的升级。
+  // 收尾的验证评审失败和收尾模块自己发的「验证评审修不过」共用 key，不重复报。
+  const failureScope = (action, result) => {
+    if (action === 'finish' && result?.reason === 'review_failed') {
+      return { scope: '验证评审修不过:收尾评审', reason: '验证评审修不过' }
+    }
+    if (action === 'finish' && result?.reason === 'verify_failed') {
+      return { scope: '验证评审修不过:PR 验证', reason: '验证评审修不过' }
+    }
+    const kind = String(result?.reason || '失败').replace(/\s+/g, '-')
+    return { scope: `作业失败:${action}:${kind}`, reason: '作业失败' }
+  }
+  const notifyFailure = async (action, result, row) => {
+    if (!row || !notifier) return
+    const { scope, reason } = failureScope(action, result)
+    await guard(
+      deliverEvent({
+        notifier,
+        event: failureEvent(action, result, row, scope, reason),
+        config,
+        now,
+      }),
+    )
+    if (row.stop === 'retry-exhausted') {
+      await guard(
+        deliverEvent({
+          notifier,
+          event: failureEvent(action, result, row, `${scope}:升级`, '重试用完，作业停了'),
+          config,
+          now,
+        }),
+      )
+    }
+  }
   const recordRetry = async (action, result) => {
     const row = await guard(
       jobs.recordFailure({
@@ -1338,6 +1429,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
       }),
     )
     if (row?.stop) await guard(ensureStopLabel())
+    await notifyFailure(action, result, row)
   }
   const results = executed?.results || []
 
@@ -1368,7 +1460,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
       await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'finish', now }))
     } else if (finishResult.deploy && finishResult.deploy.ok === false) {
       const reason = `部署失败：${finishResult.deploy.reason || finishResult.deploy.error || '未知原因'}`
-      await guard(
+      const row = await guard(
         jobs.stop({
           owner,
           repo,
@@ -1380,6 +1472,14 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         }),
       )
       await guard(ensureStopLabel())
+      await guard(
+        deliverEvent({
+          notifier,
+          event: failureEvent('finish', { reason }, row, '作业失败:finish:升级', '部署失败，作业停了'),
+          config,
+          now,
+        }),
+      )
     } else {
       await recordRetry('finish', finishResult)
     }
@@ -1524,15 +1624,19 @@ export function createWatchdog({
   config = {},
 } = {}) {
   config.notifiedKeys ??= new Set()
-  let sentKey = null
   let timer = null
   async function tick() {
     if (!jobs || typeof jobs.stalledFor !== 'function') return null
     const at = clock()
     const stalled = jobs.stalledFor(at, { stallMs })
     if (!stalled) return null
-    const key = `调度器:出事:轮次超时:${stalled.roundStart}`
-    if (sentKey === key || config.notifiedKeys?.has(key)) return null
+    // 探活事件的身份固定：同一轮超时只报一次，轮次开始时间放 scope。
+    const key = eventKey({
+      subject: '调度器',
+      event: '出事',
+      scope: `轮次超时:${stalled.roundStart}`,
+    })
+    if (config.notifiedKeys?.has(key)) return null
     const minutes = Math.max(1, Math.round(stalled.stalledMs / 60000))
     const event = {
       v: 1,
@@ -1553,13 +1657,8 @@ export function createWatchdog({
       return event
     }
     try {
-      const result = await notifier.send(event)
-      if (result?.code === 0) {
-        sentKey = key
-        config.notifiedKeys?.add(key)
-      } else {
-        log({ level: 'error', msg: '轮次超时通知没发出去', code: result?.code })
-      }
+      const result = await deliverEvent({ notifier, event, config, now: at })
+      if (result?.skipped) return null
     } catch (error) {
       log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
     }
@@ -1770,6 +1869,8 @@ export async function runOnce({
             now: nowDate,
             jobPolicy,
             report,
+            notifier,
+            config,
           })
         }
         parents.push({
@@ -1822,7 +1923,7 @@ export async function runOnce({
         })
         if (newTicket) {
           try {
-            const result = await sendEvent({ notifier, event: newTicket, config, now: nowDate })
+            const result = await deliverEvent({ notifier, event: newTicket, config, now: nowDate })
             report.notifications.push({
               repo: row.repo,
               parent: parent.number,
@@ -1861,11 +1962,13 @@ export async function runOnce({
           latestGate: latestGate(parent.comments || []),
           now: nowDate,
           needsAnswer: answers,
+          owner: row.owner,
+          repo: row.repo,
         })
         if (!reminder) continue
         const event = reminderEvent({ reminder, parent, owner: row.owner, repo: row.repo })
         try {
-          const result = await sendEvent({ notifier, event, config, now: nowDate })
+          const result = await deliverEvent({ notifier, event, config, now: nowDate })
           report.notifications.push({
             repo: row.repo,
             parent: parent.number,
@@ -1916,7 +2019,7 @@ export async function runOnce({
       let result = { sent: false, count: items.length }
       if (event) {
         try {
-          result = { sent: true, count: items.length, ...(await sendEvent({ notifier, event, config, now: nowDate })) }
+          result = { sent: true, count: items.length, ...(await deliverEvent({ notifier, event, config, now: nowDate })) }
         } catch (error) {
           report.errors.push({ digest: true, message: error.message })
           result = { sent: false, count: items.length, error: error.message }
