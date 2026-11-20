@@ -70,10 +70,11 @@ else
   TEMPLATE_DIR=$SELF_DIR
 fi
 
-# 共享健康判据只有一份，install.sh 装到 $TEMPLATE_DIR/health.sh。
+# 共享健康判据只有一份，install.sh 装到 /usr/local/share/afk-product/health.sh。
+# 查找顺序和 deploy/backend/{deploy,rollback,check}.sh 保持一致：脚本旁边、仓库 deploy/lib、安装目录。
 HEALTH_LIB=${AFK_HEALTH_LIB:-}
 if [[ -z $HEALTH_LIB ]]; then
-  for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" "$TEMPLATE_DIR/health.sh" /usr/local/share/afk-product/health.sh; do
+  for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" /usr/local/share/afk-product/health.sh; do
     if [[ -f $candidate ]]; then
       HEALTH_LIB=$candidate
       break
@@ -626,7 +627,17 @@ cmd_init() {
 
   local dir="$PRODUCTS_ROOT/$address"
   local env="$dir/.env"
-  local env_example_file=${env_example:-${AFK_APP_ENV_EXAMPLE:-$TEMPLATE_DIR/app.env.example}}
+  # 契约来源按顺序：--env-example、AFK_APP_ENV_EXAMPLE、成品目录上次存下的应用契约、
+  # 安装目录的模板契约。前两种会另存一份到成品目录，之后手动 init 也读得到。
+  local env_example_source=${env_example:-${AFK_APP_ENV_EXAMPLE:-}}
+  local env_example_file=$env_example_source
+  if [[ -z $env_example_file ]]; then
+    if [[ -f $dir/app.env.example ]]; then
+      env_example_file=$dir/app.env.example
+    else
+      env_example_file=$TEMPLATE_DIR/app.env.example
+    fi
+  fi
   install -d -m 755 "$PRODUCTS_ROOT" "$dir"
   install -d -m 700 "$dir/releases" "$BACKUP_DIR"
 
@@ -700,6 +711,11 @@ EOF
 
   # 应用自己的 env 契约是唯一来源：缺键补上，补不了就失败，不猜键名。
   fill_env_contract "$dir" "$env_example_file"
+  if [[ -n $env_example_source && $env_example_source != "$dir/app.env.example" ]]; then
+    install -m 600 "$env_example_source" "$dir/app.env.example"
+    chown_if_root root:root "$dir/app.env.example"
+    log "应用 env 契约存到 $dir/app.env.example，之后手动 init 也用它"
+  fi
   chown_if_root root:root "$env"
 
   local data_dir="$dir/data"

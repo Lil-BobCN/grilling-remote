@@ -20,6 +20,7 @@ VERSION=${2:?用法：deploy.sh <发布包.tgz> <版本号>}
 [[ $VERSION =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || { echo "版本号只能用字母、数字、点、下划线和连字符" >&2; exit 1; }
 
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+# 查找顺序和 afk-product、check.sh 保持一致：脚本旁边、仓库 deploy/lib、安装目录。
 HEALTH_LIB=""
 for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" /usr/local/share/afk-product/health.sh; do
   if [[ -f $candidate ]]; then HEALTH_LIB=$candidate; break; fi
@@ -62,6 +63,13 @@ tar -xzf "$TARBALL" -C "$incoming"
 mv "$incoming" "$RELEASE"
 chown -R afkapp:afkapp "$RELEASE"
 chmod -R u+rwX,go-rwx "$RELEASE"
+# check.sh 用普通用户跑。发布指纹文件要能读，scaffold 模板要能遍历和读；
+# 程序代码和其余文件仍是 700。
+chmod 711 "$RELEASE"
+for fingerprint in release.json release.manifest; do
+  if [[ -f $RELEASE/$fingerprint ]]; then chmod 644 "$RELEASE/$fingerprint"; fi
+done
+if [[ -d $RELEASE/scaffold ]]; then chmod -R go+rX "$RELEASE/scaffold"; fi
 
 ln -sfn "$RELEASE" "$CURRENT"
 systemctl restart afkapp

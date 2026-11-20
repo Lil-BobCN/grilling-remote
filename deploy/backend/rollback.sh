@@ -16,6 +16,7 @@ CURRENT=/data/app/current
 PREVIOUS=/data/app/previous
 
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+# 查找顺序和 afk-product、check.sh 保持一致：脚本旁边、仓库 deploy/lib、安装目录。
 HEALTH_LIB=""
 for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" /usr/local/share/afk-product/health.sh; do
   if [[ -f $candidate ]]; then HEALTH_LIB=$candidate; break; fi

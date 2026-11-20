@@ -126,7 +126,7 @@ sudo afk-product product-deploy <客户简称>-<软件简称>.afkfactory.space
 5. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
 6. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
 
-应用 `.env.example` 从应用本身来。工厂部署时把客户仓根的 `.env.example` 传到服务器，用 `product-init --env-example <文件>` 指定；手动初始化不传时，用 `install.sh` 装到 `/usr/local/share/afk-product/app.env.example` 的那份。要加环境变量，改应用的 `.env.example`，不另写一份清单。
+应用 `.env.example` 从应用本身来。工厂部署时把客户仓根的 `.env.example` 传到服务器，用 `product-init --env-example <文件>` 指定；`product-init` 会另存一份到成品目录，之后手动 init 不传时先用它，再退回 `install.sh` 装到 `/usr/local/share/afk-product/app.env.example` 的模板契约。要加环境变量，改应用的 `.env.example`，不另写一份清单。
 
 已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。旧版 `.env` 缺 `ADMIN_PASSWORD`、`ADMIN_PATH`、`ADMIN_PASSPHRASE`、`SESSION_SECRET` 时补新的，其他值不动；缺应用契约里的键时按契约补。
 

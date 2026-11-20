@@ -7,7 +7,7 @@
 # 输出默认放 output/afkapp-<版本号>.tgz，output/ 不进仓库。
 #
 # 包根会带 release.json 和 release.manifest：记录来源提交、scaffold 指纹和
-# 成品模板清单。服务器上的 check.sh 拿它们和实际安装的文件比对。
+# 成品模板指纹。服务器上的 check.sh 拿它们和实际安装的文件比对。
 
 set -euo pipefail
 

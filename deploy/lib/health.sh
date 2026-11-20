@@ -6,7 +6,7 @@ healthy() { # 状态码
   [[ ${1:-} == 200 ]]
 }
 
-wait_http() { # 端口 [尝试次数] [间隔秒]
+wait_http() { # 端口 [尝试次数] [间隔秒]；根路径回 200 才算起来，301/401/404 都算没起好
   local port=$1 tries=${2:-30} interval=${3:-1} i=0 code
   while [[ $i -lt $tries ]]; do
     code=$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "http://127.0.0.1:$port/" 2>/dev/null || true)

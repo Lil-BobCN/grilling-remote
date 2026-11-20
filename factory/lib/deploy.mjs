@@ -96,11 +96,7 @@ export function healthy(code) {
 function healthOk(result) {
   if (typeof result === 'number' || typeof result === 'string') return healthy(result)
   if (result === false || result === null || result === undefined) return false
-  if (typeof result === 'object') {
-    if (Object.hasOwn(result, 'status')) return healthy(result.status)
-    if (Object.hasOwn(result, 'code')) return healthy(result.code)
-    if (result.ok === false) return false
-  }
+  if (result && typeof result === 'object' && result.ok === false) return false
   return true
 }
 

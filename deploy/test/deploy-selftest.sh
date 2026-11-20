@@ -21,6 +21,9 @@ bad() { FAILED=$((FAILED + 1)); printf '失败  %s\n' "$*" >&2; }
 assert_eq() { # 期望 实际 说明
   if [[ $1 == "$2" ]]; then ok "$3"; else bad "$3（期望 $1，实际 $2）"; fi
 }
+assert_file() { # 路径 说明
+  if [[ -f $1 ]]; then ok "$2"; else bad "$2（$1 不存在）"; fi
+}
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/afk-deploy-selftest.XXXXXX") || exit 1
 cleanup() {
@@ -245,18 +248,29 @@ EOF
     bad "失败信息没点名 MYSTERY_REQUIRED：$out"
   fi
 
-  # --env-example 覆盖模板自带的契约，应用默认值优先。
+  # --env-example 覆盖模板自带的契约，应用默认值优先；契约另存一份，下次手动 init 还用。
   local custom="$TMP/custom.env.example"
   cat >"$custom" <<'EOF'
 PORT=3000
 HOST=0.0.0.0
 APP_NAME=我的店
+CUSTOM_DEFAULT=hello
 EOF
   out=$(run_init "acme-custom.afkfactory.space" "$template" --env-example "$custom" 2>&1)
   status=$?
   if [[ $status -eq 0 ]]; then ok "--env-example 覆盖契约时 init 成功"; else bad "--env-example 覆盖契约时 init 失败：$out"; fi
-  assert_eq "我的店" "$(env_get "$TMP/contract/products/acme-custom.afkfactory.space/.env" APP_NAME)" \
-    "--env-example 的默认值写进 .env"
+  local custom_env="$TMP/contract/products/acme-custom.afkfactory.space/.env"
+  assert_eq "我的店" "$(env_get "$custom_env" APP_NAME)" "--env-example 的默认值写进 .env"
+  assert_eq "hello" "$(env_get "$custom_env" CUSTOM_DEFAULT)" "自定义契约键写进 .env"
+  assert_file "$TMP/contract/products/acme-custom.afkfactory.space/app.env.example" "应用契约另存到成品目录"
+
+  # 手动重跑不带 --env-example 时，用存下来的应用契约，不用模板契约。
+  grep -v '^CUSTOM_DEFAULT=' "$custom_env" >"$TMP/custom-without.env"
+  cat "$TMP/custom-without.env" >"$custom_env"
+  out=$(run_init "acme-custom.afkfactory.space" "$template" 2>&1)
+  status=$?
+  if [[ $status -eq 0 ]]; then ok "不带 --env-example 重跑 init 成功"; else bad "不带 --env-example 重跑 init 失败：$out"; fi
+  assert_eq "hello" "$(env_get "$custom_env" CUSTOM_DEFAULT)" "重跑时按存下的应用契约补键"
 
   # 没有契约文件就不猜，直接失败。
   local template_none="$TMP/template-none"

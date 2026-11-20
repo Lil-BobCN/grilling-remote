@@ -17,7 +17,7 @@ warn() { printf '注意  %s\n' "$1"; }
 
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 
-find_lib() { # 文件名；先找脚本旁边，再找仓库里的 deploy/lib，最后找服务器安装目录
+find_lib() { # 文件名；顺序和 afk-product、deploy/rollback 一致：脚本旁边、仓库 deploy/lib、安装目录
   local name=$1 candidate
   for candidate in "$SELF_DIR/$name" "$SELF_DIR/../lib/$name" "/usr/local/share/afk-product/$name"; do
     if [[ -f $candidate ]]; then
@@ -111,6 +111,8 @@ check_release() {
         bad "服务器 scaffold 和仓库不一致"
         diff -r -q "$release_dir/scaffold" "$repo_dir/backend/scaffold" 2>&1 | sed 's/^/  /' | head -20
       fi
+    else
+      warn "读不到 $release_dir/scaffold，跳过 scaffold 对比"
     fi
 
     while IFS=$'\t' read -r rel path; do
