@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -7,7 +7,7 @@ import { run, runSummary } from '../bin/scheduler.mjs'
 import { addRemote, commitAll, git, initBareRepo, initRepo, push } from '../lib/git.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
-import { STATE_LABELS } from '../lib/scheduler.mjs'
+import { STATE_LABELS, runOnce } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
 
 const OWNER = 'acme'
@@ -274,4 +274,102 @@ test('--dry-run 只读：打印 develop，不点火、不改标签', async (t) =
   assert.equal(lines[0].decision, 'develop')
   assert.deepEqual(issueRow(fake, child.number).labels, ['状态:排队中'])
   assert.deepEqual(issueRow(fake, parent.number).labels, ['状态:排队中'])
+})
+
+test('运行中改 customers.json：下一轮按新表扫到新客户仓', async (t) => {
+  const fake = await startFakeGithub({
+    repos: [
+      { owner: OWNER, name: REPO },
+      { owner: OWNER, name: 'acme-second' },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const dir = await mkdtemp(join(tmpdir(), 'afk-scheduler-reread-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const customersPath = join(dir, 'customers.json')
+  const repoOne = { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } }
+  const repoTwo = { id: 'c-0002', short_name: 'second', status: 'active', repos: { demo: 'acme-second' } }
+  await writeFile(customersPath, JSON.stringify([repoOne]))
+
+  const seen = []
+  const controller = new AbortController()
+  const runOnceImpl = async (options) => {
+    const report = await runOnce(options)
+    seen.push(report.repos.map((row) => row.fullName))
+    if (seen.length === 1) {
+      await writeFile(customersPath, JSON.stringify([repoOne, repoTwo]))
+      const later = new Date(Date.now() + 5000)
+      await utimes(customersPath, later, later)
+    } else {
+      controller.abort()
+    }
+    return report
+  }
+
+  await run(['--loop', '--customers', customersPath, '--owner', OWNER], {
+    gh,
+    notifier: quietNotifier(),
+    out: () => {},
+    runOnceImpl,
+    signal: controller.signal,
+    jobsFile: join(dir, 'jobs.json'),
+    intervalMs: 5,
+    ghRun: async () => ({ code: 0, stdout: '[]' }),
+    config: { log: () => {}, previewSweep: async () => ({}) },
+  })
+
+  assert.equal(seen.length, 2, '至少跑两轮')
+  assert.deepEqual(seen[0], [`${OWNER}/${REPO}`])
+  assert.deepEqual(seen[1].sort(), [`${OWNER}/${REPO}`, `${OWNER}/acme-second`].sort())
+})
+
+test('运行中 customers.json 形状变坏：当轮报 ConfigError，不静默用旧表', async (t) => {
+  const fake = await startFakeGithub({ repos: [{ owner: OWNER, name: REPO }] })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const dir = await mkdtemp(join(tmpdir(), 'afk-scheduler-reread-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const customersPath = join(dir, 'customers.json')
+  await writeFile(
+    customersPath,
+    JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } }]),
+  )
+
+  const failures = []
+  const controller = new AbortController()
+  let rounds = 0
+  const runOnceImpl = async (options) => {
+    rounds += 1
+    if (rounds === 1) {
+      const report = await runOnce(options)
+      await writeFile(customersPath, JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: '坏' }]))
+      const later = new Date(Date.now() + 5000)
+      await utimes(customersPath, later, later)
+      return report
+    }
+    try {
+      return await runOnce(options)
+    } catch (error) {
+      failures.push(error)
+      controller.abort()
+      throw error
+    }
+  }
+
+  await run(['--loop', '--customers', customersPath, '--owner', OWNER], {
+    gh,
+    notifier: quietNotifier(),
+    out: () => {},
+    runOnceImpl,
+    signal: controller.signal,
+    jobsFile: join(dir, 'jobs.json'),
+    intervalMs: 5,
+    ghRun: async () => ({ code: 0, stdout: '[]' }),
+    config: { log: () => {}, previewSweep: async () => ({}) },
+  })
+
+  assert.equal(rounds, 2)
+  assert.equal(failures.length, 1)
+  assert.match(failures[0].message, /status 必须是 active 或 disabled/)
 })

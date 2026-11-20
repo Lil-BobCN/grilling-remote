@@ -57,7 +57,7 @@ node factory/bin/ignite.mjs ... --dry-run
 
 ## Mac 常驻
 
-`factory/bin/install-launchd.mjs` 把两个 launchd 任务装到运营者 Mac：
+`factory/bin/install-launchd.mjs` 把两个 launchd 任务装到运营者 Mac。安装会写 plist 和 wrapper，调 `launchctl` 加载，再检查任务真的起来了。退出码 0 才算装好。
 
 | Label | 跑什么 | 日志 |
 | --- | --- | --- |
@@ -68,11 +68,19 @@ node factory/bin/ignite.mjs ... --dry-run
 
 ```bash
 node factory/bin/install-launchd.mjs --repo-root <仓库路径>
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.pull-inbox.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.afkfactory.scheduler.plist
 ```
 
-安装只复制 plist 和 wrapper，不加载任务。重装后先 `launchctl bootout gui/$(id -u)/<Label>`，再 bootstrap。
+装完复查：
+
+```bash
+node factory/bin/install-launchd.mjs --verify
+```
+
+`--verify` 只读，检查三件事：plist 在不在、`launchctl print` 能不能看到任务、scheduler 的进程还在不在。缺一项就列出任务名，退出码非零。
+
+重装直接再跑一次安装。脚本先 `bootout` 旧任务，再 `bootstrap` 新 plist。
+
+常驻只用 launchd 这一条路。不要再用 `nohup` 手工起一份调度器，两份同时跑会重复点火。
 
 两个 wrapper 都 source `~/.afkfactory/env`。env 文件路径可用 `AFK_ENV_FILE` 换。需要的键：
 
