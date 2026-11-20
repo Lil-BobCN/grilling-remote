@@ -194,13 +194,71 @@ test('pickWaiting 按票号和类型找待办', () => {
   assert.equal(pickWaiting(rows, { owner: 'o', repo: 'r', ticket: 2, kind: 'gap' }), null)
 })
 
-test('console 不收 spec 类型，错误里列出三种可选类型', async () => {
+function parentIssue({ number, requirement, label = '状态:排队中' }) {
+  return {
+    number,
+    title: `父工单 ${number}`,
+    body: `- 客户简称：acme\n- 需求名：${requirement}\n<!-- factory:order=o-000${number} -->`,
+    labels: [{ name: label }],
+    html_url: `https://github.com/o/r/issues/${number}`,
+  }
+}
+
+test('listWaiting 列出点头后没 spec 的父工单，有 spec 或没点头不列', async () => {
+  const issues = [
+    parentIssue({ number: 1, requirement: 'demo' }),
+    parentIssue({ number: 2, requirement: 'kucun' }),
+    parentIssue({ number: 3, requirement: 'pingtai' }),
+    {
+      number: 9,
+      title: 'spec demo',
+      body: 'spec demo',
+      labels: [{ name: 'ready-for-agent' }],
+      html_url: 'https://github.com/o/r/issues/9',
+    },
+  ]
+  const comments = {
+    1: [{ body: '点头：补缺口\n\n## 最终答案' }],
+    2: [{ body: '点头：补缺口' }],
+    3: [{ body: '提案：补缺口' }],
+  }
+  const gh = {
+    listIssues: async () => issues,
+    listComments: async ({ number }) => comments[number] || [],
+  }
+
+  const rows = await listWaiting({ gh, owner: 'o', repo: 'r', kinds: ['spec'] })
+
+  assert.deepEqual(rows.map((row) => [row.kind, row.ticket]), [['spec', 2]])
+})
+
+test('answerWaiting 对 spec 直接说没有写回命令', async () => {
+  await assert.rejects(
+    () => answerWaiting({ entry: { kind: 'spec', owner: 'o', repo: 'r', ticket: 2 } }),
+    /手动步骤/,
+  )
+})
+
+test('console show 对 spec 给出手动处理提示', async () => {
+  const gh = {
+    listIssues: async () => [parentIssue({ number: 2, requirement: 'kucun' })],
+    listComments: async () => [{ body: '点头：补缺口' }],
+  }
+  const lines = []
+  await runConsoleCli(['show', '--owner', 'o', '--repo', 'r', '--ticket', '2', '--kind', 'spec'], {
+    gh,
+    out: (line) => lines.push(line),
+  })
+  assert.ok(lines.some((line) => line.includes('手动跑 to-spec')))
+})
+
+test('console 拒绝未知类型，错误里列出四种可选类型', async () => {
   await assert.rejects(
     () =>
       runConsoleCli(
-        ['show', '--owner', 'o', '--repo', 'r', '--ticket', '1', '--kind', 'spec'],
+        ['show', '--owner', 'o', '--repo', 'r', '--ticket', '1', '--kind', 'nope'],
         { gh: {}, out: () => {} },
       ),
-    /--kind 只能是 gap、split、gate/,
+    /--kind 只能是 gap、split、gate、spec/,
   )
 })
