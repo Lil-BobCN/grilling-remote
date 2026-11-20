@@ -94,7 +94,7 @@ function emptyTable() {
  * @param {string} [options.filePath] 作业表路径，默认 `~/.afkfactory/jobs.json`
  * @param {Function} [options.readFile] 读文件替身
  * @param {Function} [options.writeFile] 写文件替身
- * @param {Function} [options.rename] 落盘改名替身
+ * @param {Function} [options.rename] 原子替换文件替身
  * @param {Function} [options.mkdir] 建目录替身
  * @param {Function} [options.now] 默认时钟，方法没传 now 时用
  */
@@ -116,6 +116,11 @@ export function createJobStore({
   function putRow(key, patch) {
     table.jobs[key] = { ...(table.jobs[key] || {}), ...patch }
     return table.jobs[key]
+  }
+
+  function baseRow({ owner, repo, parent, ticket = null, action, at }) {
+    const when = stamp(at)
+    return { owner, repo, parent, ticket, action, lastBeat: when, updatedAt: when }
   }
 
   function snapshot() {
@@ -203,16 +208,10 @@ export function createJobStore({
       const attempt = (previous?.attempt || 0) + 1
       const maxAttempts = policy.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
       const row = putRow(key, {
-        owner,
-        repo,
-        parent,
-        ticket,
-        action,
+        ...baseRow({ owner, repo, parent, ticket, action, at }),
         attempt,
-        lastBeat: stamp(at),
         stop: attempt >= maxAttempts ? 'retry-exhausted' : '',
         reason: String(reason || ''),
-        updatedAt: stamp(at),
       })
       await flush()
       return row
@@ -222,16 +221,10 @@ export function createJobStore({
     async recordSuccess({ owner, repo, parent, ticket = null, action, now: at } = {}) {
       const key = jobKey({ owner, repo, parent, ticket, action })
       const row = putRow(key, {
-        owner,
-        repo,
-        parent,
-        ticket,
-        action,
+        ...baseRow({ owner, repo, parent, ticket, action, at }),
         attempt: 0,
-        lastBeat: stamp(at),
         stop: '',
         reason: '',
-        updatedAt: stamp(at),
       })
       await flush()
       return row
@@ -242,16 +235,10 @@ export function createJobStore({
       const key = jobKey({ owner, repo, parent, ticket, action })
       const previous = table.jobs[key]
       const row = putRow(key, {
-        owner,
-        repo,
-        parent,
-        ticket,
-        action: action || previous?.action || '',
+        ...baseRow({ owner, repo, parent, ticket, action, at }),
         attempt: previous?.attempt || 0,
-        lastBeat: stamp(at),
         stop: reasonKey || 'stopped',
         reason: String(reason || ''),
-        updatedAt: stamp(at),
       })
       await flush()
       return row

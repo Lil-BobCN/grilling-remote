@@ -929,7 +929,7 @@ async function removeSandcastleLabel({ gh, owner, repo, ticketNumber }) {
   return { type: 'removeSandcastle', changed: true }
 }
 
-async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }) {
+async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now }) {
   const ticketNumber = action.ticketNumber ?? action.ticket?.number
   const fresh = await gh.getIssue({ owner, repo, number: ticketNumber })
   if (labelNames(fresh).includes(SANDBOX_LABEL)) {
@@ -969,6 +969,7 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config }
     log: config.log,
     jobs: config.jobs || null,
     jobPolicy: config.jobPolicy || {},
+    now,
   })
   config.pendingIgnitions.add(task)
   const forget = () => config.pendingIgnitions.delete(task)
@@ -988,6 +989,7 @@ async function runIgnitionInBackground({
   log,
   jobs,
   jobPolicy,
+  now,
 }) {
   try {
     await ignite({
@@ -1016,7 +1018,7 @@ async function runIgnitionInBackground({
           ticket: ticketNumber,
           action: 'ignite',
           reason,
-          now: new Date(),
+          now: now || new Date(),
           policy: jobPolicy,
         })
         if (row?.stop) {
@@ -1143,7 +1145,7 @@ async function executeActions({
         )
       }
     } else if (action.type === 'ignite') {
-      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config })
+      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now })
       results.push(result)
       // 抢不到仓锁：这一轮整张票都不动，状态留给下一轮，避免没点火就先改开发中。
       if (result.skipped === 'locked') return { skipped: 'locked', results }
@@ -1317,6 +1319,20 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
   }
   const ensureStopLabel = () =>
     ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+  const recordRetry = async (action, result) => {
+    const row = await guard(
+      jobs.recordFailure({
+        owner,
+        repo,
+        parent: parent.number,
+        action,
+        reason: failureText(result),
+        now,
+        policy: jobPolicy,
+      }),
+    )
+    if (row?.stop) await guard(ensureStopLabel())
+  }
   const results = executed?.results || []
 
   const needsInfoAction =
@@ -1359,18 +1375,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
       )
       await guard(ensureStopLabel())
     } else {
-      const row = await guard(
-        jobs.recordFailure({
-          owner,
-          repo,
-          parent: parent.number,
-          action: 'finish',
-          reason: failureText(finishResult),
-          now,
-          policy: jobPolicy,
-        }),
-      )
-      if (row?.stop) await guard(ensureStopLabel())
+      await recordRetry('finish', finishResult)
     }
   }
 
@@ -1384,18 +1389,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
     if (decomposeResult.ok === true) {
       await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'decompose', now }))
     } else {
-      const row = await guard(
-        jobs.recordFailure({
-          owner,
-          repo,
-          parent: parent.number,
-          action: 'decompose',
-          reason: failureText(decomposeResult),
-          now,
-          policy: jobPolicy,
-        }),
-      )
-      if (row?.stop) await guard(ensureStopLabel())
+      await recordRetry('decompose', decomposeResult)
     }
   }
 
@@ -1410,6 +1404,65 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         now,
       }),
     )
+  }
+}
+
+const RETRY_ACTIONS = {
+  finish: 'finish',
+  runGapProposal: 'gap-proposal',
+  runDecompose: 'decompose',
+  ignite: 'ignite',
+}
+
+/** executeActions 整个抛错或超时：按计划里的动作记失败，下一轮先退避再试，不马上重发。 */
+async function noteJobCrash({ gh, jobs, owner, repo, parent, actions, error, now, jobPolicy, report }) {
+  if (!jobs) return
+  const reason =
+    error instanceof StepTimeoutError
+      ? `执行超时：${error.message}`
+      : `执行失败：${error?.message || error}`
+  const guard = async (work) => {
+    try {
+      return await work
+    } catch (writeError) {
+      report.errors.push({ repo, parent: parent.number, jobs: true, message: writeError.message })
+      return null
+    }
+  }
+  const ensureStopLabel = () =>
+    ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+  if (actions.some((action) => action.type === 'addLabel' && action.name === NEEDS_INFO_LABEL)) {
+    await guard(
+      jobs.stop({
+        owner,
+        repo,
+        parent: parent.number,
+        action: 'needs-info',
+        stop: 'needs-info',
+        reason,
+        now,
+      }),
+    )
+    return
+  }
+  for (const action of actions) {
+    const actionName = RETRY_ACTIONS[action.type]
+    if (!actionName) continue
+    const ticket =
+      action.type === 'ignite' ? action.ticketNumber ?? action.ticket?.number ?? null : null
+    const row = await guard(
+      jobs.recordFailure({
+        owner,
+        repo,
+        parent: parent.number,
+        ticket,
+        action: actionName,
+        reason,
+        now,
+        policy: jobPolicy,
+      }),
+    )
+    if (row?.stop) await guard(ensureStopLabel())
   }
 }
 
@@ -1480,6 +1533,7 @@ export function createWatchdog({
       key,
       event: '出事',
       occurred_at: (at instanceof Date ? at : new Date(at)).toISOString(),
+      link: config.runsLogPath ? `file://${config.runsLogPath}` : `file://${jobs.filePath || ''}`,
       data: {
         customer: '工厂',
         requirement: '调度器',
@@ -1488,12 +1542,17 @@ export function createWatchdog({
         heartbeat: stalled.lastBeat,
       },
     }
-    if (typeof notifier?.send !== 'function') return event
+    if (typeof notifier?.send !== 'function') {
+      log({ level: 'error', msg: '轮次超时通知没发出去', reason: '没有注入 notifier' })
+      return event
+    }
     try {
       const result = await notifier.send(event)
       if (result?.code === 0) {
         sentKey = key
         config.notifiedKeys?.add(key)
+      } else {
+        log({ level: 'error', msg: '轮次超时通知没发出去', code: result?.code })
       }
     } catch (error) {
       log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
@@ -1677,6 +1736,18 @@ export async function runOnce({
           } catch (error) {
             report.errors.push({ repo: row.repo, parent: parent.number, message: error.message })
             executed = { skipped: null, results: [], error: error.message }
+            await noteJobCrash({
+              gh,
+              jobs,
+              owner: row.owner,
+              repo: row.repo,
+              parent,
+              actions,
+              error,
+              now: nowDate,
+              jobPolicy,
+              report,
+            })
           }
           await noteJobResults({
             gh,
@@ -1891,7 +1962,7 @@ export async function runLoop({
       : config.jobs
         ? createWatchdog({
             jobs: config.jobs,
-            notifier: options.notifier,
+            notifier: options.notifier ?? config.notifier,
             clock: options.clock || (() => new Date()),
             log,
             stallMs: config.roundTimeoutMs ?? DEFAULT_ROUND_TIMEOUT_MS,

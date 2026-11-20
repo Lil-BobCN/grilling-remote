@@ -18,6 +18,7 @@ import {
   dueDigest,
   pendingReminder,
   routeParent,
+  runJobStep,
   runLoop,
   runOnce,
 } from '../lib/scheduler.mjs'
@@ -1186,6 +1187,81 @@ test('runOnce：重复 finish 按 attempt 退避，重启后 attempt 和 stop �
   assert.equal(calls, 2, '到上限后停线，重启也不再叫收尾')
 })
 
+test('runOnce：收尾实现抛错也记 attempt，下一轮退避不重发', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  let calls = 0
+  const finish = async () => {
+    calls += 1
+    throw new Error('gh 502')
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: root,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), finish, clock: () => NOW, config })
+  assert.equal(calls, 1)
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'finish',
+  })
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /gh 502/)
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), finish, clock: () => NOW, config })
+  assert.equal(calls, 1, '退避期间不重发')
+})
+
+test('runOnce：执行动作超时也记 attempt，下一轮退避不重发', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const first = await createChild(gh, parent)
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: first.number })
+  const { root } = await makeRequirementRepo(t, [first.number])
+  let calls = 0
+  const finish = () => {
+    calls += 1
+    return new Promise(() => {})
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: root,
+    jobs,
+    stepTimeoutMs: 20,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    finish,
+    clock: () => NOW,
+    config,
+  })
+  assert.equal(calls, 1)
+  assert.ok(report.errors.some((error) => /超时/.test(error.message)))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'finish',
+  })
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /超时/)
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), finish, clock: () => NOW, config })
+  assert.equal(calls, 1, '超时后下一轮先退避，不叠着跑')
+})
+
 test('runOnce：已提交父工单贴 needs-info 后补缺口不再跑', async (t) => {
   const { gh } = await setupRepo(t)
   const parent = await createParent(gh)
@@ -1401,6 +1477,7 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
   assert.match(event.data.reason, /轮次超时/)
   assert.match(event.key, /轮次超时/)
   assert.equal(event.data.customer, '工厂')
+  assert.match(event.link, /^file:\/\//, '出事通知必须带 link，否则真 notifier 拒收')
   assert.equal(notifier.calls.length, 1)
 
   assert.equal(await watchdog.tick(), null, '同一轮只发一次')
@@ -1408,6 +1485,54 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
   await jobs.endRound({ now: clock() })
   assert.equal(await watchdog.tick(), null)
+})
+
+test('runJobStep 在长步骤里按时写心跳', async () => {
+  let beats = 0
+  const jobs = {
+    async beat() {
+      beats += 1
+    },
+  }
+  await runJobStep({
+    jobs,
+    config: { jobHeartbeatMs: 10, stepTimeoutMs: 500 },
+    label: '长步骤',
+    task: () => new Promise((done) => setTimeout(done, 45)),
+  })
+  assert.ok(beats >= 2, `45 毫秒的步骤里至少写两次心跳，实际 ${beats} 次`)
+})
+
+test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+  const controller = new AbortController()
+  const config = { jobs, notifier, roundTimeoutMs: 20, watchdogIntervalMs: 10 }
+  const loop = runLoop({
+    intervalMs: 10,
+    signal: controller.signal,
+    log: () => {},
+    run: async () => {
+      await jobs.startRound({ now: new Date() })
+      await new Promise((resolve) =>
+        controller.signal.addEventListener('abort', resolve, { once: true }),
+      )
+      return { now: new Date().toISOString(), repos: [], errors: [] }
+    },
+    onReport: async () => {},
+    config,
+  })
+
+  for (let index = 0; index < 100 && notifier.calls.length === 0; index += 1) {
+    await new Promise((done) => setTimeout(done, 10))
+  }
+  controller.abort()
+  await loop
+
+  assert.equal(notifier.calls.length, 1, '同一轮只发一次')
+  assert.equal(notifier.calls[0].event, '出事')
+  assert.match(notifier.calls[0].data.reason, /轮次超时/)
+  assert.match(notifier.calls[0].link, /^file:\/\//)
 })
 
 test('runLoop 启动和停掉看门狗', async () => {

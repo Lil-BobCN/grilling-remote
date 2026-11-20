@@ -222,7 +222,7 @@ export async function run(
   const jobsPath = injectedJobsFile || process.env.AFK_JOBS_FILE || defaultJobsPath()
   let jobs = injectedJobs || configOverrides.jobs || null
   if (!jobs && !dryRun) {
-    jobs = createJobStore({ filePath: jobsPath, log: configOverrides.log || logLine })
+    jobs = createJobStore({ filePath: jobsPath })
     try {
       await jobs.load()
     } catch (error) {
@@ -250,7 +250,7 @@ export async function run(
     lockDir,
     maxActive,
     jobs,
-    jobsPath,
+    runsLogPath: runLogPath,
     jobPolicy: configOverrides.jobPolicy ?? {
       maxAttempts: Number(process.env.AFK_JOB_MAX_ATTEMPTS) || undefined,
       backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
