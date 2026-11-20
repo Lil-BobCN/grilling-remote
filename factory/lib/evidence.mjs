@@ -680,6 +680,21 @@ export async function freshVerifyRows({ trail, headSha = '', repoDir = '' } = {}
   )
 }
 
+/**
+ * 指向当前 head 或最后一个代码提交的 pass test 行。
+ * 干净检查用它判断这个 head 的测试是否已经跑过；旧 head 的测试不算数。
+ */
+export async function freshTestRows({ trail, headSha = '', repoDir = '' } = {}) {
+  const rows = normalizeTrail(trail)
+  let head = headSha
+  if (!head && repoDir) head = await git(repoDir, ['rev-parse', 'HEAD']).catch(() => '')
+  const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
+  const shas = [head, codeHead].filter(Boolean)
+  return rows.filter(
+    (row) => row.phase === 'test' && row.result === 'pass' && freshFor(row, shas),
+  )
+}
+
 /** 从 trail 行读验证者 id；旧行没写时返回空串。 */
 export function verifierIdOf(row) {
   const match = VERIFIER_RE.exec(`${row?.why ?? ''} ${row?.decision ?? ''}`)

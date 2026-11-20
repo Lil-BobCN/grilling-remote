@@ -609,3 +609,205 @@ test('同一验证者 id 写两行只算一个，仍补一个不同 id 的验证
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('初次验证判不过：同一轮叫 fixer，复验通过后不再被旧问题挡住', async () => {
+  const dir = await makeRepo()
+  try {
+    let verifyCalls = 0
+    const runner = {
+      async run(options) {
+        if (options.name.startsWith('verify-')) {
+          verifyCalls += 1
+          const ok = verifyCalls > 1
+          return {
+            ok: true,
+            code: 0,
+            stderr: '',
+            stdout: `AFK_VERDICT ${JSON.stringify(
+              ok
+                ? {
+                    ok: true,
+                    evidence: ['.audit/screenshots/after.png'],
+                    problems: [],
+                    tests: [{ command: 'npm test', result: 'pass' }],
+                  }
+                : { ok: false, evidence: [], problems: ['首页白屏'], tests: [] },
+            )}`,
+          }
+        }
+        return {
+          ok: true,
+          code: 0,
+          stderr: '',
+          stdout:
+            'AFK_VERDICT {"ok":true,"evidence":["https://github.com/acme/demo/pull/7"],"problems":[]}',
+        }
+      },
+    }
+    const fixerCalls = []
+    const fixer = async ({ repoDir, findings }) => {
+      fixerCalls.push(findings)
+      await writeFile(join(repoDir, 'fixed.txt'), 'fixed\n')
+      await git(repoDir, ['add', '-A'])
+      await git(repoDir, ['commit', '-m', 'FACTORY: 评审修复 #51 第1轮'])
+      return { ok: true, changed: true }
+    }
+    const cleanCheck = async ({ ref }) => ({
+      ok: true,
+      headSha: ref,
+      reason: '',
+      missing: [],
+      logPath: '',
+      skipped: true,
+    })
+
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner,
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      fixer,
+      cleanCheck,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(fixerCalls.length, 1, '初次验证失败要叫一次 fixer')
+    assert.match(fixerCalls[0].join('；'), /首页白屏/)
+    assert.equal(verifyCalls, 2, '修复后在新 head 复验一次')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('fixer 提交后干净检查在新 head 重跑，旧 head 的 pass 不算', async () => {
+  const dir = await makeRepo()
+  try {
+    const oldHead = await git(dir, ['rev-parse', 'HEAD'])
+    const cleanHeads = []
+    let newHeadRuns = 0
+    const cleanCheck = async ({ ref }) => {
+      cleanHeads.push(ref)
+      if (ref === oldHead) {
+        return { ok: true, headSha: ref, reason: '', missing: [], logPath: '' }
+      }
+      newHeadRuns += 1
+      const ok = newHeadRuns > 1
+      return {
+        ok,
+        headSha: ref,
+        reason: ok ? '' : 'check',
+        missing: ok ? [] : ['新提交测试失败'],
+        logPath: '',
+      }
+    }
+    const reviewProblems = ['连接池缺 error 监听']
+    let reviewCalls = 0
+    const runner = async ({ name }) => {
+      if (name.startsWith('review-')) {
+        reviewCalls += 1
+        const ok = reviewCalls > 1
+        return {
+          ok: true,
+          code: 0,
+          stderr: '',
+          stdout: `AFK_VERDICT ${JSON.stringify({
+            ok,
+            evidence: ['https://github.com/acme/demo/pull/7'],
+            problems: ok ? [] : reviewProblems,
+          })}`,
+        }
+      }
+      return {
+        ok: true,
+        code: 0,
+        stderr: '',
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/screenshots/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}',
+      }
+    }
+    const fixerCalls = []
+    const fixer = async ({ repoDir, findings }) => {
+      fixerCalls.push(findings)
+      await writeFile(join(repoDir, `fixed-${fixerCalls.length}.txt`), 'fixed\n')
+      await git(repoDir, ['add', '-A'])
+      await git(repoDir, ['commit', '-m', `FACTORY: 评审修复 #51 第${fixerCalls.length}轮`])
+      return { ok: true, changed: true }
+    }
+
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner: { run: runner },
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      fixer,
+      cleanCheck,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(fixerCalls.length, 2, '新 head 上干净检查失败要再修一轮')
+    assert.equal(cleanHeads.length, 3, '旧 head 一次，修完的新 head 各一次')
+    assert.notEqual(cleanHeads[1], oldHead)
+    assert.match(fixerCalls[1].join('；'), /新提交测试失败/)
+    assert.doesNotMatch(fixerCalls[1].join('；'), /连接池/, '第二轮只修新问题')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('同一 head 已经有干净检查 pass 就不再重跑', async () => {
+  const dir = await makeRepo()
+  try {
+    const head = await git(dir, ['rev-parse', 'HEAD'])
+    for (const [phase, decision] of [
+      ['verify', head],
+      ['test', 'npm test'],
+      ['review', '标准'],
+      ['review', 'spec'],
+    ]) {
+      await appendTrail({
+        repoDir: dir,
+        ticket: 51,
+        ts: NOW,
+        phase,
+        decision,
+        why: `head ${head}`,
+        evidence: '.audit/screenshots/after.png',
+        result: 'pass',
+      })
+    }
+    const heads = []
+    const cleanCheck = async ({ ref }) => {
+      heads.push(ref)
+      return { ok: true, headSha: ref, reason: '', missing: [], logPath: '' }
+    }
+    const options = {
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner: fakeRunner(true),
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      cleanCheck,
+    }
+
+    const first = await ensureEvidenceBeforeMerge(options)
+    assert.equal(first.ok, true, JSON.stringify(first))
+    assert.equal(heads.length, 1, '证据齐了也要补跑一次干净检查')
+
+    const second = await ensureEvidenceBeforeMerge(options)
+    assert.equal(second.ok, true, JSON.stringify(second))
+    assert.equal(heads.length, 1, '同一 head 不重跑干净检查')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
