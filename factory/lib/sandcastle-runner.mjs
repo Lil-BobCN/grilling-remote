@@ -211,15 +211,34 @@ export function renderRunScript({ model, imageName, prompt, ticketBranch }) {
     '',
     '// 凭证只从 .sandcastle/.env 取，Sandcastle 只转发这个文件里出现过的键。',
     '// GH_TOKEN 也在 .sandcastle/.env 里，只限当前客户仓；不读宿主环境变量。',
-    'const result = await run({',
-    `  agent: claudeCode(${JSON.stringify(model)}),`,
-    `  sandbox: docker({ imageName: ${JSON.stringify(imageName)} }),`,
-    `  promptFile: ${JSON.stringify(prompt)},`,
-    `  branchStrategy: { type: 'branch', branch: ${JSON.stringify(ticketBranch)} },`,
-    '})',
-    'console.log(`AFK_RESULT:${JSON.stringify({ commits: result.commits, branch: result.branch })}`)',
+    '// 脏工作树会被 Sandcastle 保留，路径要通过 preservedWorktreePath 交给工厂清理。',
+    'try {',
+    '  const result = await run({',
+    `    agent: claudeCode(${JSON.stringify(model)}),`,
+    `    sandbox: docker({ imageName: ${JSON.stringify(imageName)} }),`,
+    `    promptFile: ${JSON.stringify(prompt)},`,
+    `    branchStrategy: { type: 'branch', branch: ${JSON.stringify(ticketBranch)} },`,
+    '  })',
+    '  console.log(`AFK_RESULT:${JSON.stringify({ commits: result.commits, branch: result.branch, preservedWorktreePath: result.preservedWorktreePath })}`)',
+    '} catch (error) {',
+    '  console.log(`AFK_RESULT:${JSON.stringify({ commits: [], branch: undefined, preservedWorktreePath: error?.preservedWorktreePath, error: String(error?.message || error) })}`)',
+    '  throw error',
+    '}',
     '',
   ].join('\n')
+}
+
+function tryParseResult(stdout) {
+  const line = String(stdout || '')
+    .split(/\r?\n/)
+    .reverse()
+    .find((row) => row.startsWith('AFK_RESULT:'))
+  if (!line) return null
+  try {
+    return JSON.parse(line.slice('AFK_RESULT:'.length))
+  } catch {
+    return null
+  }
 }
 
 function parseResult(stdout, ticketBranch) {
@@ -228,10 +247,18 @@ function parseResult(stdout, ticketBranch) {
     .reverse()
     .find((row) => row.startsWith('AFK_RESULT:'))
   if (!line) throw new Error('Sandcastle 没有输出 AFK_RESULT')
-  const parsed = JSON.parse(line.slice('AFK_RESULT:'.length))
+  let parsed
+  try {
+    parsed = JSON.parse(line.slice('AFK_RESULT:'.length))
+  } catch {
+    throw new Error(`Sandcastle 的 AFK_RESULT 不是合法 JSON：${line.slice(0, 200)}`)
+  }
   return {
     commits: Array.isArray(parsed?.commits) ? parsed.commits : [],
     branch: parsed?.branch || ticketBranch,
+    ...(parsed?.preservedWorktreePath
+      ? { preservedWorktreePath: parsed.preservedWorktreePath }
+      : {}),
   }
 }
 
@@ -308,7 +335,10 @@ export function createSandcastleRunner({
     })
 
     if (result.code !== 0) {
-      throw new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
+      const error = new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
+      const parsed = tryParseResult(result.stdout)
+      if (parsed?.preservedWorktreePath) error.preservedWorktreePath = parsed.preservedWorktreePath
+      throw error
     }
     return parseResult(result.stdout, ticketBranch)
   }

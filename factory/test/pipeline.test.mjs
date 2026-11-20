@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
 import { commitAll, git, initBareRepo, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
-import { freshVerifiers, mergeTicket, readTrail } from '../lib/evidence.mjs'
+import { freshVerifiers, mergeTicket, parseTrail, readTrail } from '../lib/evidence.mjs'
 import { FIXER_TOOLS } from '../lib/agent-runner.mjs'
 import { stallHits } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
@@ -70,6 +70,12 @@ async function addMigrationCommit(repoDir, ticketNumber) {
   return head
 }
 
+/** 票工作树释放后，trail 在票分支上，不在主仓工作树里。 */
+async function branchTrail(repoDir, branch, ticketNumber) {
+  const text = await git(repoDir, ['show', `${branch}:.audit/${ticketNumber}.tsv`]).catch(() => '')
+  return parseTrail(text)
+}
+
 /** 写一套指向当前 head 的完整证据：验证、测试、两轴评审都 pass。 */
 async function seedCompleteTrail({ repoDir, ticketNumber, head, verifiers = ['v1'] }) {
   const rows = ['ts\tphase\tdecision\twhy\tevidence\tresult']
@@ -81,8 +87,11 @@ async function seedCompleteTrail({ repoDir, ticketNumber, head, verifiers = ['v1
   rows.push('2026-11-17T02:00:09.000Z\ttest\tnpm test\t验证 agent 跑的测试\tpass\tpass')
   rows.push(`2026-11-17T02:00:10.000Z\treview\t标准\thead ${head}\tAFK_VERDICT pass\tpass`)
   rows.push(`2026-11-17T02:00:11.000Z\treview\tspec\thead ${head}\tAFK_VERDICT pass\tpass`)
+  await git(repoDir, ['checkout', `ticket/${ticketNumber}`])
   await mkdir(join(repoDir, '.audit'), { recursive: true })
   await writeFile(join(repoDir, '.audit', `${ticketNumber}.tsv`), `${rows.join('\n')}\n`)
+  await commitAll(repoDir, `FACTORY: 测试证据 #${ticketNumber}`)
+  await git(repoDir, ['checkout', REQ_BRANCH])
 }
 
 async function setupGithub(t) {
@@ -432,6 +441,7 @@ test('已有 fresh verify 但评审没齐：不再整段跳过，接着补评审
       `2026-11-17T02:00:00.000Z\tverify\t${head}\t按验收条件验证\t.audit/verify/after.png\tpass`,
     ].join('\n') + '\n',
   )
+  await commitAll(repoDir, `FACTORY: 测试证据 #${ticket.number}`)
   await git(repoDir, ['checkout', REQ_BRANCH])
   const runner = fakeRunner()
   const pipeline = createTicketPipeline({
@@ -456,7 +466,9 @@ test('已有 fresh verify 但评审没齐：不再整段跳过，接着补评审
   assert.equal(runner.calls.filter((call) => call.name.startsWith('verify-')).length, 0, 'fresh verify 不重跑')
   assert.equal(runner.calls.filter((call) => call.name.startsWith('review-')).length, 1, '缺评审要补')
   assert.equal(
-    (await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length,
+    (await branchTrail(repoDir, `ticket/${ticket.number}`, ticket.number)).filter(
+      (row) => row.phase === 'verify',
+    ).length,
     1,
     '不重复写 verify 行',
   )
@@ -471,6 +483,7 @@ test('有界面的票没有预览注入：判 preview_required，不跑验证、
     join(repoDir, '.audit', `${ticket.number}.tsv`),
     'ts\tphase\tdecision\twhy\tevidence\tresult\n2026-11-17T02:00:00.000Z\tpreview\t有界面\t验收条件要看页面\t\trequired\n',
   )
+  await commitAll(repoDir, `FACTORY: 测试证据 #${ticket.number}`)
   await git(repoDir, ['checkout', REQ_BRANCH])
   const runner = fakeRunner()
   const pipeline = createTicketPipeline({
@@ -797,7 +810,7 @@ test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify
   assert.equal(first.runs[0].reason, 'evidence_not_ready')
   assert.match(first.runs[0].problems.join('；'), /连接池/)
   assert.equal(issueOf(fake, ticket.number).state, 'open')
-  const rows = await readTrail({ repoDir, ticket: ticket.number })
+  const rows = await branchTrail(repoDir, `ticket/${ticket.number}`, ticket.number)
   const verifyRows = rows.filter((row) => row.phase === 'verify').length
   assert.equal(verifyRows, 1)
 
@@ -811,7 +824,12 @@ test('评审失败：返回 evidence_not_ready，不合并，不写重复 verify
   assert.notEqual(second.runs[0].skipped, 'fresh-verify')
   assert.equal(second.runs[0].ok, false)
   assert.equal(second.runs[0].reason, 'evidence_not_ready')
-  assert.equal((await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'verify').length, verifyRows)
+  assert.equal(
+    (await branchTrail(repoDir, `ticket/${ticket.number}`, ticket.number)).filter(
+      (row) => row.phase === 'verify',
+    ).length,
+    verifyRows,
+  )
 })
 
 /** 评审认证失败：验证正常，评审返回 403，fixer 不该被调用。 */
@@ -1103,6 +1121,105 @@ test('interrogate 四轮仍没过：发出事、不合并；轮次用完不再�
   assert.equal(runner.calls.filter((call) => call.name.endsWith('-interrogate')).length, 5)
 })
 
+test('管线在票工作树里跑，不在主仓切票分支', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const seen = []
+  const inner = fakeRunner()
+  const runner = {
+    calls: inner.calls,
+    async run(args) {
+      seen.push({
+        cwd: args.cwd,
+        branch: await git(args.cwd, ['branch', '--show-current']),
+        main: await git(repoDir, ['branch', '--show-current']),
+      })
+      return inner.run(args)
+    },
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
+  const worktreesDir = join(repoDir, '.sandcastle', 'worktrees')
+  assert.ok(
+    seen.some((call) => call.branch === `ticket/${ticket.number}`),
+    '证据阶段要在票工作树里跑',
+  )
+  for (const call of seen) {
+    assert.equal(call.main, REQ_BRANCH, '主仓在管线运行期间不能切走需求分支')
+    if (call.branch === `ticket/${ticket.number}`) {
+      assert.ok(
+        call.cwd.startsWith(worktreesDir),
+        `票分支上的 agent 要在票工作树里跑，实际 cwd=${call.cwd}`,
+      )
+    } else {
+      // 合并后复验在主仓的需求分支上跑。
+      assert.equal(call.branch, REQ_BRANCH)
+      assert.equal(call.cwd, repoDir)
+    }
+  }
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `管线跑完还有工作树残留：\n${left}`)
+  assert.equal(await git(repoDir, ['branch', '--show-current']), REQ_BRANCH)
+})
+
+test('点火留下只有未跟踪文件的工作树：先归档再重建，不报 branch_conflict', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const worktree = join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`)
+  await mkdir(dirname(worktree), { recursive: true })
+  await git(repoDir, ['worktree', 'add', worktree, `ticket/${ticket.number}`])
+  await mkdir(join(worktree, 'shots'), { recursive: true })
+  await writeFile(join(worktree, 'shots', '首页.png'), 'LEFTOVER-SHOT')
+  const runner = fakeRunner()
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  const run = result.runs[0]
+  assert.notEqual(run.reason, 'branch_conflict', JSON.stringify(run))
+  assert.equal(run.ok, true, JSON.stringify(run))
+  assert.equal(issueOf(fake, ticket.number).state, 'closed')
+
+  const archived = (
+    await readdir(join(repoDir, '.audit', 'archive'), { recursive: true })
+  ).filter((name) => name.endsWith('首页.png'))
+  assert.equal(archived.length, 1, `归档目录里没有首页.png：${archived.join('、')}`)
+  assert.match(archived[0], /ticket-\d+/)
+  assert.equal(
+    await readFile(join(repoDir, '.audit', 'archive', archived[0]), 'utf8'),
+    'LEFTOVER-SHOT',
+  )
+  const left = await git(repoDir, ['worktree', 'list', '--porcelain'])
+  assert.ok(!left.includes('.sandcastle/worktrees'), `管线跑完还有工作树残留：\n${left}`)
+})
+
 test('未跟踪证据挡住切票分支：先归档再切，不返回 branch-busy', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)
@@ -1148,7 +1265,7 @@ test('归档处理不了时返回 branch_conflict，不再报 branch-busy', asyn
   await mkdir(join(repoDir, '.audit', 'verify'), { recursive: true })
   await writeFile(join(repoDir, '.audit', 'verify', 'after.png'), 'LEFTOVER-EVIDENCE')
   await git(repoDir, ['config', 'core.hooksPath', '.git/nonexistent-hooks'])
-  // 目标分支被另一个工作树占着，checkout 会失败，归档也救不回来。
+  // 票分支被另一个工作树占着，repoWorkspace 建不了新工作树，归档也救不回来。
   const other = join(repoDir, '..', 'other-worktree')
   await git(repoDir, ['worktree', 'add', other, `ticket/${ticket.number}`])
   t.after(() => git(repoDir, ['worktree', 'remove', '--force', other]).catch(() => {}))
