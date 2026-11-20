@@ -177,10 +177,13 @@ export function createGithub({
     },
 
     async findPullByHead({ owner, repo, head }) {
+      // 收尾重试时 PR 可能已经合了。只查 open 会漏掉，接着 POST 建 PR 拿 422。
+      // 先找开着的；没有开着的，再找同 head 已合并的那条。
       const rows = await requestAll(
-        repoPath(owner, repo, `/pulls?state=open&head=${encodeURIComponent(head)}`),
+        repoPath(owner, repo, `/pulls?state=all&head=${encodeURIComponent(head)}`),
       )
-      return rows[0] || null
+      const mine = rows.filter((row) => !row?.head?.ref || row.head.ref === head)
+      return mine.find((row) => row.state === 'open') || mine.find((row) => row.merged_at) || null
     },
 
     async listPulls({ owner, repo, state = 'all' }) {

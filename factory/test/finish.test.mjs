@@ -715,6 +715,60 @@ test('重跑已经合过主干的父工单：不重复建 PR、不重复合、�
   }
 })
 
+test('本地 main 落后、远端 PR 已合并：复用已合并的 PR，不再验证和合并', async () => {
+  const { fake, gh, dir, state } = await closedRequirement()
+  try {
+    const merged = await gh.request('POST', `/repos/${OWNER}/${REPO}/pulls`, {
+      base: 'main',
+      head: 'req/order-1',
+      title: '合并 req/order-1',
+      body: 'body',
+    })
+    await gh.mergePull({ owner: OWNER, repo: REPO, number: merged.number })
+
+    const calls = []
+    const sent = []
+    const result = await finishRequirement({
+      repoDir: dir,
+      owner: OWNER,
+      repo: REPO,
+      parent: state,
+      reqBranch: 'req/order-1',
+      mainBranch: 'main',
+      review: async (ctx) => {
+        calls.push(['review', ctx])
+        return { ok: true }
+      },
+      verify: async () => {
+        calls.push(['verify'])
+        return { ok: true }
+      },
+      openPr: async ({ owner, repo, base, head, title, body }) => {
+        calls.push(['openPr'])
+        const existing = await gh.findPullByHead({ owner, repo, head })
+        if (existing) return existing
+        return gh.request('POST', `/repos/${owner}/${repo}/pulls`, { base, head, title, body })
+      },
+      mergePr: async () => {
+        calls.push(['mergePr'])
+        throw new Error('不该再合一次')
+      },
+      notifier: { send: async (event) => sent.push(event) },
+      cleanup: async (ctx) => calls.push(['cleanup', ctx]),
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(result.alreadyMerged, true)
+    assert.equal(result.mergeSha, 'merge-1')
+    assert.equal(fake.state.pulls.get(`${OWNER}/${REPO}`).length, 1, '不该再 POST 一个 PR')
+    assert.deepEqual(sent, [])
+    assert.deepEqual(calls.map(([kind]) => kind).sort(), ['cleanup', 'openPr', 'review'])
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('规则判成单向门也照样自己合，PR 正文写明触发规则', async () => {
   const { fake, gh, parent, children } = await setupGithub({
     children: [{ title: '第一块', state: 'closed' }],

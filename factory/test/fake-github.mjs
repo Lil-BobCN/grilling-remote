@@ -374,8 +374,9 @@ export async function startFakeGithub({ repos = [], issues = [], pulls = [] } = 
       if (req.method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(path)) {
         const { owner, repo } = splitRepo(path, 1)
         const head = url.searchParams.get('head') || ''
+        const state = url.searchParams.get('state') || 'open'
         const rows = pullStore(owner, repo)
-          .filter((row) => row.state === 'open')
+          .filter((row) => state === 'all' || row.state === state)
           .filter((row) => !head || row.head.ref === head || row.head.label === head)
         send(res, 200, rows)
         return
