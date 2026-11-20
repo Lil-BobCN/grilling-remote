@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { FAILED_UPLOAD_STATUSES } from '../../backend/lib/protocol.mjs'
 import { logLine } from './log.mjs'
 import { notificationEvent } from './notify.mjs'
 
@@ -249,10 +250,8 @@ export async function pullInbox({
     const allowed =
       status === 'ready' ||
       status === 'imported' ||
-      status === 'validation_failed' ||
-      status === 'import_failed' ||
-      status === 'needs_operator' ||
-      (status === 'failed' && meta.operator_alert)
+      (FAILED_UPLOAD_STATUSES.includes(status) &&
+        (status !== 'failed' || meta.operator_alert))
     if (!allowed) continue
 
     const dir = join(inboxDir, id)
@@ -261,7 +260,14 @@ export async function pullInbox({
     const previous = (await readJsonOrNull(archivePath)) || {}
 
     const zipPath = join(dir, 'package.zip')
-    const copyPackage = status === 'ready' || status === 'imported' || status === 'validation_failed'
+    // 失败终态也要把包存档：服务器 7 天后会删原包，本地只剩 meta 就补不回来。
+    const copyPackage =
+      status === 'ready' ||
+      status === 'imported' ||
+      status === 'validation_failed' ||
+      status === 'import_failed' ||
+      status === 'import_partial' ||
+      status === 'needs_operator'
     let complete = copyPackage ? await fileComplete(zipPath, meta) : false
     if (copyPackage && !complete) {
       const bytes = await remote.read(id, 'package.zip')

@@ -9,6 +9,20 @@
 
 export const PROGRESS_PREFIX = '进度 v1｜'
 
+/**
+ * 上传失败或需要人处理的终态。
+ *
+ * 服务器清理按这个集合删快照，Mac 拉取桥按同一集合归档和转发。
+ * `ready`、`imported` 是成功或进行中的状态，不在这个集合里。
+ */
+export const FAILED_UPLOAD_STATUSES = [
+  'failed',
+  'validation_failed',
+  'import_failed',
+  'import_partial',
+  'needs_operator',
+]
+
 const TICKETS_MARKER_RE = /<!--\s*factory:tickets\s+([A-Za-z0-9_-]+)\s*-->/g
 
 function textOf(value) {

@@ -300,6 +300,40 @@ test('needs_operator 的上传带 operator_alert 时也转发通知', async (t) 
   assert.equal(notified.length, 1)
 })
 
+test('import_partial 的上传存档，并把部分失败发给运营者', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-partial', {
+    status: 'import_partial',
+    operator_alert: {
+      reason: 'import_partial',
+      message: '订单 o-0001「demo」：建单炸了',
+      at: '2026-11-20T10:21:04Z',
+    },
+  })
+  const notified = []
+
+  const result = await pullInbox({
+    remote: createDirRemote(remoteRoot),
+    inboxDir,
+    notify: async (payload) => notified.push(payload),
+  })
+
+  assert.deepEqual(result.pulled, ['upload-partial'])
+  assert.equal(notified.length, 1)
+  assert.equal(notified[0].meta.status, 'import_partial')
+  assert.equal(notified[0].alert.reason, 'import_partial')
+  assert.deepEqual(
+    await readFile(join(inboxDir, 'upload-partial', 'package.zip')),
+    zipBytes('upload-partial'),
+  )
+  const archive = JSON.parse(
+    await readFile(join(inboxDir, 'upload-partial', 'archived.json'), 'utf8'),
+  )
+  assert.equal(archive.status, 'import_partial')
+  assert.ok(archive.notified_at)
+  await stat(join(remoteRoot, 'upload-partial', 'package.zip'))
+})
+
 test('importEvent 事件名是 import_failed，key 带上传号，occurred_at 用告警时间', () => {
   const event = importEvent({
     meta: {

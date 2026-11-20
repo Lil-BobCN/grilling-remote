@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildOrderView, messagesDue, stayDays } from '../src/progress.js'
+import { buildOrderView, listSubline, messagesDue, stayDays } from '../src/progress.js'
 
 const line = (tier, sub, round = 1, stuck = false, note = '') =>
   `进度 v1｜路径：其余｜客户档：${tier}｜细阶段：${sub}｜轮次：${round}｜卡住：${
@@ -92,6 +92,35 @@ test('已完成不提醒；关票推出来的已完成也能识别', () => {
   )
   const view = buildOrderView(data, 'zh')
   assert.equal(view.tierLabel, '已完成')
+  assert.equal(messagesDue(data, view, NOW), null)
+})
+
+test('导入失败：订单页显示失败分支，不催客户补传也不催 24 小时', () => {
+  const data = order(
+    [
+      { at: '2026-11-16T10:00:00Z', line: line('已收到', '收包') },
+      { at: '2026-11-16T10:00:01Z', line: line('已收到', '校验') },
+    ],
+    {
+      uploadedAt: '2026-11-16T10:00:01Z',
+      importStatus: 'import_failed',
+      importFailure: {
+        status: 'import_failed',
+        reason: 'import_failed',
+        message: '建单炸了',
+        next_step: '文件已经保存，不用重新上传。运营者会处理导入问题。',
+        at: '2026-11-16T10:30:00Z',
+      },
+    },
+  )
+
+  const view = buildOrderView(data, 'zh')
+  assert.equal(view.importFailed, true)
+  assert.equal(view.tierLabel, '已收到')
+  assert.equal(view.tierName, '导入失败')
+  assert.equal(view.states[0], 'warn')
+  assert.equal(view.importFailure.message, '建单炸了')
+  assert.match(listSubline(view, 'zh'), /导入失败/)
   assert.equal(messagesDue(data, view, NOW), null)
 })
 
