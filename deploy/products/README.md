@@ -8,9 +8,12 @@
 
 | 文件 | 干什么 |
 | --- | --- |
-| `install.sh` | 一次性安装，root 跑，可重复跑。装 Docker、建目录、起 Postgres、加 Caddy include、装 helper 和 timer、写 sudoers |
+| `install.sh` | 一次性安装，root 跑，可重复跑。装 Docker、建目录、起 Postgres、加 Caddy include、装 helper、共享库和 timer、写 sudoers |
 | `afk-product` | 服务器上的 helper。成品：`product-init`、`product-load`、`product-deploy`、`product-rollback`、`product-backup`、`product-status`；预览：`preview-start`、`preview-stop`、`preview-status`、`preview-sweep` |
 | `compose.template.yml` | 一个成品或一套预览一套 Compose 的模板，`product-init`、`preview-start` 复制成 `compose.yml` |
+| `app.env.example` | 应用 env 契约，指向 `backend/scaffold/.env.example`。`product-init` 按它补齐成品 `.env`，缺键就失败 |
+| `../lib/health.sh` | 共享健康判据 `healthy(code)` 和 `wait_http`，helper、巡检和发布脚本共用 |
+| `../lib/fingerprint.sh` | 发布指纹，`package.sh` 记录，`check.sh` 比对 |
 | `caddy/product.caddy` | 成品路由模板，每个成品生成一个文件 |
 | `caddy/preview.caddy` | 预览路由模板，Basic Auth 和访问日志只加在预览上 |
 | `caddy/not-found.caddy` | 通配兜底，不认识的子域回 404 |
@@ -22,7 +25,15 @@
 
 ## 本机怎么跑测试
 
-先起 Docker，然后：
+部署面自测不需要 Docker，也不碰服务器：
+
+```bash
+bash deploy/test/deploy-selftest.sh
+```
+
+它检查共享健康判据（000、502 判失败）、`product-status --check`、env 契约和发布指纹。
+
+成品集成测试要起 Docker，然后：
 
 ```bash
 bash deploy/products/test/local-test.sh
@@ -77,6 +88,21 @@ systemctl list-timers afk-product-backup.timer --no-pager
 sudo afk-product product-status
 ```
 
+`product-status --check` 只认本机 HTTP 200；000（连不上）、401、5xx 都算失败。
+
+## 模板和发布指纹
+
+`deploy/backend/package.sh` 打发布包时往包根写两个文件：`release.json` 记来源提交、scaffold 指纹和成品模板指纹；`release.manifest` 记每个模板文件的 sha256。
+
+`check.sh` 用这两份记录比对服务器上实际安装的文件：
+
+```bash
+bash /data/app/bin/check.sh --templates-only
+bash /data/app/bin/check.sh --repo <仓库目录>
+```
+
+`--templates-only` 只查指纹和模板，本机也能跑。模板和记录不一致时提示重跑 `deploy/products/install.sh`。给 `--repo` 时还会逐文件对比服务器和仓库，仓库比服务器新也能发现。旧发布包没有这两个文件，`check.sh` 只提示，不判失败。
+
 ## 装完怎么上一个成品
 
 第一次部署（镜像由 Mac 构建后 `docker save` 传上来，`docker load` 之后）：
@@ -96,14 +122,19 @@ sudo afk-product product-deploy <客户简称>-<软件简称>.afkfactory.space
 1. 建 `/data/products/<地址>/`、`data/`、`releases/`。
 2. 从 9100 起挑第一个空闲端口，记进 `.env`。
 3. 生成数据库密码、应用密钥和后台口令，写 `.env`（600 root）。
-4. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
-5. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
+4. 读应用 `.env.example`，把契约里缺的键补进 `.env`。契约有默认值就用默认值；`APP_NAME` 留空时按交付地址生成；其余留空的键直接报错，不猜。没有契约文件也报错。
+5. 建 database 和 role，role 只能连自己的库；共享 Postgres 接进这个成品的独立网络。
+6. 写 `/etc/caddy/products/<地址>.caddy`，校验后 reload。
 
-已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。旧版 `.env` 缺 `ADMIN_PASSWORD` 时补一个新的，其他键不动。
+应用 `.env.example` 从应用本身来。工厂部署时把客户仓根的 `.env.example` 传到服务器，用 `product-init --env-example <文件>` 指定；手动初始化不传时，用 `install.sh` 装到 `/usr/local/share/afk-product/app.env.example` 的那份。要加环境变量，改应用的 `.env.example`，不另写一份清单。
+
+已经有 `.env` 时，`product-init` 只补目录、网络、数据库和 Caddy 路由；镜像、密钥和端口都不动。旧版 `.env` 缺 `ADMIN_PASSWORD`、`ADMIN_PATH`、`ADMIN_PASSPHRASE`、`SESSION_SECRET` 时补新的，其他值不动；缺应用契约里的键时按契约补。
 
 ### 后台口令
 
-应用启动要求 `ADMIN_PASSWORD`，没有它就退出。`product-init` 生成 24 字节随机 hex，写在 `/data/products/<地址>/.env`，Compose 的 `env_file` 把它传给容器。查口令：
+`product-init` 仍会生成 `APP_KEY`、`ADMIN_PASSWORD`、`ADMIN_PATH`、`ADMIN_PASSPHRASE`、`SESSION_SECRET`，给用到登录和后台的成品应用读。当前模板应用只读 `PORT`、`HOST`、`APP_NAME`，契约写在 `backend/scaffold/.env.example`。
+
+查口令：
 
 ```bash
 sudo grep '^ADMIN_PASSWORD=' /data/products/<地址>/.env
@@ -121,7 +152,7 @@ node factory/bin/deploy.mjs rollback --address <交付地址>
 node factory/bin/deploy.mjs zip --repo-dir <仓库目录> --ref <提交> --address <交付地址> --version <版本>
 ```
 
-`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后在父工单写一条 `进度 v1｜…｜细阶段：已部署｜…`，再调 `afk-uploads mark-delivered` 把地址写进订单；软件简称取 `--product` 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜。部署成功后打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
+`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。客户仓根有 `.env.example` 时先传到服务器，交给 `product-init` 当 env 契约。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后在父工单写一条 `进度 v1｜…｜细阶段：已部署｜…`，再调 `afk-uploads mark-delivered` 把地址写进订单；软件简称取 `--product` 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜。部署成功后打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
 
 ## 预览环境
 
@@ -214,4 +245,6 @@ import /etc/caddy/previews/*.caddy
 
 helper、备份脚本和 `install.sh` 的路径都能用环境变量覆盖，测试靠这个不碰 `/data`：
 
-`AFK_PRODUCTS_ROOT`、`AFK_PREVIEWS_ROOT`、`AFK_CADDY_PRODUCTS`、`AFK_CADDY_PREVIEWS`、`AFK_CADDY_LOG_DIR`、`AFK_BACKUP_DIR`、`AFK_PG_ENV`、`AFK_PG_CONTAINER`、`AFK_PG_DATA_DIR`、`AFK_PG_DATA_MODE`、`AFK_PG_UID`、`AFK_PORT_START`、`AFK_PREVIEW_PORT_START`、`AFK_NETWORK_PREFIX`、`AFK_TEMPLATE_DIR`、`AFK_APP_UID`、`AFK_APP_GID`、`AFK_APP_INTERNAL_PORT`、`AFK_UPSTREAM_HOST`、`AFK_CADDY_RELOAD`、`AFK_DOCKER`、`AFK_TODAY`、`AFK_DAILY_KEEP`、`AFK_WEEKLY_KEEP`、`AFK_CADDY_IMAGE`、`AFK_CADDY_BIN`、`AFK_CADDY_USER`、`AFK_PREVIEW_QUEUE_TIMEOUT`、`AFK_PREVIEW_QUEUE_POLL`、`AFK_PREVIEW_LOCK_TIMEOUT`、`AFK_NOW`。
+`AFK_PRODUCTS_ROOT`、`AFK_PREVIEWS_ROOT`、`AFK_CADDY_PRODUCTS`、`AFK_CADDY_PREVIEWS`、`AFK_CADDY_LOG_DIR`、`AFK_BACKUP_DIR`、`AFK_PG_ENV`、`AFK_PG_CONTAINER`、`AFK_PG_DATA_DIR`、`AFK_PG_DATA_MODE`、`AFK_PG_UID`、`AFK_PORT_START`、`AFK_PREVIEW_PORT_START`、`AFK_NETWORK_PREFIX`、`AFK_TEMPLATE_DIR`、`AFK_APP_ENV_EXAMPLE`、`AFK_HEALTH_LIB`、`AFK_APP_UID`、`AFK_APP_GID`、`AFK_APP_INTERNAL_PORT`、`AFK_UPSTREAM_HOST`、`AFK_CADDY_RELOAD`、`AFK_DOCKER`、`AFK_TODAY`、`AFK_DAILY_KEEP`、`AFK_WEEKLY_KEEP`、`AFK_CADDY_IMAGE`、`AFK_CADDY_BIN`、`AFK_CADDY_USER`、`AFK_PREVIEW_QUEUE_TIMEOUT`、`AFK_PREVIEW_QUEUE_POLL`、`AFK_PREVIEW_LOCK_TIMEOUT`、`AFK_NOW`。
+
+巡检对比用的覆盖变量：`AFK_RELEASE_DIR`、`AFK_SHARE_DIR`、`AFK_HELPER_PATH`、`AFK_REPO_DIR`。

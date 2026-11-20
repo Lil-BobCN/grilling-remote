@@ -2,7 +2,7 @@
 # 客户成品 helper：建目录、Compose、.env、database/role 和 Caddy 路由，
 # 负责部署、回滚、备份、预览起停和状态。服务器上用 sudo 跑，sudo 白名单只放这一条。
 #
-#   sudo afk-product product-init <交付地址> --image <镜像:tag>
+#   sudo afk-product product-init <交付地址> --image <镜像:tag> [--env-example <文件>]
 #   sudo afk-product product-load <镜像 tar>
 #   sudo afk-product product-deploy <交付地址> [--image <镜像:tag>]
 #   sudo afk-product product-rollback <交付地址>
@@ -70,6 +70,20 @@ else
   TEMPLATE_DIR=$SELF_DIR
 fi
 
+# 共享健康判据只有一份，install.sh 装到 $TEMPLATE_DIR/health.sh。
+HEALTH_LIB=${AFK_HEALTH_LIB:-}
+if [[ -z $HEALTH_LIB ]]; then
+  for candidate in "$SELF_DIR/health.sh" "$SELF_DIR/../lib/health.sh" "$TEMPLATE_DIR/health.sh" /usr/local/share/afk-product/health.sh; do
+    if [[ -f $candidate ]]; then
+      HEALTH_LIB=$candidate
+      break
+    fi
+  done
+fi
+[[ -n $HEALTH_LIB ]] || die "找不到 health.sh（共享健康判据）；重跑 deploy/products/install.sh"
+# shellcheck source=/dev/null
+. "$HEALTH_LIB"
+
 # ---------------------------------------------------------------- 小工具
 
 chown_if_root() {
@@ -99,6 +113,29 @@ env_set() { # 文件 键 值；没有这个键就追加
   ' "$file" >"$tmp"
   chmod 600 "$tmp"
   mv "$tmp" "$file"
+}
+
+# 应用 env 契约：从应用自己的 .env.example 读键，缺的补进 .env。
+# 契约里有默认值就用默认值；APP_NAME 留空时按交付地址生成；其余留空的键不猜，直接失败。
+fill_env_contract() { # 目录 契约文件
+  local dir=$1 example=$2 env="$1/.env" key value
+  local -a missing=()
+  [[ -f $example ]] || die "找不到应用 env 契约 ${example}；应用仓根要有 .env.example，或部署时用 --env-example 传上来"
+  while IFS= read -r key; do
+    [[ -n $key ]] || continue
+    grep -q "^$key=" "$env" && continue
+    value=$(sed -n "s/^$key=//p" "$example" | tail -1)
+    if [[ -n $value ]]; then
+      env_set "$env" "$key" "$value"
+    elif [[ $key == APP_NAME ]]; then
+      env_set "$env" "$key" "$(basename "$dir")"
+    else
+      missing+=("$key")
+    fi
+  done < <(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$example")
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    die "应用 env 契约 ${example} 要求这些键，但 product-init 不知道怎么生成：${missing[*]}"
+  fi
 }
 
 random_hex() { # 字节数
@@ -273,18 +310,6 @@ restore_previous_image() { # 目录 旧镜像
     printf '恢复上一版 %s 后 30 秒内没应答，看 docker logs\n' "$old" >&2
   fi
   return 0
-}
-
-wait_http() { # 端口
-  local port=$1 i=0
-  while [[ $i -lt 30 ]]; do
-    if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/"; then
-      return 0
-    fi
-    i=$((i + 1))
-    sleep 1
-  done
-  return 1
 }
 
 record_release() { # 目录
@@ -583,10 +608,11 @@ preview_remove() { # 地址 [保留镜像名]
 # ---------------------------------------------------------------- 子命令
 
 cmd_init() {
-  local address="" image=""
+  local address="" image="" env_example=""
   while [[ $# -gt 0 ]]; do
     case $1 in
       --image) image=${2:?--image 要跟镜像}; shift 2 ;;
+      --env-example) env_example=${2:?--env-example 要跟文件}; shift 2 ;;
       -*) die "不认识的参数：$1" ;;
       *)
         [[ -z $address ]] || die "只接受一个交付地址"
@@ -595,11 +621,12 @@ cmd_init() {
         ;;
     esac
   done
-  [[ -n $address ]] || die "用法：afk-product product-init <交付地址> --image <镜像:tag>"
+  [[ -n $address ]] || die "用法：afk-product product-init <交付地址> --image <镜像:tag> [--env-example <文件>]"
   valid_address "$address" || die "交付地址格式不对：${address}（小写字母、数字、连字符和点）"
 
   local dir="$PRODUCTS_ROOT/$address"
   local env="$dir/.env"
+  local env_example_file=${env_example:-${AFK_APP_ENV_EXAMPLE:-$TEMPLATE_DIR/app.env.example}}
   install -d -m 755 "$PRODUCTS_ROOT" "$dir"
   install -d -m 700 "$dir/releases" "$BACKUP_DIR"
 
@@ -670,6 +697,10 @@ EOF
   if [[ $env_changed -eq 1 ]]; then
     chown_if_root root:root "$env"
   fi
+
+  # 应用自己的 env 契约是唯一来源：缺键补上，补不了就失败，不猜键名。
+  fill_env_contract "$dir" "$env_example_file"
+  chown_if_root root:root "$env"
 
   local data_dir="$dir/data"
   install -d -m 700 "$data_dir"
@@ -836,7 +867,7 @@ cmd_status() {
     log "  后台口令在 $dir/.env 的 ADMIN_PASSWORD（600 root，用 sudo 查看）"
     if [[ $check -eq 1 ]]; then
       [[ $running -ge 1 ]] || failed=1
-      [[ $code != '无应答' ]] || failed=1
+      healthy "$code" || failed=1
     fi
   done
 
@@ -1081,7 +1112,7 @@ cmd_preview_status() {
       [[ $running -ge 1 ]] || failed=1
       [[ $route == 有 ]] || failed=1
       [[ $db_state == 有 ]] || failed=1
-      [[ $code != '无应答' ]] || failed=1
+      healthy "$code" || failed=1
     fi
   done
 
