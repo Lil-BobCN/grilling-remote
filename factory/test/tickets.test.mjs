@@ -38,6 +38,11 @@ const PARENT_BODY = `## 客户原话
 - 不做在线支付
 `
 
+// 以下样例原样抄自 backend/test/protocol.test.mjs，旧实现 factory/lib/tickets.mjs
+// 对上面父工单拆出的三张票的输出，用来固定提案票单能建票。
+const LEGACY_TICKETS_MARKER =
+  '<!-- factory:tickets W3sidGl0bGUiOiLpob7lrqLmiZPlvIDpk77mjqXog73nnIvliLDlvZPlpKnmsLTmnpzlkozljZblroznmoQiLCJ2ZXJ0aWNhbFNsaWNlIjoi6aG-5a6i5omT5byA6ZO-5o6l77yM55yL5Yiw5LuK5aSp55qE5rC05p6c44CB5Lu35qC85ZKM5Y2W5a6M55qE44CCIiwiYWNjZXB0YW5jZSI6WyLmiZPlvIDpk77mjqXvvIznnIvliLDlvZPlpKnmsLTmnpznmoTlkI3ljZXjgIIiLCLljZblroznmoTmsLTmnpzmoIflh7rmnaXvvIzkuI3og73kuIvljZXjgIIiXSwiYmxvY2tlZEJ5IjpbXX0seyJ0aXRsZSI6IumhvuWuouS4i-WNleaXtuiDvemAieWIsOW6l-WPliIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXml7bog73pgInliLDlupflj5bvvIzmjJHkuIDkuKrlj5botKfml7bpl7TjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaXtumAieWIsOW6l-WPlu-8jOaMkeS4gOS4quWPlui0p-aXtumXtOOAgiJdLCJibG9ja2VkQnkiOlswXX0seyJ0aXRsZSI6IuS4i-WNleaIkOWKn-eci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgCIsInZlcnRpY2FsU2xpY2UiOiLpob7lrqLkuIvljZXmiJDlip_vvIznnIvliLDorqLljZXlj7flkozlj5botKflnLDlnYDjgIIiLCJhY2NlcHRhbmNlIjpbIuS4i-WNleaIkOWKn-WQjueci-WIsOiuouWNleWPt-WSjOWPlui0p-WcsOWdgOOAgiJdLCJibG9ja2VkQnkiOlsi6aG-5a6i5LiL5Y2V5pe26IO96YCJ5Yiw5bqX5Y-WIl19XQ -->'
+
 test('parseParentAcceptance 读父工单验收条件，去掉复选框', () => {
   assert.deepEqual(parseParentAcceptance(PARENT_BODY), [
     '打开链接，看到当天水果的名单。',
@@ -45,6 +50,21 @@ test('parseParentAcceptance 读父工单验收条件，去掉复选框', () => {
     '下单时选到店取，挑一个取货时间。',
     '下单成功后看到订单号和取货地址。',
   ])
+})
+
+test('parseParentAcceptance 兼容普通 - 列表，只读验收条件一节', () => {
+  const plain = PARENT_BODY.replace(/- \[ \] /g, '- ')
+  assert.deepEqual(parseParentAcceptance(plain), [
+    '打开链接，看到当天水果的名单。',
+    '卖完的水果标出来，不能下单。',
+    '下单时选到店取，挑一个取货时间。',
+    '下单成功后看到订单号和取货地址。',
+  ])
+
+  assert.deepEqual(
+    parseParentAcceptance('## 客户确认的结论\n\n- 顾客打开链接看货。\n\n## 不做清单\n\n- 不做在线支付\n'),
+    [],
+  )
 })
 
 function ticket(overrides = {}) {
@@ -279,6 +299,23 @@ test('点头后建三张子票：只挂排队中、挂父工单、原生依赖�
   assert.equal(labels.get('状态:排队中').color, 'fbca04')
 })
 
+test('父工单验收条件写普通 - 列表时也能建票，子票正文统一写 - [ ]', async (t) => {
+  const plainBody = PARENT_BODY.replace(/- \[ \] /g, '- ')
+  const { gh, store } = await startShop(t, { issues: [{ body: plainBody }] })
+
+  const result = await createTickets({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shop',
+    parent: 1,
+    tickets: threeTickets(),
+  })
+
+  assert.equal(result.tickets.length, 3)
+  assert.equal(store.length, 4)
+  assert.match(store[1].body, /## 验收条件\n\n- \[ \] 打开链接，看到当天水果的名单。/)
+})
+
 test('验收条件不在父工单时拒绝建票，且一张也不建', async (t) => {
   const { fake, gh, store } = await startShop(t)
   const tickets = threeTickets()
@@ -429,6 +466,30 @@ test('CLI create --from-proposal 读提案票单，建票成功才写点头：�
   )
   assert.equal(again.tickets.length, 3)
   assert.equal(store.length, 4)
+})
+
+test('golden：现有提案的隐藏票单能直接建票', async (t) => {
+  const { gh, store } = await startShop(t)
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shop',
+    number: 1,
+    body: `提案：拆票\n\n${LEGACY_TICKETS_MARKER}`,
+  })
+
+  const created = await run(
+    ['create', '--owner', 'acme', '--repo', 'acme-shop', '--parent', '1', '--from-proposal', '--point'],
+    { gh, out: () => {} },
+  )
+
+  assert.deepEqual(created.tickets.map((row) => row.title), [
+    '顾客打开链接能看到当天水果和卖完的',
+    '顾客下单时能选到店取',
+    '下单成功看到订单号和取货地址',
+  ])
+  assert.equal(store.length, 4, '父工单加三张子票')
+  assert.equal(store[0].subIssues.length, 3)
+  assert.match(store[1].body, /## 验收条件\n\n- \[ \] 打开链接，看到当天水果的名单。/)
 })
 
 test('CLI create --from-proposal 建票失败时不写点头：拆票', async (t) => {

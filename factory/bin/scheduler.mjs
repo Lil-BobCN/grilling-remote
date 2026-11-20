@@ -270,6 +270,7 @@ export async function run(
     decompose ||
     createDecompose({
       repoRoot,
+      gh: client,
       command: process.env.AFK_AGENT_COMMAND || 'claude',
     })
   const createFixTicketFn =

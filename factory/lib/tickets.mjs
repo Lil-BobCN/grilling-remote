@@ -7,7 +7,15 @@
  * - 阻塞边以 GitHub 原生依赖为准，正文照抄 `Blocked by:` 一行
  * - 子票建出来只挂 `状态:排队中`
  */
+import {
+  encodeAcceptance,
+  encodeTicketsPayload,
+  parseAcceptance,
+  parseTicketsPayload,
+} from '../../backend/lib/protocol.mjs'
 import { ensureBlockedBy, ensureLabel, ensureSubIssue } from './issues.mjs'
+
+export { encodeTicketsPayload, parseTicketsPayload }
 
 export const QUEUE_LABEL = '状态:排队中'
 
@@ -22,25 +30,13 @@ export class TicketError extends Error {
   }
 }
 
-/** 从父工单正文的 `## 验收条件` 读 `- [ ] ...`，返回去掉复选框的文本。 */
+/**
+ * 从父工单正文的 `## 验收条件` 读条目，去掉复选框，返回文本数组。
+ * 写法认 `- [ ]`、`- [x]` 和普通 `-` 列表，规则在 protocol.parseAcceptance。
+ * 没有 `## 验收条件` 一节时返回空数组，不把结论和不要做的条目当验收条件。
+ */
 export function parseParentAcceptance(parentBody) {
-  const lines = String(parentBody || '')
-    .replace(/^﻿/, '')
-    .split(/\r?\n/)
-  const items = []
-  let inSection = false
-  for (const line of lines) {
-    if (/^##\s/.test(line.trim())) {
-      inSection = /^##\s*验收条件\s*$/.test(line.trim())
-      continue
-    }
-    if (!inSection) continue
-    const match = /^\s*[-*]\s*\[[ xX]\]\s*(.*)$/.exec(line)
-    if (!match) continue
-    const item = match[1].trim()
-    if (item) items.push(item)
-  }
-  return items
+  return parseAcceptance(parentBody, { requireSection: true }).map((item) => item.text)
 }
 
 function requireText(value, code, message) {
@@ -114,26 +110,6 @@ function oneLine(text) {
   return String(text || '').replace(/\s*\r?\n\s*/g, ' ').trim()
 }
 
-const TICKETS_MARKER_RE = /<!--\s*factory:tickets\s+([A-Za-z0-9_-]+)\s*-->/g
-
-/** 把票单编码成隐藏 JSON 行，放在提案末尾，重跑和 console 都从这里读。 */
-export function encodeTicketsPayload(tickets) {
-  const json = JSON.stringify(Array.isArray(tickets) ? tickets : [])
-  return `<!-- factory:tickets ${Buffer.from(json, 'utf8').toString('base64url')} -->`
-}
-
-/** 从提案评论里读回隐藏票单；没有或解析失败返回 null。 */
-export function parseTicketsPayload(body) {
-  const matches = [...String(body || '').matchAll(TICKETS_MARKER_RE)]
-  if (!matches.length) return null
-  try {
-    const parsed = JSON.parse(Buffer.from(matches.at(-1)[1], 'base64url').toString('utf8'))
-    return Array.isArray(parsed) ? parsed : null
-  } catch {
-    return null
-  }
-}
-
 /** `提案：拆票` 评论：接缝、票单一行一张，末尾带隐藏票单 JSON。提案阶段不建票。 */
 export function renderProposal({ seams = [], tickets = [] }) {
   const seamLines = seams.length ? seams.map((seam) => `- ${oneLine(seam)}`) : ['- 无']
@@ -167,7 +143,7 @@ export function renderPoint({ count }) {
 export function renderTicketBody(ticket, blockerNumbers = []) {
   const blocks = [
     `## 垂直切片\n\n${oneLine(ticket.verticalSlice)}`,
-    `## 验收条件\n\n${ticket.acceptance.map((item) => `- [ ] ${oneLine(item)}`).join('\n')}`,
+    `## 验收条件\n\n${encodeAcceptance(ticket.acceptance)}`,
   ]
   if (blockerNumbers.length) {
     blocks.push(`## 阻塞\n\nBlocked by: ${blockerNumbers.map((number) => `#${number}`).join(', ')}`)

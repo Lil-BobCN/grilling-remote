@@ -8,6 +8,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseTicketsPayload } from '../../backend/lib/protocol.mjs'
 import { createAgentRunner, DECOMPOSE_TOOLS, GAP_TOOLS } from './agent-runner.mjs'
 import { parseTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
@@ -252,14 +253,44 @@ function decomposeBrief({ instructions, parent, spec }) {
 }
 
 /**
+ * 读父工单最新关口，确认它是 `提案：拆票`，并且末尾票单 marker 能解析。
+ * 没接 gh、读评论失败、最新关口不是提案、marker 缺失、票单为空都算失败，带原因返回。
+ */
+async function readLatestProposal({ gh, owner, repo, parent }) {
+  if (!gh) return { ok: false, reason: '拆票 job 没有 GitHub 客户端，读不到提案评论' }
+  let comments
+  try {
+    comments = await gh.listComments({ owner, repo, number: parent?.number })
+  } catch (error) {
+    return { ok: false, reason: `读提案评论失败：${errorText(error)}` }
+  }
+  const gate = latestGate(Array.isArray(comments) ? comments : [])
+  if (gate?.kind !== '提案：拆票') {
+    return { ok: false, reason: `最新关口不是「提案：拆票」：${gate?.kind || '没有关口'}` }
+  }
+  const tickets = parseTicketsPayload(gate.body)
+  if (!Array.isArray(tickets)) {
+    return { ok: false, reason: '提案缺票单 marker 或票单解析失败' }
+  }
+  if (!tickets.length) return { ok: false, reason: '提案票单是空的' }
+  return { ok: true, tickets }
+}
+
+/**
  * 叫拆票 agent 跑一次。父工单最新关口已经是 `提案：拆票` 或 `点头：拆票`
  * 时不再重复跑；`AFK_DECOMPOSE_SKIP=0` 关掉这个幂等判断。
+ *
+ * 跑完读父工单最新评论，用 protocol.parseTicketsPayload 校验提案票单。
+ * 缺 marker、票单解不开或最新关口不是 `提案：拆票`，这次作业算失败，
+ * 调度器按 attempt 退避重跑。已有提案但票单读不出来时也不跳过，直接重跑。
+ * 校验要读 GitHub，装配时必须传 `gh`；没传时作业判失败，不假装成功。
  */
 export function createDecompose({
   runner,
   command = process.env.AFK_AGENT_COMMAND || 'claude',
   agentsDir,
   repoRoot = '',
+  gh = null,
   skip = !['0', 'false'].includes(String(process.env.AFK_DECOMPOSE_SKIP || '').toLowerCase()),
 } = {}) {
   const agentRunner = runner || createAgentRunner({ command })
@@ -267,7 +298,13 @@ export function createDecompose({
   return async function decompose({ owner, repo, parent, spec } = {}) {
     const gate = latestGate(parent?.comments || [])
     if (skip && gate && DECOMPOSE_GATES.includes(gate.kind)) {
-      return { ok: true, skipped: 'already-proposed' }
+      // 点头说明票已经建过，不再拿 marker 判失败，免得建票后重出一份提案。
+      if (gate.kind === '点头：拆票') return { ok: true, skipped: 'already-proposed' }
+      const existing = parseTicketsPayload(gate.body)
+      if (Array.isArray(existing) && existing.length) {
+        return { ok: true, skipped: 'already-proposed' }
+      }
+      // 已有提案但票单读不出来：不跳过，下面的重跑会出一条新提案。
     }
     const instructions = await readFile(join(agents, '拆票.md'), 'utf8')
     const preferred = repoRoot ? join(repoRoot, repo || '') : ''
@@ -278,7 +315,20 @@ export function createDecompose({
       allowedTools: DECOMPOSE_TOOLS,
       brief: decomposeBrief({ instructions, parent, spec }),
     })
-    return { ok: Boolean(run?.ok), code: run?.code, skipped: null }
+    if (!run?.ok) {
+      return {
+        ok: false,
+        code: run?.code,
+        skipped: null,
+        reason: '拆票 agent 失败',
+        stderr: String(run?.stderr || ''),
+      }
+    }
+    const proposal = await readLatestProposal({ gh, owner, repo, parent })
+    if (!proposal.ok) {
+      return { ok: false, code: run?.code, skipped: null, reason: proposal.reason }
+    }
+    return { ok: true, code: run?.code, skipped: null, tickets: proposal.tickets.length }
   }
 }
 
