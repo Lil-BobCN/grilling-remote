@@ -154,6 +154,10 @@ class TestGateEvents(unittest.TestCase):
             "requirement": "每日汇总与 gate 链接",
             "question": "要不要加一条？",
             "recommended": "不加",
+            "owner": "Example",
+            "repo": "repo",
+            "ticket": 355,
+            "kind": "gate",
         })
         self.assertEqual(len({event["key"] for event in events}), 2)
 

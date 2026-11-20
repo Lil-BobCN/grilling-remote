@@ -241,8 +241,15 @@ def build_gate_events(repo: str, pr_number: int, ticket=None,
     occurred_at = (now or datetime.now().astimezone()).isoformat(
         timespec="seconds")
     events = []
+    owner, _, repo_name = repo.partition("/")
     for name in names:
         text = fetch_file(repo, f".audit/{name}", sha, run=run)
+        event_ticket = ticket_number
+        if event_ticket is None:
+            stem = str(name).rsplit(".", 1)[0]
+            if not stem.isdigit():
+                raise SourceError(f"gate 文件名不是票号，用 --ticket 指定：{name}")
+            event_ticket = int(stem)
         for row in parse_gate_rows(text):
             events.append({
                 "v": 1,
@@ -255,6 +262,10 @@ def build_gate_events(repo: str, pr_number: int, ticket=None,
                     "requirement": requirement,
                     "question": row.question,
                     "recommended": row.recommended,
+                    "owner": owner,
+                    "repo": repo_name or repo,
+                    "ticket": event_ticket,
+                    "kind": "gate",
                 },
             })
     return events
