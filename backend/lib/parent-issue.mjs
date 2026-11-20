@@ -13,7 +13,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { customerQuoteFrom } from './protocol.mjs'
+import { customerQuoteFrom, numberedSectionBody } from './protocol.mjs'
 
 async function readOptional(path) {
   try {
@@ -32,22 +32,6 @@ function sectionBody(text, heading) {
   const rest = text.slice(match.index + match[0].length)
   const next = /^##\s/m.exec(rest)
   return (next ? rest.slice(0, next.index) : rest).trim()
-}
-
-function numberedBody(text, number, keywords) {
-  if (!text) return null
-  const heading = /^##\s+(?:(\d+)\s*[.、．]?\s*)?(.*)$/gm
-  let match
-  while ((match = heading.exec(text))) {
-    const label = `${match[2] || ''}`
-    const hitNumber = match[1] === String(number)
-    const hitKeyword = keywords.some((word) => label.includes(word))
-    if (!hitNumber && !hitKeyword) continue
-    const rest = text.slice(match.index + match[0].length)
-    const next = /^##\s/m.exec(rest)
-    return (next ? rest.slice(0, next.index) : rest).trim()
-  }
-  return null
 }
 
 function bulletLines(body) {
@@ -121,7 +105,7 @@ function acceptanceItems(markdown) {
 }
 
 function draftSection(draft, number, keywords) {
-  return numberedBody(draft, number, keywords)
+  return numberedSectionBody(draft, number, keywords)
 }
 
 function draftConclusions(draft) {

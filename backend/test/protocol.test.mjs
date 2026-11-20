@@ -203,6 +203,7 @@ test('customerQuoteFrom 先读问答记录，读不到再读草稿；只有 Stat
 
   assert.equal(customerQuoteFrom({ draft: 'Status: 已问完\n' }), null)
   assert.equal(customerQuoteFrom({}), null)
+  assert.equal(customerQuoteFrom({ questions: '## 客户原话\n\n（待补）\n' }), null)
 })
 
 test('parseAcceptance 读父工单样例的验收条件', () => {

@@ -41,6 +41,15 @@ function sectionBody(textValue, heading) {
   return (next ? rest.slice(0, next.index) : rest).trim()
 }
 
+async function checkCustomerQuote(dir, { draft = null, target }) {
+  const questions = await text(join(dir, '问答记录.md'))
+  if (customerQuoteFrom({ questions, draft })) return { found: true, missing: '' }
+  return {
+    found: false,
+    missing: `缺客户原话。和 agent 说「继续」，让它按标准写法把客户第一次说明需求的话抄进 ${target}。`,
+  }
+}
+
 export async function validateRequirement(dir, { finished }) {
   const missing = []
   const checks = {
@@ -72,14 +81,9 @@ export async function validateRequirement(dir, { finished }) {
     if (!done) {
       missing.push('需求草稿还没写完。和 agent 说「继续」，把剩下的问题问完，它会改成「已问完」。')
     }
-    const questions = await text(join(dir, '问答记录.md'))
-    const quote = customerQuoteFrom({ questions, draft })
-    checks.customerQuote = Boolean(quote)
-    if (!quote) {
-      missing.push(
-        '缺客户原话。和 agent 说「继续」，让它按标准格式把客户第一次说明需求的话抄进 需求草稿.md 第 1 段。',
-      )
-    }
+    const quote = await checkCustomerQuote(dir, { draft, target: '需求草稿.md 第 1 段' })
+    checks.customerQuote = quote.found
+    if (!quote.found) missing.push(quote.missing)
     return { passed: missing.length === 0, finished, missing, checks }
   }
 
@@ -91,14 +95,9 @@ export async function validateRequirement(dir, { finished }) {
 
   checks.kind = 'map'
 
-  const questions = await text(join(dir, '问答记录.md'))
-  const quote = customerQuoteFrom({ questions })
-  checks.customerQuote = Boolean(quote)
-  if (!quote) {
-    missing.push(
-      '缺客户原话。和 agent 说「继续」，让它按标准格式把客户第一次说明需求的话抄进 问答记录.md 的「客户原话」一节。',
-    )
-  }
+  const quote = await checkCustomerQuote(dir, { target: '问答记录.md 的「客户原话」一节' })
+  checks.customerQuote = quote.found
+  if (!quote.found) missing.push(quote.missing)
 
   const issuesDir = join(dir, 'issues')
   const resolved = []

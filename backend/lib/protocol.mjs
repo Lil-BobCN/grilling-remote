@@ -27,7 +27,11 @@ function oneLine(value) {
   return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ').trim()
 }
 
-function numberedSectionBody(text, number, keywords) {
+/**
+ * 按编号或标题关键词找二级标题下的一节正文。
+ * `## 1. 客户原话` 和 `## 客户原话` 都算命中；找不到返回 null。
+ */
+export function numberedSectionBody(text, number, keywords) {
   if (!text) return null
   const heading = /^##\s+(?:(\d+)\s*[.、．]?\s*)?(.*)$/gm
   let match
@@ -113,8 +117,8 @@ export function parseCustomerQuote(text) {
 /**
  * 从问答记录和需求草稿的正文里读客户原话。导入和上传校验共用这一份规则。
  *
- * 先读问答记录的 `## 客户原话` 一节；读不到再读需求草稿第 1 段。
- * 每一处都按 `parseCustomerQuote` 的规则读，两种写法都认。
+ * 问答记录的 `## 客户原话` 一节只认两种写法：「」加日期、`YYYY-MM-DD：` 一行。
+ * 读不到再看需求草稿第 1 段，那里还认普通条目。
  * 两处都读不到返回 null。
  *
  * @param {{questions?: string|null, draft?: string|null}} input
@@ -123,7 +127,7 @@ export function parseCustomerQuote(text) {
 export function customerQuoteFrom({ questions = null, draft = null } = {}) {
   const section = sectionBody(textOf(questions), CUSTOMER_QUOTE_HEADING)
   const fromQuestions = parseCustomerQuote(section)
-  if (fromQuestions) return fromQuestions
+  if (fromQuestions && fromQuestions.format !== 'plain-line') return fromQuestions
   return parseCustomerQuote(numberedSectionBody(textOf(draft), 1, ['客户原话']))
 }
 
