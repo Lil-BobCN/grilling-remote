@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
+import { createServer } from 'node:http'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
+  httpHealthCheck,
   markDeliveredWithDefaults,
   publishZipWithDefaults,
   runDeploy,
@@ -18,6 +20,7 @@ import {
   buildCodeZip,
   deliveryAddress,
   deployProduct,
+  healthy,
   publishCodeZip,
   rollbackProduct,
 } from '../lib/deploy.mjs'
@@ -88,6 +91,15 @@ test('拼不出合法地址就报错，不猜', () => {
   assert.throws(() => deliveryAddress({ customer: 'acme', product: 'a'.repeat(70) }), /软件简称/)
 })
 
+test('健康判据只认 HTTP 200，000 和 5xx 都不算', () => {
+  for (const code of [200, '200']) {
+    assert.equal(healthy(code), true, `${String(code)} 应该算健康`)
+  }
+  for (const code of [0, '000', 99, 201, 204, 301, 401, 403, 404, 500, 502, '502', '', null, undefined, '200 OK']) {
+    assert.equal(healthy(code), false, `不该把 ${String(code)} 当健康`)
+  }
+})
+
 test('部署成功：linux/amd64 构建、传输、load、init 后 deploy、健康检查、通知、邮件', async () => {
   const deps = deployDeps()
   const result = await deployProduct({
@@ -138,6 +150,57 @@ test('部署成功：linux/amd64 构建、传输、load、init 后 deploy、健�
   assert.equal(deps.sendDeliveryMail.calls[0].orderId, 'o-0001')
   assert.equal(deps.sendDeliveryMail.calls[0].address, 'acme-shop.afkfactory.space')
   assert.equal(deps.sendDeliveryMail.calls[0].tries.length, 3)
+})
+
+test('仓库根有 .env.example 时传给 product-init 当 env 契约', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-deploy-env-'))
+  try {
+    await writeFile(join(dir, '.env.example'), 'PORT=3000\nHOST=0.0.0.0\nAPP_NAME=\n')
+    const deps = deployDeps()
+    const result = await deployProduct({
+      repoDir: dir,
+      customer: 'acme',
+      product: 'shop',
+      orderId: 'o-0001',
+      version: 'abc1234',
+      ...deps,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    const envTransfer = deps.transfer.calls.find((call) =>
+      String(call.remote).includes('env-example'),
+    )
+    assert.ok(envTransfer, '没有把 .env.example 传上去')
+    assert.equal(envTransfer.tar, join(dir, '.env.example'))
+    const init = deps.helper.calls.find((args) => args[0] === 'product-init')
+    assert.deepEqual(init, [
+      'product-init',
+      'acme-shop.afkfactory.space',
+      '--image',
+      'acme-shop.afkfactory.space:v1',
+      '--env-example',
+      envTransfer.remote,
+    ])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('健康检查回 502 判失败，不把 5xx 当健康', async () => {
+  const deps = deployDeps({ healthCheck: async () => 502 })
+  const result = await deployProduct({
+    repoDir: '/repo',
+    customer: 'acme',
+    product: 'shop',
+    orderId: 'o-0001',
+    version: 'abc1234',
+    ...deps,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, '部署失败')
+  assert.match(result.tried, /健康检查没过/)
+  assert.equal(deps.sendDeliveryMail.calls.length, 0)
 })
 
 test('第一次失败第二次成功：整套重跑一次，不发出事通知', async () => {
@@ -229,6 +292,22 @@ test('回滚失败也发出事通知', async () => {
   assert.equal(incident.data.reason, '回滚失败')
 })
 
+test('回滚后健康检查回 502 判失败，发出事通知', async () => {
+  const sent = []
+  const result = await rollbackProduct({
+    address: 'acme-shop.afkfactory.space',
+    helper: async () => {},
+    healthCheck: async () => 502,
+    notifier: { send: async (event) => sent.push(event) },
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.tried, /健康检查没过/)
+  const incident = sent.find((event) => event.event === '出事')
+  assert.ok(incident)
+  assert.equal(incident.data.reason, '回滚失败')
+})
+
 test('默认的试三件事是 2 到 3 件', () => {
   assert.ok(DEFAULT_DELIVERY_TRIES.length >= 2)
   assert.ok(DEFAULT_DELIVERY_TRIES.length <= 3)
@@ -276,6 +355,25 @@ test('代码 zip 从 git archive 生成，传到下载目录并给出 URL', asyn
     }
   } finally {
     await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('默认健康检查返回状态码，502 不抛成功', async () => {
+  let status = 502
+  const server = createServer((req, res) => {
+    res.writeHead(status, { 'Content-Type': 'text/plain' })
+    res.end('x')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    await withEnv({ AFK_HEALTH_URL: `http://127.0.0.1:${port}/` }, async () => {
+      assert.equal(await httpHealthCheck({ address: 'acme-shop.afkfactory.space' }), 502)
+      status = 200
+      assert.equal(await httpHealthCheck({ address: 'acme-shop.afkfactory.space' }), 200)
+    })
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
   }
 })
 
