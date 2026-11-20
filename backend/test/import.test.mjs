@@ -11,7 +11,7 @@ import { createGithubApi } from '../lib/github-api.mjs'
 import { importOnce } from '../lib/import.mjs'
 import { recordUpload } from '../lib/orders.mjs'
 import { writeJsonAtomic } from '../lib/store.mjs'
-import { login, makeConfig, seedCustomer, startServer } from './helpers.mjs'
+import { login, isolateVerifyPort, makeConfig, seedCustomer, startServer } from './helpers.mjs'
 
 const execFileAsync = promisify(execFile)
 const SAMPLE = fileURLToPath(new URL('../../docs/回传样例/工作区/.scratch/xianguopu/', import.meta.url))
@@ -112,6 +112,7 @@ async function makeUpload(config, { id, orders, requirements }) {
 }
 
 async function setup(t, { customerExtras = {}, fakeRepos = [] } = {}) {
+  await isolateVerifyPort()
   const { config, root } = await makeConfig()
   const customer = await seedCustomer(config, customerExtras)
   const fake = await startFakeGithub({ repos: fakeRepos })
