@@ -706,6 +706,11 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       }
 
       await workspace.ensure({ owner, repo, reqBranch })
+      // 点火前补齐客户仓凭证：按仓签 1 小时 token，再检查缺文件和缺键。
+      if (config.repoEnv) {
+        await config.repoEnv.ensure({ repoDir, owner, repo, image: config.image })
+        await config.repoEnv.check({ repoDir })
+      }
       await ensureSandcastleLabel({ gh, owner, repo, number: ticket.number })
       await setTicketInProgress({ gh, owner, repo, number: ticket.number })
 
