@@ -4,12 +4,13 @@ import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { start } from '../bin/scheduler.mjs'
 import { ConfigError } from '../lib/config.mjs'
 
 const execFileAsync = promisify(execFile)
-const CLI = new URL('../bin/scheduler.mjs', import.meta.url).pathname
+const CLI = fileURLToPath(new URL('../bin/scheduler.mjs', import.meta.url))
 
 const CUSTOMERS = JSON.stringify(
   [{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'acme-demo' } }],
