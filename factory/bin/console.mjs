@@ -11,7 +11,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   answerWaiting,
@@ -22,6 +22,8 @@ import {
 } from '../lib/console.mjs'
 import { parseEnvFile } from '../lib/config.mjs'
 import { createGithub } from '../lib/github.mjs'
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 function option(argv, name) {
   const index = argv.indexOf(name)
@@ -169,6 +171,7 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
       repoDir,
       commit: rest.includes('--commit'),
       push: rest.includes('--push'),
+      repoRoot: REPO_ROOT,
     })
     out(result)
     return result
