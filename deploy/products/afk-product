@@ -615,6 +615,9 @@ cmd_init() {
     DB_PASSWORD=$(random_hex 24)
     APP_KEY=$(random_hex 32)
     ADMIN_PASSWORD=$(random_hex 24)
+    ADMIN_PATH="/t/$(random_hex 12)"
+    ADMIN_PASSPHRASE=$(random_hex 24)
+    SESSION_SECRET=$(random_hex 32)
     APP_NETWORK="${NETWORK_PREFIX}${DB_NAME}"
     APP_UID=${AFK_APP_UID:-1000}
     APP_GID=${AFK_APP_GID:-1000}
@@ -633,17 +636,39 @@ DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 APP_KEY=$APP_KEY
 ADMIN_PASSWORD=$ADMIN_PASSWORD
+ADMIN_PATH=$ADMIN_PATH
+ADMIN_PASSPHRASE=$ADMIN_PASSPHRASE
+SESSION_SECRET=$SESSION_SECRET
 EOF
     chmod 600 "$env"
     chown_if_root root:root "$env"
     log "写 .env（600 root），端口 $PORT"
   fi
 
-  # 旧版 .env 没有后台口令，应用启动会失败；缺了就补，已有值不动。
+  # 旧版 .env 缺管理相关键，应用启动会失败；缺了就补，已有值不动。
+  local env_changed=0
   if [[ -z $(env_get "$env" ADMIN_PASSWORD) ]]; then
     env_set "$env" ADMIN_PASSWORD "$(random_hex 24)"
-    chown_if_root root:root "$env"
+    env_changed=1
     log "补上后台口令 ADMIN_PASSWORD，写在 $env"
+  fi
+  if [[ -z $(env_get "$env" ADMIN_PATH) ]]; then
+    env_set "$env" ADMIN_PATH "/t/$(random_hex 12)"
+    env_changed=1
+    log "补上管理路径 ADMIN_PATH，写在 $env"
+  fi
+  if [[ -z $(env_get "$env" ADMIN_PASSPHRASE) ]]; then
+    env_set "$env" ADMIN_PASSPHRASE "$(random_hex 24)"
+    env_changed=1
+    log "补上管理口令 ADMIN_PASSPHRASE，写在 $env"
+  fi
+  if [[ -z $(env_get "$env" SESSION_SECRET) ]]; then
+    env_set "$env" SESSION_SECRET "$(random_hex 32)"
+    env_changed=1
+    log "补上会话密钥 SESSION_SECRET，写在 $env"
+  fi
+  if [[ $env_changed -eq 1 ]]; then
+    chown_if_root root:root "$env"
   fi
 
   local data_dir="$dir/data"
