@@ -328,6 +328,9 @@ export async function run(
       const order = parentOrder(parent?.body)
       const branch = reqBranch || (order ? `req/${order}` : '')
       if (!branch) return { ok: false, reason: 'no-order' }
+      const finishJob = jobs
+        ? jobs.rowsFor({ owner, repo, parent: parent.number }).find((row) => row.action === 'finish')
+        : null
       const result = await runFinish(
         {
           owner,
@@ -337,7 +340,7 @@ export async function run(
           main: 'main',
           'repo-dir': join(repoRoot, repo),
         },
-        { gh: client, notifier: notify },
+        { gh: client, notifier: notify, attempt: (finishJob?.attempt || 0) + 1 },
       )
       return { ...result.output, ok: result.exitCode === 0, exitCode: result.exitCode }
     })

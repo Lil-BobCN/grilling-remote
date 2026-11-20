@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { createDirRemote, pullInbox } from '../lib/inbox.mjs'
+import { createDirRemote, importEvent, pullInbox } from '../lib/inbox.mjs'
 
 async function makeRoots(t) {
   const remoteRoot = await mkdtemp(join(tmpdir(), 'afk-remote-'))
@@ -262,4 +262,75 @@ test('通知失败时保留远端目录，下次重试', async (t) => {
   await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir, notify })
   assert.equal(attempts, 2)
   await assert.rejects(stat(join(remoteRoot, 'upload-alert')))
+})
+
+test('import_failed 的上传转发通知，重复跑不重复发', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-import-failed', {
+    status: 'import_failed',
+    operator_alert: {
+      reason: 'import_failed',
+      message: 'customers.json 里找不到客户 a-0001',
+      at: '2026-11-20T10:21:04Z',
+    },
+  })
+  const notified = []
+  const notify = async (payload) => notified.push(payload)
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir, notify })
+  assert.equal(notified.length, 1, '导入失败要发通知')
+  assert.equal(notified[0].meta.status, 'import_failed')
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir, notify })
+  assert.equal(notified.length, 1, '同一上传只发一次')
+})
+
+test('needs_operator 的上传带 operator_alert 时也转发通知', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-locked', {
+    status: 'needs_operator',
+    operator_alert: { reason: 'requirement_locked', message: '需求已锁单', at: '2026-11-20T10:21:04Z' },
+  })
+  const notified = []
+  await pullInbox({
+    remote: createDirRemote(remoteRoot),
+    inboxDir,
+    notify: async (payload) => notified.push(payload),
+  })
+  assert.equal(notified.length, 1)
+})
+
+test('importEvent 事件名是 import_failed，key 带上传号，occurred_at 用告警时间', () => {
+  const event = importEvent({
+    meta: {
+      id: 'upload-import-failed',
+      status: 'import_failed',
+      user: { short_name: 'acme' },
+      requirements: [{ name: 'demo' }],
+    },
+    alert: {
+      reason: 'import_failed',
+      message: 'customers.json 里找不到客户 a-0001',
+      at: '2026-11-20T10:21:04Z',
+    },
+    link: 'https://afkfactory.space/app/admin',
+  })
+  assert.equal(event.event, 'import_failed')
+  assert.equal(event.key, 'inbox:upload-import-failed:import_failed')
+  assert.equal(event.occurred_at, '2026-11-20T10:21:04.000Z')
+  assert.equal(event.data.customer, 'acme')
+  assert.equal(event.data.requirement, 'demo')
+  assert.equal(event.data.reason, 'import_failed')
+  assert.match(event.data.tried, /找不到客户/)
+  assert.equal(event.link, 'https://afkfactory.space/app/admin')
+})
+
+test('其他带 operator_alert 的状态仍按出事事件通知', () => {
+  const event = importEvent({
+    meta: { id: 'upload-locked', status: 'needs_operator', requirements: [] },
+    alert: { reason: 'requirement_locked', message: '需求已锁单', at: '2026-11-20T10:21:04Z' },
+  })
+  assert.equal(event.event, '出事')
+  assert.equal(event.key, 'inbox:upload-locked:出事:requirement_locked')
+  assert.equal(event.data.reason, 'requirement_locked')
 })

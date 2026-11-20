@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  customerQuoteFrom,
   encodeAcceptance,
   encodeTicketsPayload,
   eventKey,
@@ -184,6 +185,25 @@ test('parseCustomerQuote 缺原话返回 null；空引号按缺原话处理', ()
     parseCustomerQuote('## 客户原话\n\n## 第1轮\n\n客户：「这句是后面轮次的，不是原话。」'),
     null,
   )
+})
+
+test('customerQuoteFrom 先读问答记录，读不到再读草稿；只有 Status 不算原话', () => {
+  const fromQuestions = customerQuoteFrom({
+    questions: '## 客户原话\n\n2026-11-15：想要预约取货。\n',
+    draft: '## 1. 客户原话\n\n- 草稿里的原话。\n',
+  })
+  assert.equal(fromQuestions.quote, '想要预约取货。')
+  assert.equal(fromQuestions.date, '2026-11-15')
+
+  const fromDraft = customerQuoteFrom({
+    questions: '# 问答记录\n\n## 第1轮\n\nQ1：怎么取？\n',
+    draft: 'Status: 已问完\n\n## 1. 客户原话\n\n- 草稿里的原话。\n',
+  })
+  assert.equal(fromDraft.quote, '草稿里的原话。')
+
+  assert.equal(customerQuoteFrom({ draft: 'Status: 已问完\n' }), null)
+  assert.equal(customerQuoteFrom({}), null)
+  assert.equal(customerQuoteFrom({ questions: '## 客户原话\n\n（待补）\n' }), null)
 })
 
 test('parseAcceptance 读父工单样例的验收条件', () => {

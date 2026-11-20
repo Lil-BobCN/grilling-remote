@@ -487,7 +487,7 @@ test('newTicketEvent 只在已提交且没有评论时推一次', () => {
   }
   const event = newTicketEvent({ parent, comments: [], owner: 'acme', repo: 'demo' })
   assert.equal(event.event, '新单进队列')
-  assert.equal(event.key, '#42:新单进队列')
+  assert.equal(event.key, 'acme/demo:#42:新单进队列')
   assert.equal(event.data.customer, 'acme')
   assert.equal(event.data.requirement, 'yuyue')
 

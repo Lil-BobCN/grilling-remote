@@ -10,6 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
+import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
@@ -444,7 +445,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     return value instanceof Date ? value : new Date(value)
   }
 
-  async function markTimeout({ owner, repo, ticket, customer, requirement, reqBranch, ticketBranch }) {
+  async function markTimeout({ owner, repo, ticket, customer, requirement, reqBranch, ticketBranch, attempt = 1 }) {
     const at = now()
     const link =
       ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`
@@ -481,13 +482,14 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send({
-          v: 1,
-          key: `#${ticket.number}:点火超时:${at.toISOString()}`,
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
           event: '点火超时',
-          occurred_at: at.toISOString(),
+          now: at,
           link,
-          data: { customer, requirement },
+          data: { customer, requirement, attempt },
         })
       }
     } catch (error) {
@@ -524,6 +526,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     requirement,
     stage,
     error,
+    attempt = 1,
   }) {
     const at = now()
     const message = oneLine(error) || '未知错误'
@@ -534,17 +537,20 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
 
     try {
       if (typeof notifier?.send === 'function') {
-        await notifier.send({
-          v: 1,
-          key: `#${ticket.number}:出事:点火失败:${at.toISOString()}`,
+        await sendEvent(notifier, {
+          owner,
+          repo,
+          subject: `#${ticket.number}`,
           event: '出事',
-          occurred_at: at.toISOString(),
+          scope: '点火失败',
+          now: at,
           link,
           data: {
             customer,
             requirement,
             reason: oneLine(`点火失败：${stage}：${message}`),
             tried: oneLine(`${stage}阶段报错：${message}`),
+            attempt,
           },
         })
       }
@@ -591,7 +597,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
   }
 
-  async function ignite({ owner = config.owner, repo, parent, ticket }) {
+  async function ignite({ owner = config.owner, repo, parent, ticket, attempt = 1 }) {
     const order = parentOrder(parent?.body)
     const requirement =
       parentRequirement(parent?.body) || parent?.requirement || parent?.title || ''
@@ -737,6 +743,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         ticketBranch,
         prompt,
         image: config.image,
+        dockerfile: config.dockerfile || '',
         envFile,
         timeoutMs,
       }
@@ -764,6 +771,8 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           ticket: ticket.number,
           reqBranch,
           ticketBranch,
+          image: prepared?.imageName,
+          imageHash: prepared?.hash,
         })
       }
 
@@ -800,6 +809,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           reqBranch,
           ticketBranch,
+          attempt,
         })
         await markIgnitionFailure({
           owner,
@@ -810,6 +820,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           stage: '点火超时',
           error: '两分钟没收到回执',
+          attempt,
         })
         return { ok: false, timeout: true, reqBranch, ticketBranch }
       }
@@ -857,6 +868,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           requirement,
           stage: '没有提交',
           error: '这次 run 没有产生提交',
+          attempt,
         })
         return { ok: false, error: 'no-commits', reqBranch, ticketBranch, archived }
       }
@@ -972,6 +984,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
         requirement,
         stage,
         error: message,
+        attempt,
       })
       return { ok: false, error: message, reqBranch, ticketBranch, archived }
     }

@@ -552,7 +552,9 @@ test('fixer 修过仍不过：通知「出事」，不合主干，不放宽', as
     assert.ok(!calls.some(([kind]) => kind === 'cleanup'))
     const incident = sent.find((event) => event.event === '出事')
     assert.ok(incident)
+    assert.equal(incident.key, `${OWNER}/${REPO}:#${state.parent.number}:出事:验证评审修不过:收尾评审`)
     assert.equal(incident.data.reason, '验证评审修不过')
+    assert.equal(incident.data.attempt, 1)
     assert.ok(incident.data.tried.includes('两轮没过'), incident.data.tried)
     assert.ok(incident.data.tried.includes('验收条件第 2 条没做'), incident.data.tried)
   } finally {

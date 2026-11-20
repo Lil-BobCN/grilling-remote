@@ -4,6 +4,7 @@
  *
  *   node factory/bin/ignite.mjs --owner <owner> --repo <repo> --parent <父工单号> --ticket <子票号>
  *   node factory/bin/ignite.mjs ... --dry-run
+ *   node factory/bin/ignite.mjs ... --dockerfile <相对客户仓的路径>（context 改成仓根，可选）
  *
  * `--dry-run` 只读 GitHub 和本地客户仓，打印拼好的 prompt 和要跑的命令，不贴标签、
  * 不写评论、不跑容器。
@@ -44,6 +45,7 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
   const repo = option(argv, '--repo', '')
   const parentNumber = option(argv, '--parent', '')
   const ticketNumber = option(argv, '--ticket', '')
+  const dockerfile = option(argv, '--dockerfile', '')
   if (!owner) throw new Error('缺 --owner（或环境变量 GITHUB_OWNER）')
   if (!repo) throw new Error('缺 --repo')
   if (!parentNumber) throw new Error('缺 --parent')
@@ -78,8 +80,9 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
     out(`# prompt 文件：${join(repoDir, '.sandcastle', `prompt-${ticket.number}.md`)}（dry-run 不写）`)
     out(`# 凭证：${join(repoDir, '.sandcastle', '.env')}`)
     out(
-      `# 镜像：${process.env.AFK_SANDCASTLE_IMAGE || '取 .env 的 SANDCASTLE_IMAGE，没有就用 sandcastle:' + repo}`,
+      `# 镜像：${process.env.AFK_SANDCASTLE_IMAGE || '取 .env 的 SANDCASTLE_IMAGE，没有就用 sandcastle:' + repo}（tag 带内容哈希）`,
     )
+    out(`# Dockerfile：${dockerfile || '默认 .sandcastle/Dockerfile，context 是 .sandcastle'}`)
     out(
       `# runner：${join(sandcastleHome, 'node_modules', '.bin', 'tsx')} ${join(sandcastleHome, `run-${ticket.number}.mts`)}（cwd ${repoDir}）`,
     )
@@ -100,6 +103,7 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
         process.env.AFK_LOCK_DIR ||
         join(homedir(), '.grilling', 'factory', 'locks'),
       image: config.image ?? process.env.AFK_SANDCASTLE_IMAGE ?? '',
+      dockerfile: config.dockerfile ?? dockerfile,
       timeoutMs,
       token,
     },
