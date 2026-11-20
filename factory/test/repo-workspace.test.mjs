@@ -9,6 +9,7 @@ import {
   ensure,
   image,
   lock,
+  parseWorktreeList,
   prepareTicket,
   release,
   sweep,
@@ -65,19 +66,7 @@ function workspaceFor(root, options = {}) {
 }
 
 async function worktrees(repoDir) {
-  const text = await git(repoDir, ['worktree', 'list', '--porcelain'])
-  return text
-    .split(/\r?\n\r?\n/)
-    .map((block) => {
-      const lines = block.split(/\r?\n/)
-      const pathLine = lines.find((line) => line.startsWith('worktree '))
-      const branchLine = lines.find((line) => line.startsWith('branch refs/heads/'))
-      return {
-        path: pathLine ? pathLine.slice('worktree '.length) : '',
-        branch: branchLine ? branchLine.slice('branch refs/heads/'.length) : '',
-      }
-    })
-    .filter((row) => row.path)
+  return parseWorktreeList(await git(repoDir, ['worktree', 'list', '--porcelain']))
 }
 
 function fakeExec({ images = [], ps = '', failBuild = false } = {}) {
@@ -239,8 +228,21 @@ test('已有脏工作树时 prepareTicket 报错并保留现场', async (t) => {
   assert.equal(await readFile(join(prepared.worktree, 'req.txt'), 'utf8'), '未提交\n')
 })
 
-test('重试时 prepareTicket 接上已有票分支，不重置上次的提交', async (t) => {
+test('工作树目录被删后 release 清掉残留登记', async (t) => {
   const root = await tempRoot(t)
+  const { reqBranch } = await seedCustomer(root)
+  const ws = workspaceFor(root)
+  const { repoDir } = await ws.ensure({ owner: 'acme', repo: 'demo', reqBranch })
+  const prepared = await ws.prepareTicket({ repoDir, base: reqBranch, ticketBranch: 'ticket/11' })
+  await rm(prepared.worktree, { recursive: true, force: true })
+
+  const released = await ws.release(prepared)
+  assert.equal(released.removed, true)
+  assert.equal(released.registered, false)
+  assert.ok(!(await worktrees(repoDir)).some((row) => row.branch === 'ticket/11'))
+})
+
+test('重试时 prepareTicket 接上已有票分支，不重置上次的提交', async (t) => {  const root = await tempRoot(t)
   const { reqBranch } = await seedCustomer(root)
   const ws = workspaceFor(root)
   const { repoDir } = await ws.ensure({ owner: 'acme', repo: 'demo', reqBranch })
@@ -288,7 +290,8 @@ test('image 在客户仓里建镜像，返回实际镜像和 ID', async (t) => {
   const build = stub.calls.find((call) => call.command === 'npx')
   assert.ok(build)
   assert.deepEqual(build.args, [
-    '@ai-hero/sandcastle',
+    '--yes',
+    '@ai-hero/sandcastle@0.12.0',
     'docker',
     'build-image',
     '--image-name',

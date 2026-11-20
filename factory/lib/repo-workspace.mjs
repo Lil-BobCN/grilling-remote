@@ -20,6 +20,7 @@ import { promisify } from 'node:util'
 import { parseEnvFile } from './config.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { acquireFileLock } from './lock.mjs'
+import { SANDCASTLE_VERSION } from './sandcastle-runner.mjs'
 
 const execFileAsync = promisify(execFile)
 const CONFIG_DIR = '.sandcastle'
@@ -195,6 +196,14 @@ export function createRepoWorkspace({
     return { archived, errors }
   }
 
+  /** 登记还在但目录已经没了，prune 掉；返回是否已不在登记里。 */
+  async function pruneMissing(repoDir, row) {
+    if (await exists(row.path)) return false
+    await gitImpl(repoDir, ['worktree', 'prune']).catch(() => {})
+    const rows = await worktreeList(repoDir).catch(() => [])
+    return !(await findWorktreeRow(rows, row.path))
+  }
+
   /** 删工作树并 prune；返回登记是否真的没了。 */
   async function removeWorktree(repoDir, path) {
     try {
@@ -295,11 +304,17 @@ export function createRepoWorkspace({
     const existing = await findWorktreeRow(rows, path)
 
     if (existing) {
-      const dirty = await statusPorcelain(existing.path)
-      if (dirty) {
-        throw new Error(`工作树 ${existing.path} 有未提交改动，先 release 或 abort 再 prepareTicket`)
+      if (await exists(existing.path)) {
+        const dirty = await statusPorcelain(existing.path)
+        if (dirty) {
+          throw new Error(
+            `工作树 ${existing.path} 有未提交改动，先 release 或 abort 再 prepareTicket`,
+          )
+        }
+        await removeWorktree(repoDir, existing.path)
+      } else {
+        await pruneMissing(repoDir, existing)
       }
-      await removeWorktree(repoDir, existing.path)
     } else if (await exists(path)) {
       throw new Error(`目录已存在但不是 git 工作树，未动：${path}`)
     }
@@ -347,6 +362,19 @@ export function createRepoWorkspace({
     }
 
     const branchName = branch || row.branch || ''
+    if (await pruneMissing(repoDir, row)) {
+      if (deleteBranch && branchName) await deleteBranchIfFree(repoDir, branchName)
+      return {
+        path,
+        branch: branchName,
+        registered: false,
+        removed: true,
+        kept: false,
+        dirty: false,
+        archived: [],
+      }
+    }
+
     const dirtyText = await statusPorcelain(row.path)
     const { archived, errors } = dirtyText
       ? await archiveUntracked({ repoDir, worktree: row.path, branch: branchName, at: clock() })
@@ -406,6 +434,19 @@ export function createRepoWorkspace({
     }
 
     const branchName = branch || row.branch || ''
+    if (await pruneMissing(repoDir, row)) {
+      if (deleteBranch && branchName) await deleteBranchIfFree(repoDir, branchName)
+      return {
+        path,
+        branch: branchName,
+        registered: false,
+        removed: true,
+        kept: false,
+        dirty: false,
+        archived: [],
+      }
+    }
+
     const dirtyText = await statusPorcelain(row.path)
     const { archived, errors } = await archiveUntracked({
       repoDir,
@@ -470,7 +511,14 @@ export function createRepoWorkspace({
       return { built: false, image: imageName, hash: beforeId }
     }
 
-    const args = ['@ai-hero/sandcastle', 'docker', 'build-image', '--image-name', imageName]
+    const args = [
+      '--yes',
+      `@ai-hero/sandcastle@${SANDCASTLE_VERSION}`,
+      'docker',
+      'build-image',
+      '--image-name',
+      imageName,
+    ]
     if (dockerfile) {
       args.push('--dockerfile', isAbsolute(dockerfile) ? dockerfile : resolve(repoDir, dockerfile))
     }
@@ -559,7 +607,13 @@ export function createRepoWorkspace({
           })
           continue
         }
-        const released = await release({ repoDir, worktree: row.path, branch: row.branch })
+        let released
+        try {
+          released = await release({ repoDir, worktree: row.path, branch: row.branch })
+        } catch (error) {
+          result.errors.push({ target: row.path, error: String(error?.message || error) })
+          continue
+        }
         result.worktrees.push({
           repoDir,
           path: row.path,
