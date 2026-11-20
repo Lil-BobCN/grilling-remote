@@ -238,6 +238,27 @@ test('parseAcceptance 普通 - 按未勾选处理，只读验收条件一节', (
   ])
 })
 
+test('parseAcceptance 传 requireSection 时没有验收条件一节返回空', () => {
+  const body = `## 客户确认的结论
+
+- 顾客打开链接看货。
+
+## 不做清单
+
+- 不做在线支付
+`
+  // 不传时读整段，方便直接读验收场景文件。
+  assert.deepEqual(parseAcceptance(body), [
+    { text: '顾客打开链接看货。', checked: false },
+    { text: '不做在线支付', checked: false },
+  ])
+  // 父工单必须明确写出验收条件一节，别把结论和不要做的条目当验收条件。
+  assert.deepEqual(parseAcceptance(body, { requireSection: true }), [])
+  assert.deepEqual(parseAcceptance('## 验收条件\n\n- 普通条目\n', { requireSection: true }), [
+    { text: '普通条目', checked: false },
+  ])
+})
+
 test('encodeAcceptance 统一写 - [ ]，解析时再按未勾选读回', () => {
   const items = [
     { text: '顾客扫码进小程序。', checked: true },

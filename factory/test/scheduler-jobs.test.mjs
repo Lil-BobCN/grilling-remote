@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { encodeTicketsPayload } from '../../backend/lib/protocol.mjs'
+import { createGithub } from '../lib/github.mjs'
+import { ensureLabel } from '../lib/issues.mjs'
+import { createJobStore, findJob } from '../lib/job.mjs'
 import {
   createDecompose,
   createFixTicket,
@@ -10,7 +17,8 @@ import {
   parseGateRows,
   ticketFromBranch,
 } from '../lib/scheduler-jobs.mjs'
-import { newTicketEvent } from '../lib/scheduler.mjs'
+import { newTicketEvent, runOnce, STATE_LABELS } from '../lib/scheduler.mjs'
+import { startFakeGithub } from './fake-github.mjs'
 
 const NOW = new Date('2026-11-17T10:00:00')
 const HEADER = 'ts\tphase\tdecision\twhy\tevidence\tresult'
@@ -135,34 +143,197 @@ test('createListMergedYesterday 只取前一天 00:00–24:00，读标记，读�
   assert.deepEqual(empty, [])
 })
 
-test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 可关', async () => {
-  const calls = []
-  const runner = {
+function proposalTickets() {
+  return [
+    {
+      title: '顾客打开链接能看到当天水果和卖完的',
+      verticalSlice: '顾客打开链接，看到今天的水果、价格和卖完的。',
+      acceptance: ['打开链接，看到当天水果的名单。'],
+      blockedBy: [],
+    },
+  ]
+}
+
+function proposalBody(tickets = proposalTickets()) {
+  return `提案：拆票\n\n共 1 张票。\n\n${encodeTicketsPayload(tickets)}`
+}
+
+function commentsGh(comments) {
+  const gh = {
+    calls: 0,
+    async listComments() {
+      gh.calls += 1
+      return comments
+    },
+  }
+  return gh
+}
+
+function okRunner(calls = []) {
+  return {
     async run(options) {
       calls.push(options)
       return { ok: true, code: 0, stdout: '' }
     },
   }
+}
+
+test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 可关', async () => {
+  const calls = []
+  const runner = okRunner(calls)
+  const proposal = proposalBody()
   const parent = {
     number: 42,
     title: '要个预约取货',
     body: '## 验收条件\n\n- [ ] 打开首页能看到入口。',
-    comments: [{ body: '提案：拆票\n\n- 主页' }],
+    comments: [{ body: proposal }],
   }
   const spec = { number: 60, title: 'spec yuyue', body: '用户故事' }
+  const gh = commentsGh([{ body: proposal }])
 
-  const decompose = createDecompose({ runner })
+  const decompose = createDecompose({ runner, gh })
   const skipped = await decompose({ owner: 'acme', repo: 'demo', parent, spec })
   assert.equal(skipped.skipped, 'already-proposed')
   assert.equal(calls.length, 0)
 
-  const forced = createDecompose({ runner, skip: false })
+  const forced = createDecompose({ runner, skip: false, gh })
   const ran = await forced({ owner: 'acme', repo: 'demo', parent, spec })
   assert.equal(ran.ok, true)
   assert.equal(calls.length, 1)
   assert.match(calls[0].brief, /提案：拆票/)
   assert.match(calls[0].brief, /用户故事/)
   assert.match(calls[0].brief, /父工单：#42/)
+  assert.match(calls[0].brief, /bin\/tickets\.mjs/)
+  assert.match(calls[0].allowedTools, /Bash\(node:\*\)/)
+})
+
+test('createDecompose 成功后校验最新提案，票单能解析才 ok', async () => {
+  const runner = okRunner()
+  const gh = commentsGh([
+    { body: '驳回：拆票 再拆一次' },
+    { body: proposalBody() },
+  ])
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.ticketCount, 1)
+  assert.equal(gh.calls, 1)
+})
+
+test('createDecompose 提案缺票单 marker 判失败，不写成功', async () => {
+  const runner = okRunner()
+  const gh = commentsGh([{ body: '提案：拆票\n\n- 顾客打开链接能看到当天水果和卖完的' }])
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /票单/)
+})
+
+test('createDecompose 票单 marker 解不开也判失败', async () => {
+  const runner = okRunner()
+  const gh = commentsGh([{ body: '提案：拆票\n\n<!-- factory:tickets 不是JSON -->' }])
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /票单/)
+})
+
+test('createDecompose 跑完最新关口不是提案：拆票也判失败', async () => {
+  const runner = okRunner()
+  const gh = commentsGh([{ body: proposalBody() }, { body: '驳回：拆票 理由' }])
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /提案：拆票/)
+})
+
+test('createDecompose 没接 GitHub 客户端时判失败，不假成功', async () => {
+  const runner = okRunner()
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, skip: false })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /GitHub/)
+})
+
+test('createDecompose 已有点头：拆票时直接跳过，不再校验提案', async () => {
+  const calls = []
+  const runner = okRunner(calls)
+  const parent = {
+    number: 42,
+    title: '要个预约取货',
+    body: '',
+    comments: [
+      { body: '提案：拆票\n\n- 没有机器可读的票单。' },
+      { body: '点头：拆票\n\n建了 1 张子票。' },
+    ],
+  }
+
+  const result = await createDecompose({ runner, gh: commentsGh([]) })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.skipped, 'already-proposed')
+  assert.equal(calls.length, 0)
+})
+
+test('createDecompose 已有坏提案时不跳过，重跑一次', async () => {
+  const calls = []
+  const runner = okRunner(calls)
+  const parent = {
+    number: 42,
+    title: '要个预约取货',
+    body: '',
+    comments: [{ body: '提案：拆票\n\n- 没有机器可读的票单。' }],
+  }
+  const gh = commentsGh([{ body: proposalBody() }])
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(calls.length, 1, '坏提案要重跑一次 agent')
+  assert.equal(result.ok, true)
 })
 
 test('createGapProposal 跑补缺口 agent：brief 带绝对路径和两条命令，stdout/stderr 进日志', async () => {
@@ -325,4 +496,56 @@ test('newTicketEvent 只在已提交且没有评论时推一次', () => {
     newTicketEvent({ parent: { ...parent, labels: labels('状态:排队中') }, comments: [] }),
     null,
   )
+})
+
+test('createGapProposal 失败接上调度器：写 needs-info stop，下一轮不再跑', async (t) => {
+  const fake = await startFakeGithub({ repos: [{ owner: 'acme', name: 'acme-demo' }] })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  for (const [name, meta] of Object.entries(STATE_LABELS)) {
+    await ensureLabel(gh, { owner: 'acme', repo: 'acme-demo', name, ...meta })
+  }
+  for (const name of ['needs-info', 'Sandcastle', '大小:小需求', 'ready-for-agent', 'wayfinder:map', 'wayfinder:grilling']) {
+    await ensureLabel(gh, { owner: 'acme', repo: 'acme-demo', name })
+  }
+  const parent = await gh.createIssue({
+    owner: 'acme',
+    repo: 'acme-demo',
+    title: '要个预约取货',
+    body: '- 客户简称：acme\n- 需求名：yuyue-quhuo\n\n<!-- factory:order=o-0001 -->',
+    labels: ['状态:已提交'],
+  })
+  let runs = 0
+  const gapProposal = createGapProposal({
+    runner: {
+      async run() {
+        runs += 1
+        return { ok: false, code: 1, stdout: '', stderr: '403 没权限' }
+      },
+    },
+    agentsDir: AGENTS_DIR,
+    log: () => {},
+  })
+  const dir = await mkdtemp(join(tmpdir(), 'afk-jobs-integration-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const jobs = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await jobs.load()
+  const options = {
+    gh,
+    customers: [{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'acme-demo' } }],
+    notifier: { async send() { return { code: 0 } } },
+    gapProposal,
+    clock: () => NOW,
+    config: { owner: 'acme', maxActive: 5, lockDir: dir, jobs },
+  }
+
+  await runOnce(options)
+  const row = findJob(jobs.rowsFor({ owner: 'acme', repo: 'acme-demo', parent: parent.number }), {
+    action: 'needs-info',
+  })
+  assert.equal(row.stop, 'needs-info')
+  assert.match(row.reason, /403 没权限/)
+
+  await runOnce(options)
+  assert.equal(runs, 1, '停了线就不重跑补缺口')
 })

@@ -44,10 +44,13 @@ SHARE_DIR=/usr/local/share/afk-product
 log() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
-for file in compose.template.yml afk-product backup.sh \
+for file in compose.template.yml app.env.example afk-product backup.sh \
   caddy/product.caddy caddy/preview.caddy caddy/not-found.caddy \
   systemd/afk-product-backup.service systemd/afk-product-backup.timer; do
   [[ -f $HERE/$file ]] || die "缺文件：$HERE/$file"
+done
+for file in health.sh fingerprint.sh; do
+  [[ -f $HERE/../lib/$file ]] || die "缺文件：$HERE/../lib/$file"
 done
 
 # ---------------------------------------------------------------- Docker
@@ -174,9 +177,12 @@ install -m 755 -o root -g root "$HERE/afk-product" /usr/local/sbin/afk-product
 install -m 755 -o root -g root "$HERE/backup.sh" /usr/local/sbin/afk-product-backup
 install -d -m 755 -o root -g root "$SHARE_DIR" "$SHARE_DIR/caddy"
 install -m 644 -o root -g root "$HERE/compose.template.yml" "$SHARE_DIR/compose.template.yml"
+install -m 644 -o root -g root "$HERE/app.env.example" "$SHARE_DIR/app.env.example"
+install -m 644 -o root -g root "$HERE/../lib/health.sh" "$SHARE_DIR/health.sh"
+install -m 644 -o root -g root "$HERE/../lib/fingerprint.sh" "$SHARE_DIR/fingerprint.sh"
 install -m 644 -o root -g root "$HERE/caddy/product.caddy" "$SHARE_DIR/caddy/product.caddy"
 install -m 644 -o root -g root "$HERE/caddy/preview.caddy" "$SHARE_DIR/caddy/preview.caddy"
-log "afk-product、afk-product-backup 和模板装好"
+log "afk-product、afk-product-backup、env 契约、共享判据和模板装好"
 
 log "== systemd timer"
 install -m 644 -o root -g root "$HERE/systemd/afk-product-backup.service" /etc/systemd/system/afk-product-backup.service

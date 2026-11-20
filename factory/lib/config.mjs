@@ -409,6 +409,36 @@ export async function readCustomersFile(path, { readFile = readFileDefault } = {
   return validateCustomersText(text, { file: path })
 }
 
+/**
+ * 给常驻调度器用的 customers 读取器：每轮看 mtime，变了才重读并重新校验。
+ *
+ * 文件形状不对时抛出 ConfigError，不退回上一次的表，也不当成零个客户仓。
+ * 返回的函数可以直接每轮调用。
+ */
+export function createCustomersReader(
+  path,
+  { readFile = readFileDefault, statFile = stat } = {},
+) {
+  let cachedRows = null
+  let cachedMtime = null
+  return async function readCustomers() {
+    let info
+    try {
+      info = await statFile(path)
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new ConfigError(`customers 文件不存在：${path}`, { file: path })
+      }
+      throw new ConfigError(`读不了 customers 文件 ${path}：${error.message}`, { file: path })
+    }
+    if (cachedRows && info.mtimeMs === cachedMtime) return cachedRows
+    const rows = await readCustomersFile(path, { readFile })
+    cachedRows = rows
+    cachedMtime = info.mtimeMs
+    return rows
+  }
+}
+
 async function readEnvValues({ env, envFile, readFile }) {
   const home = env.HOME || homedir()
   const explicitFile = envFile || env.AFK_ENV_FILE

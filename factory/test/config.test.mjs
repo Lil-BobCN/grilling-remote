@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
   ConfigError,
+  createCustomersReader,
   loadConfig,
   parseEnvFile,
   probeClaudeModel,
@@ -416,4 +417,64 @@ test('repos 的值不是仓名字符串时报错，指出那个键', async (t) =
       return true
     },
   )
+})
+
+test('createCustomersReader 按 mtime 重读：文件改了以后下一轮看到新客户仓', async (t) => {
+  const dir = await tempDir(t)
+  const path = join(dir, 'customers.json')
+  await writeFile(
+    path,
+    JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'repo-one' } }]),
+    'utf8',
+  )
+  const reader = createCustomersReader(path)
+
+  const first = await reader()
+  const later = new Date(Date.now() + 5000)
+  await writeFile(
+    path,
+    JSON.stringify([
+      { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'repo-one' } },
+      { id: 'c-0002', short_name: 'tanxin', status: 'active', repos: { demo: 'repo-two' } },
+    ]),
+    'utf8',
+  )
+  await utimes(path, later, later)
+  const second = await reader()
+
+  assert.equal(first.length, 1)
+  assert.equal(second.length, 2)
+  assert.equal(second[1].repos.demo, 'repo-two')
+})
+
+test('createCustomersReader 文件形状变坏时报 ConfigError，不沿用旧表', async (t) => {
+  const dir = await tempDir(t)
+  const path = join(dir, 'customers.json')
+  await writeFile(
+    path,
+    JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: 'repo-one' } }]),
+    'utf8',
+  )
+  const reader = createCustomersReader(path)
+  assert.equal((await reader()).length, 1)
+
+  const later = new Date(Date.now() + 5000)
+  await writeFile(path, JSON.stringify([{ id: 'c-0001', short_name: 'acme', status: 'broken' }]), 'utf8')
+  await utimes(path, later, later)
+
+  await assert.rejects(reader(), (error) => {
+    assert.ok(error instanceof ConfigError)
+    assert.match(error.message, /status 必须是 active 或 disabled/)
+    return true
+  })
+})
+
+test('createCustomersReader 文件不存在时报 ConfigError', async (t) => {
+  const dir = await tempDir(t)
+  const reader = createCustomersReader(join(dir, 'customers.json'))
+  await assert.rejects(reader(), (error) => {
+    assert.ok(error instanceof ConfigError)
+    assert.match(error.message, /customers 文件不存在/)
+    return true
+  })
 })
