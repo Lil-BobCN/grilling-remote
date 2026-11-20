@@ -7,6 +7,7 @@ import { run as runInstall } from '../bin/install-launchd.mjs'
 import { LAUNCHD_JOBS, installLaunchd, verifyLaunchd } from '../lib/launchd.mjs'
 
 const REPO_ROOT = '/Users/example/afkfactory'
+const NOT_LOADED = { code: 113, stdout: '', stderr: 'Could not find service' }
 
 /** 假 launchctl：两个任务都加载，scheduler 有进程 4321。 */
 function fakeLoaded({ pid = 4321 } = {}) {
@@ -138,8 +139,10 @@ test('安装会先卸再装两个任务，再检查加载和进程', async (t) =
 test('安装后任务没加载：install 报错并指出任务名', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
   t.after(() => rm(home, { recursive: true, force: true }))
+  const calls = []
   const run = async (command, args) => {
-    if (args[0] === 'print') return { code: 113, stdout: '', stderr: 'Could not find service' }
+    calls.push([command, ...args])
+    if (args[0] === 'print') return NOT_LOADED
     return { code: 0, stdout: '', stderr: '' }
   }
 
@@ -151,13 +154,15 @@ test('安装后任务没加载：install 报错并指出任务名', async (t) =>
       return true
     },
   )
+  const bootouts = calls.filter((call) => call[1] === 'bootout')
+  assert.equal(bootouts.length, 4, '装前卸一次，检查失败再回滚卸一次')
 })
 
 test('安装命令行遇到没加载的任务时退出失败', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
   t.after(() => rm(home, { recursive: true, force: true }))
   const run = async (command, args) => {
-    if (args[0] === 'print') return { code: 113, stdout: '', stderr: 'Could not find service' }
+    if (args[0] === 'print') return NOT_LOADED
     return { code: 0, stdout: '', stderr: '' }
   }
 
@@ -200,7 +205,7 @@ function launchctlOutput(rows) {
   return async (command, args) => {
     const row = rows[args[1]] || rows[args[1]?.split('/').pop()]
     if (row) return row
-    return { code: 113, stdout: '', stderr: 'Could not find service' }
+    return NOT_LOADED
   }
 }
 
@@ -209,7 +214,7 @@ test('verifyLaunchd 发现任务没加载：报未加载和任务名', async (t)
   const result = await verifyLaunchd({
     home,
     uid: 501,
-    run: async () => ({ code: 113, stdout: '', stderr: 'Could not find service' }),
+    run: async () => (NOT_LOADED),
   })
 
   assert.equal(result.ok, false)
@@ -276,7 +281,7 @@ test('install-launchd --verify 未加载时失败，错误里写任务名', asyn
     runInstall(['--verify'], {
       home,
       uid: 501,
-      run: async () => ({ code: 113, stdout: '', stderr: 'Could not find service' }),
+      run: async () => (NOT_LOADED),
       out: () => {},
     }),
     (error) => {
@@ -285,4 +290,42 @@ test('install-launchd --verify 未加载时失败，错误里写任务名', asyn
       return true
     },
   )
+})
+
+test('verifyLaunchd 发现 launchd 之外还有手工调度器：报进程号', async (t) => {
+  const home = await homeWithPlists(t)
+  const run = async (command, args) => {
+    if (command === 'ps') return { code: 0, stdout: 'node\n', stderr: '' }
+    if (command === 'pgrep') return { code: 0, stdout: '4321\n9999\n', stderr: '' }
+    return String(args[1]).endsWith('com.afkfactory.scheduler')
+      ? { code: 0, stdout: 'state = running\n\tpid = 4321\n', stderr: '' }
+      : { code: 0, stdout: 'state = waiting\n\tlast exit code = 0\n', stderr: '' }
+  }
+
+  const result = await verifyLaunchd({ home, uid: 501, run })
+
+  assert.equal(result.ok, false)
+  const scheduler = result.jobs.find((row) => row.label === 'com.afkfactory.scheduler')
+  assert.equal(scheduler.loaded, true)
+  assert.match(scheduler.reason, /launchd 之外还有调度器进程：9999/)
+  assert.equal(result.jobs.find((row) => row.label === 'com.afkfactory.pull-inbox').ok, true)
+})
+
+test('verifyLaunchd 发现 pull-inbox 上次运行失败：报退出码', async (t) => {
+  const home = await homeWithPlists(t)
+  const run = async (command, args) => {
+    if (command === 'ps') return { code: 0, stdout: 'node\n', stderr: '' }
+    if (command === 'pgrep') return { code: 1, stdout: '', stderr: '' }
+    if (String(args[1]).endsWith('com.afkfactory.scheduler')) {
+      return { code: 0, stdout: 'state = running\n\tpid = 4321\n', stderr: '' }
+    }
+    return { code: 0, stdout: 'state = not running\n\tlast exit code = 78\n', stderr: '' }
+  }
+
+  const result = await verifyLaunchd({ home, uid: 501, run })
+
+  assert.equal(result.ok, false)
+  const pull = result.jobs.find((row) => row.label === 'com.afkfactory.pull-inbox')
+  assert.equal(pull.loaded, true)
+  assert.match(pull.reason, /上次运行退出码 78/)
 })

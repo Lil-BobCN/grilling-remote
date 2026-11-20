@@ -42,7 +42,7 @@ export function renderTemplate(text, { home, repoRoot }) {
 }
 
 /** 跑一条外部命令，返回退出码和输出；找不到命令按退出码 1 算。 */
-export function runCommand(command, args) {
+function runCommand(command, args) {
   return new Promise((done) => {
     execFile(command, args, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       done({
@@ -59,9 +59,30 @@ function currentUid() {
 }
 
 /** launchctl print 输出里的 pid。没有 pid 行说明任务不是常驻进程。 */
-export function launchdPid(text) {
+function launchdPid(text) {
   const match = /^\s*pid = (\d+)\s*$/m.exec(String(text ?? ''))
   return match ? Number(match[1]) : null
+}
+
+/** launchctl print 里的上次退出码；任务还没跑过时返回 null。 */
+function lastExitCode(text) {
+  const match = /last exit (?:code|status) = (-?\d+)/.exec(String(text ?? ''))
+  return match ? Number(match[1]) : null
+}
+
+/** 把没通过的任务拼成一行错误说明。 */
+export function launchdFailures(jobs = []) {
+  return jobs
+    .filter((row) => !row.ok)
+    .map((row) => `${row.label}（${row.reason}）`)
+    .join('；')
+}
+
+function schedulerPids(text) {
+  return String(text ?? '')
+    .split(/\s+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0)
 }
 
 /**
@@ -114,6 +135,20 @@ export async function verifyLaunchd({
           jobs.push(row)
           continue
         }
+        const listed = await run('pgrep', ['-f', 'factory/bin/scheduler.mjs --loop'])
+        const extra = listed.code === 0 ? schedulerPids(listed.stdout).filter((pid) => pid !== row.pid) : []
+        if (extra.length) {
+          row.reason = `launchd 之外还有调度器进程：${extra.join('、')}，停掉手工起的那份`
+          jobs.push(row)
+          continue
+        }
+      } else {
+        const exitCode = lastExitCode(printed.stdout)
+        if (exitCode !== null && exitCode !== 0) {
+          row.reason = `上次运行退出码 ${exitCode}`
+          jobs.push(row)
+          continue
+        }
       }
       row.ok = true
       jobs.push(row)
@@ -133,7 +168,7 @@ export async function verifyLaunchd({
  * 装两个任务：写 plist 和 wrapper，用 launchctl 加载，再检查真的起来了。
  *
  * 重装先 `bootout` 旧任务，再 `bootstrap` 新 plist，避免继续跑旧路径。
- * 装完检查不过就抛错，退出码非零，不留「装好了但不能用」的状态。
+ * 装完检查不过就回滚（卸掉两个任务）并抛错，退出码非零，不假装装好。
  */
 export async function installLaunchd({
   home = homedir(),
@@ -184,11 +219,10 @@ export async function installLaunchd({
 
   const verify = await verifyLaunchd({ home: homePath, uid, run, statFile, retries, waitMs, wait })
   if (!verify.ok) {
-    const failed = verify.jobs
-      .filter((row) => !row.ok)
-      .map((row) => `${row.label}（${row.reason}）`)
-      .join('；')
-    throw new Error(`常驻任务没装好：${failed}`)
+    for (const job of LAUNCHD_JOBS) {
+      await run('launchctl', ['bootout', `gui/${uid}/${job.label}`])
+    }
+    throw new Error(`常驻任务没装好：${launchdFailures(verify.jobs)}`)
   }
 
   return { plists, scripts, logsDir, verify }

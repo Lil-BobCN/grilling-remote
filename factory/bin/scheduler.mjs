@@ -21,7 +21,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createAgentRunner } from '../lib/agent-runner.mjs'
-import { ConfigError, createCustomersReader, loadConfig, readCustomersFile } from '../lib/config.mjs'
+import { ConfigError, createCustomersReader, loadConfig } from '../lib/config.mjs'
 import { resolveMaxFixRounds } from '../lib/evidence.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { runGh } from '../lib/helper.mjs'
@@ -203,11 +203,11 @@ export async function run(
   if (!owner) throw new Error('缺 --owner（或环境变量 GITHUB_OWNER）')
 
   const loadCustomers =
-    typeof injectedCustomers === 'function'
-      ? injectedCustomers
-      : injectedCustomers !== undefined
-        ? async () => injectedCustomers
-        : createCustomersReader(customersPath, { readFile: injectedReadFile })
+    injectedCustomers === undefined
+      ? createCustomersReader(customersPath, { readFile: injectedReadFile })
+      : typeof injectedCustomers === 'function'
+        ? injectedCustomers
+        : async () => injectedCustomers
   const customers = await loadCustomers()
   const token = process.env.GITHUB_TOKEN || ''
   const client = gh || createGithub({ token })
@@ -355,6 +355,9 @@ export async function run(
     config,
   }
 
+  // 每轮都走读取器：mtime 没变就复用，变了就重读并重新校验。
+  options.customers = loadCustomers
+
   if (once) {
     const report = await runOnceImpl(options)
     for (const line of parentLines(report)) out(JSON.stringify(line))
@@ -365,9 +368,6 @@ export async function run(
     await Promise.allSettled([...(config.pendingIgnitions || [])])
     return report
   }
-
-  // 常驻时每轮都走读取器：mtime 没变就复用，变了就重读并重新校验。
-  options.customers = loadCustomers
 
   await runLoop({
     intervalMs: injectedIntervalMs ?? (Number(process.env.SCHEDULER_INTERVAL_MS) || 30000),
@@ -410,12 +410,6 @@ export async function start(
       file: loaded.envFile,
     })
   }
-  const customersPath = option(
-    argv,
-    '--customers',
-    process.env.CUSTOMERS_FILE || 'customers.json',
-  )
-  const customers = await readCustomersFile(customersPath, { readFile })
   return run(argv, { ...runOptions, readFile })
 }
 

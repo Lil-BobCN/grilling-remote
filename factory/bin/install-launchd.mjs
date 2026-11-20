@@ -11,7 +11,7 @@
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { installLaunchd, verifyLaunchd } from '../lib/launchd.mjs'
+import { installLaunchd, launchdFailures, verifyLaunchd } from '../lib/launchd.mjs'
 
 function option(argv, name, fallback) {
   const index = argv.indexOf(name)
@@ -23,7 +23,7 @@ function option(argv, name, fallback) {
 
 function describe(row) {
   const pid = row.pid ? ` pid ${row.pid}` : ''
-  return `${row.ok ? '已加载' : '未加载'} ${row.label}${pid}${row.reason ? `：${row.reason}` : ''}`
+  return `${row.loaded ? '已加载' : '未加载'} ${row.label}${pid}${row.reason ? `：${row.reason}` : ''}`
 }
 
 export async function run(
@@ -34,13 +34,7 @@ export async function run(
   if (argv.includes('--verify')) {
     const result = await verifyLaunchd({ home: homePath, uid, run: runCommandImpl, statFile, retries, waitMs })
     for (const row of result.jobs) out(describe(row))
-    if (!result.ok) {
-      const failed = result.jobs
-        .filter((row) => !row.ok)
-        .map((row) => `${row.label}（${row.reason}）`)
-        .join('；')
-      throw new Error(`常驻任务没装好：${failed}`)
-    }
+    if (!result.ok) throw new Error(`常驻任务没装好：${launchdFailures(result.jobs)}`)
     return result
   }
 

@@ -76,7 +76,7 @@ node factory/bin/install-launchd.mjs --repo-root <仓库路径>
 node factory/bin/install-launchd.mjs --verify
 ```
 
-`--verify` 只读，检查三件事：plist 在不在、`launchctl print` 能不能看到任务、scheduler 的进程还在不在。缺一项就列出任务名，退出码非零。
+`--verify` 只读，检查 plist 在不在、`launchctl print` 能不能看到任务、scheduler 的进程还在不在、pull-inbox 上次退出码，以及有没有 launchd 之外的调度器进程。缺一项就列出任务名，退出码非零。
 
 重装直接再跑一次安装。脚本先 `bootout` 旧任务，再 `bootstrap` 新 plist。
 
@@ -92,7 +92,7 @@ node factory/bin/install-launchd.mjs --verify
 
 `GITHUB_TOKEN` 用细粒度 PAT，只选当前客户仓，Issues、Pull requests、Contents 读写。token 不写进 plist。
 
-调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。
+调度器启动时自检这些键，探测一次模型，并校验 `customers.json` 的形状。缺键或格式错就退出，错误里写键名和查过的文件。运行中每轮看 `customers.json` 的 mtime，变了就重读并重新校验；形状不对当轮报错，不沿用旧表。
 
 调度器状态只在 GitHub。进程重启后按标签和阻塞边重新推导，不重复点火。
 
