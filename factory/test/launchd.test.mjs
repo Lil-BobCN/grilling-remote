@@ -172,13 +172,14 @@ test('安装命令行遇到没加载的任务时退出失败', async (t) => {
   )
 })
 
-test('.sandcastle/.env.example 写清 GH_TOKEN 用细粒度 PAT，只给当前客户仓', async () => {
+test('.sandcastle/.env.example 写清 GH_TOKEN 用 GitHub App 短效 token，只给当前客户仓', async () => {
   const text = await readFile(
     new URL('../../backend/scaffold/.sandcastle/.env.example', import.meta.url),
     'utf8',
   )
-  assert.match(text, /fine-grained|细粒度/)
-  assert.match(text, /只选当前客户仓|只限当前客户仓/)
+  assert.match(text, /GitHub App/)
+  assert.match(text, /1 小时/)
+  assert.match(text, /当前客户仓|当前仓/)
   assert.match(text, /Issues/)
   assert.match(text, /Pull requests/)
   assert.match(text, /Contents/)

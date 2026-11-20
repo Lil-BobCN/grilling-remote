@@ -439,7 +439,7 @@ export function createCustomersReader(
   }
 }
 
-async function readEnvValues({ env, envFile, readFile }) {
+export async function readEnvValues({ env = process.env, envFile, readFile = readFileDefault } = {}) {
   const home = env.HOME || homedir()
   const explicitFile = envFile || env.AFK_ENV_FILE
   const file = explicitFile || join(home, '.afkfactory', 'env')
