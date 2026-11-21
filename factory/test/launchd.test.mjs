@@ -138,6 +138,46 @@ test('安装会先卸再装两个任务，再检查加载和进程', async (t) =
   assert.equal(result.commands, undefined, '不再留一套手工加载命令')
 })
 
+test('bootstrap 遇到退出码 5 会等一会重试，重试成功就继续安装', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  const calls = []
+  const waits = []
+  let bootstrapCount = 0
+  const run = async (command, args) => {
+    calls.push([command, ...args])
+    if (args[0] === 'bootstrap') {
+      bootstrapCount += 1
+      // 真机重装时 bootout 还没卸干净，第一次 bootstrap 会拿到 5；隔一会重跑就成功。
+      if (bootstrapCount === 1) {
+        return { code: 5, stdout: '', stderr: 'Bootstrap failed: 5: Input/output error' }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    if (command === 'ps') return { code: 0, stdout: 'node\n', stderr: '' }
+    if (args[0] === 'print') {
+      return String(args[1]).endsWith('com.afkfactory.scheduler')
+        ? { code: 0, stdout: 'state = running\n\tpid = 4321\n', stderr: '' }
+        : { code: 0, stdout: 'state = waiting\n', stderr: '' }
+    }
+    return { code: 0, stdout: '', stderr: '' }
+  }
+
+  const result = await installLaunchd({
+    home,
+    repoRoot: REPO_ROOT,
+    uid: 501,
+    run,
+    retries: 0,
+    wait: async (ms) => waits.push(ms),
+  })
+
+  const bootstraps = calls.filter((call) => call[1] === 'bootstrap')
+  assert.ok(bootstraps.length >= 2, `bootstrap 至少调用两次，实际 ${bootstraps.length} 次`)
+  assert.deepEqual(waits, [100], '重试间隔用 waitMs 默认的 100ms')
+  assert.equal(result.verify.ok, true)
+})
+
 test('安装后任务没加载：install 报错并指出任务名', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
   t.after(() => rm(home, { recursive: true, force: true }))
