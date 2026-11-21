@@ -241,16 +241,17 @@ export function parseTicketsPayload(body) {
  * 生成一行进度。规范写法：
  * `进度 v1｜路径：其余｜客户档：安排中｜细阶段：写规格｜轮次：1｜卡住：否`
  * 备注可选，非空时接在末尾 `｜备注：...`。
+ * `path` 传 null 时不写路径，给订单转档行用；`parseProgress` 读回时按 `其余`。
  */
 export function progressLine({ path = '其余', tier, step, round = 1, stuck = false, note = '' }) {
-  const parts = [
-    '进度 v1',
-    `路径：${path}`,
+  const parts = ['进度 v1']
+  if (path !== null) parts.push(`路径：${path}`)
+  parts.push(
     `客户档：${tier}`,
     `细阶段：${step}`,
     `轮次：${round}`,
     `卡住：${stuck ? '是' : '否'}`,
-  ]
+  )
   if (note) parts.push(`备注：${note}`)
   return parts.join('｜')
 }

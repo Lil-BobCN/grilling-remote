@@ -11,15 +11,17 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { latestGate } from './gate.mjs'
 import { parseGateRows } from './scheduler-jobs.mjs'
+import { isParentIssue, isSpecIssue, specForParent, toSpecWaiting } from './scheduler.mjs'
 
 const execFileAsync = promisify(execFile)
 
-export const KINDS = ['gap', 'split', 'gate']
+export const KINDS = ['gap', 'split', 'gate', 'spec']
 
 const KIND_LABEL = {
   gap: '补缺口',
   split: '拆票',
   gate: 'gate',
+  spec: 'to-spec',
 }
 
 export async function runCommand(command, args, options = {}) {
@@ -91,17 +93,43 @@ export async function gateWaiting({ repoDir }) {
 }
 
 /**
- * 列出待办。GitHub 上的提案和客户仓 `.audit` 里的 gate 题都算。
+ * 列出待办。GitHub 上的提案、点头后没 spec 的父工单，和客户仓 `.audit` 里的 gate 题都算。
  * `gh` 只需要 listIssues、listComments。
  */
 export async function listWaiting({ gh, owner, repo, repoDir = '', kinds = KINDS } = {}) {
   const rows = []
-  if (gh && (kinds.includes('gap') || kinds.includes('split'))) {
+  const wantsIssueKinds = gh && (kinds.includes('gap') || kinds.includes('split') || kinds.includes('spec'))
+  if (wantsIssueKinds) {
     const issues = await gh.listIssues({ owner, repo, state: 'open' })
+    const commentsByNumber = new Map()
+    const commentsFor = async (number) => {
+      if (!commentsByNumber.has(number)) {
+        commentsByNumber.set(number, await gh.listComments({ owner, repo, number }))
+      }
+      return commentsByNumber.get(number)
+    }
+    const specs = kinds.includes('spec') ? issues.filter(isSpecIssue) : []
     for (const issue of issues) {
-      const comments = await gh.listComments({ owner, repo, number: issue.number })
-      const entry = entryFromIssue({ owner, repo, issue, comments })
-      if (entry && kinds.includes(entry.kind)) rows.push(entry)
+      const comments = await commentsFor(issue.number)
+      if (kinds.includes('gap') || kinds.includes('split')) {
+        const entry = entryFromIssue({ owner, repo, issue, comments })
+        if (entry && kinds.includes(entry.kind)) rows.push(entry)
+      }
+      if (kinds.includes('spec') && isParentIssue(issue)) {
+        const { spec } = specForParent({ parent: issue, specs })
+        const gate = latestGate(comments)
+        if (!toSpecWaiting({ parent: { ...issue, spec }, latestGate: gate })) continue
+        rows.push({
+          kind: 'spec',
+          owner,
+          repo,
+          ticket: issue.number,
+          title: issue.title || '',
+          url: issue.html_url || `https://github.com/${owner}/${repo}/issues/${issue.number}`,
+          source: 'github',
+          since: gate?.comment?.created_at || '',
+        })
+      }
     }
   }
   if (repoDir && kinds.includes('gate')) {
@@ -226,6 +254,9 @@ export async function answerWaiting({
     if (commit) args.push('--commit')
     if (push) args.push('--push')
     return run(node, args)
+  }
+  if (entry.kind === 'spec') {
+    throw new Error('to-spec 是手动步骤，没有写回命令；在仓库里手动跑 to-spec。')
   }
   throw new Error(`不认识的待办类型：${entry.kind}`)
 }

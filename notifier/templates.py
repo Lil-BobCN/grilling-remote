@@ -23,6 +23,18 @@ class EventSpec:
     render: Callable[[dict[str, Any], str], tuple[str, str]]
 
 
+def _console_command(data):
+    command = (
+        f"node factory/bin/console.mjs open --owner {data['owner']} "
+        f"--repo {data['repo']} --ticket {data['ticket']} --kind {data['kind']}"
+    )
+    if data.get("repo_dir"):
+        return command + f" --repo-dir {data['repo_dir']}"
+    if data.get("kind") == "gate":
+        return command + " --repo-dir <客户仓>"
+    return command
+
+
 def _new_order(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 已进队列",
@@ -40,7 +52,7 @@ def _reupload_map(data, link):
 def _gap_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你补缺口（{data['question_count']} 题）",
-        f"闸门题和推荐答案列好了。打开 Orca 答一轮。{link}",
+        f"闸门题和推荐答案列好了。打开待办：\n{_console_command(data)}\n{link}",
     )
 
 
@@ -54,14 +66,16 @@ def _run_to_spec(data, link):
 def _split_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你点头拆票（{data['ticket_count']} 张）",
-        f"接缝、票单、每票验收条件已备好。打开 Orca 扫一眼。{link}",
+        f"接缝、票单、每票验收条件已备好。打开待办：\n{_console_command(data)}\n{link}",
     )
 
 
 def _need_answer(data, link):
+    note = "" if data.get("repo_dir") else "\n（repoDir 没配，把 <客户仓> 换成客户仓路径）"
     return (
         f"{data['customer']} · {data['requirement']} · 等你答：{data['question']}",
-        f"{data['question']}。推荐：{data['recommended']}。打开 Orca 答。{link}",
+        f"{data['question']}。推荐：{data['recommended']}。打开待办：\n"
+        f"{_console_command(data)}{note}\n{link}",
     )
 
 
@@ -123,15 +137,18 @@ EVENTS: dict[str, EventSpec] = {
     "重传地图已更新": EventSpec(
         (PUSH,), ("customer", "requirement"), True, _reupload_map),
     "补缺口提案": EventSpec(
-        (PUSH, EMAIL), ("customer", "requirement", "question_count"),
+        (PUSH, EMAIL),
+        ("customer", "requirement", "question_count", "owner", "repo", "ticket", "kind"),
         True, _gap_proposal),
     "该跑 to-spec": EventSpec(
         (PUSH, EMAIL), ("customer", "requirement"), True, _run_to_spec),
     "拆票提案": EventSpec(
-        (PUSH, EMAIL), ("customer", "requirement", "ticket_count"),
+        (PUSH, EMAIL),
+        ("customer", "requirement", "ticket_count", "owner", "repo", "ticket", "kind"),
         True, _split_proposal),
     "需要你答": EventSpec(
-        (PUSH, EMAIL), ("customer", "requirement", "question", "recommended"),
+        (PUSH, EMAIL),
+        ("customer", "requirement", "question", "recommended", "owner", "repo", "ticket", "kind"),
         True, _need_answer),
     "出事": EventSpec(
         (PUSH, EMAIL), ("customer", "requirement", "reason", "tried"),
@@ -152,9 +169,9 @@ EVENTS: dict[str, EventSpec] = {
 
 _STRING_FIELDS = {
     "customer", "requirement", "question", "recommended", "reason",
-    "tried", "address", "date",
+    "tried", "address", "date", "owner", "repo", "kind", "repo_dir",
 }
-_INT_FIELDS = {"question_count", "ticket_count", "pr"}
+_INT_FIELDS = {"question_count", "ticket_count", "pr", "ticket"}
 
 
 def _validate_items(event, value):
@@ -187,11 +204,16 @@ def _validate(event: str, spec: EventSpec, data: dict[str, Any], link: str | Non
         if name in _STRING_FIELDS:
             if not isinstance(value, str) or not value.strip():
                 raise EventError(f"事件「{event}」的 data.{name} 必须是非空字符串")
+            if name == "kind" and value not in ("gap", "split", "gate"):
+                raise EventError(f"事件「{event}」的 data.kind 只能是 gap、split、gate")
         elif name in _INT_FIELDS:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise EventError(f"事件「{event}」的 data.{name} 必须是整数")
         elif name == "items":
             _validate_items(event, value)
+    repo_dir = data.get("repo_dir")
+    if repo_dir is not None and (not isinstance(repo_dir, str) or not repo_dir.strip()):
+        raise EventError(f"事件「{event}」的 data.repo_dir 必须是非空字符串")
     if spec.needs_link and (not isinstance(link, str) or not link.strip()):
         raise EventError(f"事件「{event}」缺少 link")
     days = data.get("days_waited")

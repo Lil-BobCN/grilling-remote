@@ -2207,6 +2207,10 @@ test('读到提案：补缺口先推一条，带题数和已等天数；同一�
   assert.ok(event)
   assert.equal(event.data.question_count, 2)
   assert.equal(event.data.days_waited, 0)
+  assert.equal(event.data.owner, OWNER)
+  assert.equal(event.data.repo, REPO)
+  assert.equal(event.data.ticket, parent.number)
+  assert.equal(event.data.kind, 'gap')
   assert.match(event.key, /补缺口提案:0/)
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
@@ -2259,6 +2263,7 @@ test('需要你答由注入的数据源提供，带问题和推荐，重启后�
     owner: OWNER,
     lockDir: await lockDir(t),
     maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
     needsAnswer: [
       {
         key: 'PR-9:51',
@@ -2277,6 +2282,11 @@ test('需要你答由注入的数据源提供，带问题和推荐，重启后�
   assert.equal(event.data.question, '闸门第三题选哪个方案')
   assert.equal(event.data.recommended, '方案 A')
   assert.equal(event.data.days_waited, 2)
+  assert.equal(event.data.owner, OWNER)
+  assert.equal(event.data.repo, REPO)
+  assert.equal(event.data.ticket, parent.number)
+  assert.equal(event.data.kind, 'gate')
+  assert.equal(event.data.repo_dir, join(config.repoRoot, REPO))
   assert.equal(event.link, 'https://github.com/acme/acme-demo/pull/9')
   assert.match(event.key, /#\d+:需要你答:PR-9:51:2/)
 

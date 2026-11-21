@@ -28,6 +28,7 @@ def _parse_args(argv):
     parser = argparse.ArgumentParser(prog="python3 -m notifier.dev.standin")
     parser.add_argument("--repo", required=True, help="工单所在仓库，owner/repo")
     parser.add_argument("--ticket", type=int, help="读一次这张工单")
+    parser.add_argument("--repo-dir", help="gate 命令里的客户仓路径")
     parser.add_argument("--event")
     parser.add_argument("--channel", choices=("email", "push"), help="只发一路")
     parser.add_argument("--customer", help="工单上没有客户简称时补")
@@ -98,7 +99,8 @@ def _first_line(regex, body):
 def _build_event(args):
     if not args.event:
         raise SystemExit("error 需要 --event，或者用 --merged-on / --audit-pr")
-    issue = _read_issue(args.repo, args.ticket) if args.ticket else None
+    needs_issue = not (args.customer and args.requirement and args.link)
+    issue = _read_issue(args.repo, args.ticket) if args.ticket and needs_issue else None
     now = datetime.now().astimezone()
     issue_body = issue.get("body", "") if issue else ""
     customer = args.customer or _first_line(CUSTOMER_RE, issue_body)
@@ -126,6 +128,21 @@ def _build_event(args):
     }
     data.update({name: value for name, value in extra.items() if value is not None})
     data = {name: value for name, value in data.items() if value is not None}
+
+    waiting = {"补缺口提案": "gap", "拆票提案": "split", "需要你答": "gate"}
+    kind = waiting.get(args.event)
+    if kind:
+        if args.ticket is None:
+            raise SystemExit(f"error {args.event} 需要 --ticket，命令里要带票号")
+        owner, _, repo_name = args.repo.partition("/")
+        data.update({
+            "owner": owner,
+            "repo": repo_name or args.repo,
+            "ticket": args.ticket,
+            "kind": kind,
+        })
+        if args.repo_dir:
+            data["repo_dir"] = args.repo_dir
 
     event = {
         "v": 1,
