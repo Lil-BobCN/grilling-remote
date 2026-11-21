@@ -188,7 +188,8 @@ export async function installLaunchd({
   statFile = stat,
   retries = 20,
   waitMs = 100,
-  wait,
+  wait = (ms) => new Promise((done) => setTimeout(done, ms)),
+  bootstrapAttempts = 5,
 } = {}) {
   if (!repoRoot) throw new Error('缺 repoRoot（仓库路径）')
   const homePath = resolve(home)
@@ -217,7 +218,13 @@ export async function installLaunchd({
   for (const job of LAUNCHD_JOBS) {
     // 没加载过时 bootout 会失败，属于正常情况。
     await run('launchctl', ['bootout', `gui/${uid}/${job.label}`])
-    const loaded = await run('launchctl', ['bootstrap', `gui/${uid}`, join(plistDir, job.plist)])
+    // bootout 后 launchd 还没卸干净时，马上 bootstrap 会返回 5（Input/output error）。
+    // 隔 waitMs 再试，最多 bootstrapAttempts 次；成功一次就继续装下一个。
+    let loaded = await run('launchctl', ['bootstrap', `gui/${uid}`, join(plistDir, job.plist)])
+    for (let attempt = 1; attempt < bootstrapAttempts && loaded.code !== 0; attempt += 1) {
+      await wait(waitMs)
+      loaded = await run('launchctl', ['bootstrap', `gui/${uid}`, join(plistDir, job.plist)])
+    }
     if (loaded.code !== 0) {
       const detail = String(loaded.stderr || loaded.stdout || '').trim()
       throw new Error(
