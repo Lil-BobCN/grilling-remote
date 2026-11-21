@@ -82,12 +82,14 @@ test('安装脚本创建日志目录和 wrapper，日志都在 ~/.afkfactory/log
 
   const pull = await readFile(join(home, '.afkfactory', 'bin', 'run-pull-inbox.sh'), 'utf8')
   assert.match(pull, /^#!\/bin\/bash/)
+  assert.match(pull, /set -a[\s\S]*source "\$HOME\/\.afkfactory\/env"/, 'env 文件里的键要 export 给 node')
   assert.match(pull, /source "\$HOME\/\.afkfactory\/env"/)
   assert.match(pull, /export PATH=/)
   assert.match(pull, /factory\/bin\/pull-inbox\.mjs/)
 
   const scheduler = await readFile(join(home, '.afkfactory', 'bin', 'run-scheduler.sh'), 'utf8')
   assert.match(scheduler, /^#!\/bin\/bash/)
+  assert.match(scheduler, /set -a[\s\S]*source "\$HOME\/\.afkfactory\/env"/, 'env 文件里的键要 export 给 node')
   assert.match(scheduler, /source "\$HOME\/\.afkfactory\/env"/)
   assert.match(scheduler, /export PATH=/)
   assert.match(scheduler, /\$HOME\/\.afkfactory\/logs\/scheduler-runs\.jsonl/, '每轮 runs.jsonl 也放进 logs')
