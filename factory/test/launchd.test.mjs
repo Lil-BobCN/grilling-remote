@@ -160,6 +160,37 @@ test('安装后任务没加载：install 报错并指出任务名', async (t) =>
   assert.equal(bootouts.length, 4, '装前卸一次，检查失败再回滚卸一次')
 })
 
+test('第二个任务 bootstrap 失败：卸掉已加载的第一个任务再报错', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  const calls = []
+  const run = async (command, args) => {
+    calls.push([command, ...args])
+    if (args[0] === 'bootstrap' && String(args[2]).endsWith('com.afkfactory.scheduler.plist')) {
+      return { code: 5, stdout: '', stderr: 'Input/output error' }
+    }
+    return { code: 0, stdout: '', stderr: '' }
+  }
+
+  await assert.rejects(
+    installLaunchd({ home, repoRoot: REPO_ROOT, uid: 501, run, retries: 0 }),
+    (error) => {
+      assert.match(error.message, /com\.afkfactory\.scheduler/)
+      assert.match(error.message, /launchctl bootstrap 退出码 5/)
+      assert.match(error.message, /Input\/output error/)
+      return true
+    },
+  )
+
+  const asText = calls.map((call) => call.join(' '))
+  const failedAt = asText.indexOf(
+    `launchctl bootstrap gui/501 ${home}/Library/LaunchAgents/com.afkfactory.scheduler.plist`,
+  )
+  const rollbackAt = asText.lastIndexOf('launchctl bootout gui/501/com.afkfactory.pull-inbox')
+  assert.ok(failedAt >= 0, 'scheduler 的 bootstrap 调用确实发生了')
+  assert.ok(rollbackAt > failedAt, 'scheduler bootstrap 失败后，把已经加载的 pull-inbox 卸掉')
+})
+
 test('安装命令行遇到没加载的任务时退出失败', async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'afk-launchd-'))
   t.after(() => rm(home, { recursive: true, force: true }))

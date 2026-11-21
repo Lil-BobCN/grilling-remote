@@ -214,16 +214,26 @@ export async function installLaunchd({
     scripts.push(scriptFile)
   }
 
-  for (const job of LAUNCHD_JOBS) {
-    // 没加载过时 bootout 会失败，属于正常情况。
-    await run('launchctl', ['bootout', `gui/${uid}/${job.label}`])
-    const loaded = await run('launchctl', ['bootstrap', `gui/${uid}`, join(plistDir, job.plist)])
-    if (loaded.code !== 0) {
-      const detail = String(loaded.stderr || loaded.stdout || '').trim()
-      throw new Error(
-        `加载 ${job.label} 失败：launchctl bootstrap 退出码 ${loaded.code}${detail ? `：${detail}` : ''}`,
-      )
+  const bootstrapped = []
+  try {
+    for (const job of LAUNCHD_JOBS) {
+      // 没加载过时 bootout 会失败，属于正常情况。
+      await run('launchctl', ['bootout', `gui/${uid}/${job.label}`])
+      const loaded = await run('launchctl', ['bootstrap', `gui/${uid}`, join(plistDir, job.plist)])
+      if (loaded.code !== 0) {
+        const detail = String(loaded.stderr || loaded.stdout || '').trim()
+        throw new Error(
+          `加载 ${job.label} 失败：launchctl bootstrap 退出码 ${loaded.code}${detail ? `：${detail}` : ''}`,
+        )
+      }
+      bootstrapped.push(job)
     }
+  } catch (error) {
+    // 已经 bootstrap 成功的任务现在真的在跑，不卸掉会留下半安装状态。
+    for (const job of bootstrapped) {
+      await run('launchctl', ['bootout', `gui/${uid}/${job.label}`])
+    }
+    throw error
   }
 
   const verify = await verifyLaunchd({ home: homePath, uid, run, statFile, retries, waitMs, wait })
