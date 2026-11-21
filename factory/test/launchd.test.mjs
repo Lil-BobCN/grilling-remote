@@ -312,6 +312,36 @@ test('verifyLaunchd 发现 launchd 之外还有手工调度器：报进程号', 
   assert.equal(result.jobs.find((row) => row.label === 'com.afkfactory.pull-inbox').ok, true)
 })
 
+test('verifyLaunchd 不把命令行里带调度器字样的其他进程当成手工调度器', async (t) => {
+  const home = await homeWithPlists(t)
+  const run = async (command, args) => {
+    if (command === 'ps') {
+      if (args[1] === '4444') {
+        return {
+          code: 0,
+          stdout: 'claude --append-system-prompt "node factory/bin/scheduler.mjs --loop --customers x"\n',
+          stderr: '',
+        }
+      }
+      if (args[1] === '7777') {
+        return { code: 0, stdout: '/opt/homebrew/bin/node factory/bin/scheduler.mjs --loop\n', stderr: '' }
+      }
+      return { code: 0, stdout: 'node\n', stderr: '' }
+    }
+    if (command === 'pgrep') return { code: 0, stdout: '4321\n4444\n7777\n', stderr: '' }
+    return String(args[1]).endsWith('com.afkfactory.scheduler')
+      ? { code: 0, stdout: 'state = running\n\tpid = 4321\n', stderr: '' }
+      : { code: 0, stdout: 'state = waiting\n\tlast exit code = 0\n', stderr: '' }
+  }
+
+  const result = await verifyLaunchd({ home, uid: 501, run })
+
+  assert.equal(result.ok, false)
+  const scheduler = result.jobs.find((row) => row.label === 'com.afkfactory.scheduler')
+  assert.match(scheduler.reason, /launchd 之外还有调度器进程：7777/)
+  assert.doesNotMatch(scheduler.reason, /4444/)
+})
+
 test('verifyLaunchd 发现 pull-inbox 上次运行失败：报退出码', async (t) => {
   const home = await homeWithPlists(t)
   const run = async (command, args) => {

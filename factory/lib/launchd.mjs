@@ -135,8 +135,17 @@ export async function verifyLaunchd({
           jobs.push(row)
           continue
         }
+        // pgrep -f 只要命令行里含这段字就会命中。编辑器、agent 的启动参数里也可能带它，
+        // 所以再查一次进程命令行，只认真正由 node 跑起来的调度器。
         const listed = await run('pgrep', ['-f', 'factory/bin/scheduler.mjs --loop'])
-        const extra = listed.code === 0 ? schedulerPids(listed.stdout).filter((pid) => pid !== row.pid) : []
+        const candidates =
+          listed.code === 0 ? schedulerPids(listed.stdout).filter((pid) => pid !== row.pid) : []
+        const extra = []
+        for (const pid of candidates) {
+          const detail = await run('ps', ['-p', String(pid), '-o', 'command='])
+          const command = String(detail.stdout || '').trim()
+          if (detail.code === 0 && /^(?:\S*\/)?node(?=\s|$)/.test(command)) extra.push(pid)
+        }
         if (extra.length) {
           row.reason = `launchd 之外还有调度器进程：${extra.join('、')}，停掉手工起的那份`
           jobs.push(row)
