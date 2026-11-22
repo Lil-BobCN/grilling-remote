@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 export const SANDCASTLE_VERSION = '0.12.0'
 export const DEFAULT_MODEL = 'ccs-claude-deepseek--deepseek-v4-flash[1M]'
 
-/** 客户仓模板里的 Dockerfile；镜像 tag 的哈希把这份模板也算进去。 */
+/** 工厂的 Dockerfile 模板；默认构建直接用它，镜像 tag 的哈希也包含它。 */
 const SCAFFOLD_DOCKERFILE = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -158,25 +158,29 @@ async function readTextOrEmpty(path) {
 }
 
 /**
- * 在客户仓里建镜像。cwd 是客户仓，默认 context 是 `<repoDir>/.sandcastle`；
- * 需要仓根做 context 时显式传 `dockerfile`，CLI 会收到绝对路径。
- * tag 由 Dockerfile 内容和模板哈希生成，内容变了自动换 tag 并重建。
+ * 建镜像。默认只用工厂模板 `backend/scaffold/.sandcastle/Dockerfile`，
+ * context 是模板所在目录，所以客户仓里的旧副本不再参与。
+ * 显式传 `dockerfile` 时尊重调用方文件，context 是客户仓根。
+ * tag 由实际 Dockerfile 内容和模板哈希生成，内容变了自动换 tag 并重建。
+ * 宿主 UID/GID 作为 build-arg 传进去，按 Sandcastle 的镜像约定。
  */
 export async function defaultBuildImage({
   image,
   repoDir,
-  home = process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle'),
   env,
   exec,
   dockerfile = '',
   templatePath = SCAFFOLD_DOCKERFILE,
+  uid = typeof process.getuid === 'function' ? process.getuid() : undefined,
+  gid = typeof process.getgid === 'function' ? process.getgid() : undefined,
 }) {
   if (!repoDir) throw new Error('建镜像需要 repoDir')
   const dockerfilePath = dockerfile
     ? isAbsolute(dockerfile)
       ? dockerfile
       : resolve(repoDir, dockerfile)
-    : join(repoDir, '.sandcastle', 'Dockerfile')
+    : templatePath
+  const contextDir = dockerfile ? repoDir : dirname(templatePath)
   const hash = imageContentHash(
     await readTextOrEmpty(dockerfilePath),
     await readTextOrEmpty(templatePath),
@@ -184,22 +188,36 @@ export async function defaultBuildImage({
   const taggedImage = hashTaggedImage(image, hash)
 
   const inspect = await exec('docker', ['image', 'inspect', '--format', '{{.Id}}', taggedImage], {
-    cwd: repoDir,
+    cwd: contextDir,
     env: baseEnv(env),
   })
   if (inspect.code === 0 && String(inspect.stdout || '').trim()) {
     return { built: false, image: taggedImage, hash }
   }
 
-  // 用 runner 目录里已装的 CLI，cwd 仍是客户仓；走 npx 会在客户仓重新下载。
-  const args = ['docker', 'build-image', '--image-name', taggedImage]
-  if (dockerfile) args.push('--dockerfile', dockerfilePath)
-  const result = await exec(join(home, 'node_modules', '.bin', 'sandcastle'), args, {
-    cwd: repoDir,
-    env: baseEnv(env),
-  })
+  const args = ['build']
+  if (uid !== undefined) args.push('--build-arg', `AGENT_UID=${uid}`)
+  if (gid !== undefined) args.push('--build-arg', `AGENT_GID=${gid}`)
+  args.push('-f', dockerfilePath, '-t', taggedImage, contextDir)
+  const result = await exec('docker', args, { cwd: contextDir, env: baseEnv(env) })
   if (result.code !== 0) {
     throw new Error(`建镜像 ${taggedImage} 失败（退出码 ${result.code}）：${tail(result)}`)
+  }
+
+  const smokeArgs = ['run', '--rm']
+  if (uid !== undefined && gid !== undefined) smokeArgs.push('--user', `${uid}:${gid}`)
+  smokeArgs.push(
+    '-e',
+    'HOME=/home/agent',
+    '--entrypoint',
+    'sh',
+    taggedImage,
+    '-c',
+    'test -w /home/agent && git config --global --add safe.directory /home/agent/workspace',
+  )
+  const smoke = await exec('docker', smokeArgs, { cwd: contextDir, env: baseEnv(env) })
+  if (smoke.code !== 0) {
+    throw new Error(`镜像 ${taggedImage} 冒烟失败（退出码 ${smoke.code}）：${tail(smoke)}`)
   }
   return { built: true, image: taggedImage, hash }
 }
@@ -269,7 +287,7 @@ function parseResult(stdout, ticketBranch) {
  * @param {object} [options.env] 宿主环境；只用 PATH、HOME 这类进程键，不转发凭证
  * @param {Function} [options.exec] 外部命令替身 `(command, args, {cwd, env, onStart}) => {code, stdout, stderr}`
  * @param {Function} [options.buildImage] 建镜像替身
- * @param {string} [options.templatePath] 客户仓 Dockerfile 模板，参与镜像 tag 哈希
+ * @param {string} [options.templatePath] 工厂 Dockerfile 模板，默认构建的唯一来源，参与镜像 tag 哈希
  */
 export function createSandcastleRunner({
   home = process.env.AFK_SANDCASTLE_HOME || join(homedir(), '.afkfactory', 'sandcastle'),
@@ -298,7 +316,6 @@ export function createSandcastleRunner({
       repoDir,
       dockerfile: dockerfile || '',
       templatePath,
-      home,
       env,
       exec,
     })

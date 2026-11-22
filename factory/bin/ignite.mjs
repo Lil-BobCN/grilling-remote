@@ -83,7 +83,11 @@ export async function run(argv = process.argv.slice(2), deps = {}) {
     out(
       `# 镜像：${process.env.AFK_SANDCASTLE_IMAGE || '取 .env 的 SANDCASTLE_IMAGE，没有就用 sandcastle:' + repo}（tag 带内容哈希）`,
     )
-    out(`# Dockerfile：${dockerfile || '默认 .sandcastle/Dockerfile，context 是 .sandcastle'}`)
+    out(
+      dockerfile
+        ? `# Dockerfile：${dockerfile}（客户仓内路径，context 是仓根）`
+        : '# Dockerfile：工厂模板 backend/scaffold/.sandcastle/Dockerfile，context 是模板目录',
+    )
     out(
       `# runner：${join(sandcastleHome, 'node_modules', '.bin', 'tsx')} ${join(sandcastleHome, `run-${ticket.number}.mts`)}（cwd ${repoDir}）`,
     )

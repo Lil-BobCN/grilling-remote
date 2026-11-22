@@ -44,15 +44,16 @@
 
 镜像名取客户仓 `.sandcastle/.env` 的 `SANDCASTLE_IMAGE`，没写就用 `sandcastle:<仓名>`。
 实际镜像名带内容哈希，比如 `sandcastle:demo-a1b2c3d4e5f6`。
-哈希算两样内容：客户仓的 Dockerfile，和模板 `backend/scaffold/.sandcastle/Dockerfile`。
-任一处改了，下一次点火自动重建。
-镜像内容仍取客户仓的 Dockerfile；模板变了但客户仓没同步时，重建不改变内容。
-构建用 runner 目录里已装的 CLI（`~/.afkfactory/sandcastle/node_modules/.bin/sandcastle`），不走网络。
-不再需要人工 `docker tag`。
+哈希算实际 Dockerfile 的内容和模板 `backend/scaffold/.sandcastle/Dockerfile`。
+模板改了，下一次点火自动换 tag 并重建。
 
-建镜像的工作目录（cwd）是客户仓。
-默认构建上下文（build context）是客户仓里的 `.sandcastle`。
-要用仓根当构建上下文，显式传 `--dockerfile <相对客户仓的路径>`，CLI 会收到绝对路径。
+默认镜像只用工厂模板 `backend/scaffold/.sandcastle/Dockerfile`，构建上下文是模板所在目录。
+客户仓里的 `.sandcastle/Dockerfile` 不参与默认构建，建仓时复制的那份只是历史副本。
+要用客户仓自己的 Dockerfile，显式传 `--dockerfile <相对客户仓的路径>`，构建上下文变成仓根。
+构建用本机 `docker build`，把宿主 UID/GID 作为 `AGENT_UID`、`AGENT_GID` 传进去。
+真的构建过之后跑一次冒烟：以宿主 UID/GID 起容器，检查 `/home/agent` 可写、能写全局 git 配置。
+冒烟不过直接报错，带镜像名和输出尾部。
+不再需要人工 `docker tag`。
 
 装依赖和建镜像在 `prepare()` 里跑，不算点火的两分钟回执；只有真正起容器和会话的 `run()` 才计时。prepare 慢不会报「点火超时」。
 

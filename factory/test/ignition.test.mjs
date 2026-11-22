@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { run as runIgniteCli } from '../bin/ignite.mjs'
 import { createGithub } from '../lib/github.mjs'
@@ -879,6 +879,44 @@ test('连续三次点火失败：父工单三圈进度，stallHits 读到三圈�
   )
 })
 
+test('点火失败进度行带第几次和下次重试时间，到上限写停线', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner(async () => {
+    throw new Error('容器起不来')
+  })
+  const clockAt = new Date('2026-11-17T10:00:00+08:00')
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, {
+      jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+    }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier: fakeNotifier(),
+    clock: () => new Date(clockAt.getTime()),
+  })
+
+  await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 1 })
+
+  // 期望时间用本地格式化算，不写死时区。
+  const retryAt = new Date(clockAt.getTime() + 60_000)
+  const pad = (value) => String(value).padStart(2, '0')
+  const expectedHhMm = `${pad(retryAt.getHours())}:${pad(retryAt.getMinutes())}`
+  const progressOf = () =>
+    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  assert.match(progressOf().at(-1), /第 1 次/)
+  assert.match(progressOf().at(-1), /下次约 \d{2}:\d{2} 重试/)
+  assert.ok(
+    progressOf().at(-1).includes(`下次约 ${expectedHhMm} 重试`),
+    `退避基数是 60 秒，下次重试应是 ${expectedHhMm}：${progressOf().at(-1)}`,
+  )
+
+  await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 3 })
+
+  assert.match(progressOf().at(-1), /第 3 次/)
+  assert.match(progressOf().at(-1), /已停线，等运营者处理/)
+})
+
 test('票里没点文件时，相关代码放 git ls-files 前 100 行', async (t) => {
   const fixture = await makeRepoFixture(t)
   const ticketBody = [
@@ -1003,9 +1041,12 @@ function fakeExec({ images = [] } = {}) {
           ? { code: 0, stdout: 'sha256:image-id\n', stderr: '' }
           : { code: 1, stdout: '', stderr: `Error: No such image: ${name}` }
       }
-      if (command.endsWith('.bin/sandcastle')) {
-        known.add(args[args.indexOf('--image-name') + 1])
-        return { code: 0, stdout: 'Build complete!', stderr: '' }
+      if (command === 'docker' && args[0] === 'build') {
+        known.add(args[args.indexOf('-t') + 1])
+        return { code: 0, stdout: 'Successfully built image', stderr: '' }
+      }
+      if (command === 'docker' && args[0] === 'run') {
+        return { code: 0, stdout: '', stderr: '' }
       }
       if (command.endsWith('/tsx')) {
         options.onStart?.()
@@ -1206,13 +1247,15 @@ function runnerArgsFor(fixture, extra = {}) {
   }
 }
 
-test('建镜像 cwd 是客户仓，默认 context 是 .sandcastle，tag 带内容哈希', async (t) => {
+test('默认用工厂模板和模板目录构建，tag 带内容哈希', async (t) => {
   const fixture = await runnerFixture(t, { image: 'sandcastle:demo' })
   await seedInstalledSandcastle(fixture.home)
-  const dockerfile = join(fixture.repoDir, '.sandcastle', 'Dockerfile')
-  await writeFile(dockerfile, 'FROM node:26-bookworm\n')
+  await writeFile(
+    join(fixture.repoDir, '.sandcastle', 'Dockerfile'),
+    'FROM node:26-bookworm\n# 客户仓旧副本\n',
+  )
   const template = join(fixture.root, 'template.Dockerfile')
-  await writeFile(template, 'FROM node:26-bookworm\n')
+  await writeFile(template, 'FROM node:26-bookworm\nARG AGENT_UID=1000\n')
   const hook = fakeExec()
   const runner = createSandcastleRunner({
     home: fixture.home,
@@ -1223,18 +1266,24 @@ test('建镜像 cwd 是客户仓，默认 context 是 .sandcastle，tag 带内�
 
   const prepared = await runner.prepare(runnerArgsFor(fixture))
 
-  const build = hook.calls.find((call) => call.command.endsWith('.bin/sandcastle'))
+  const build = hook.calls.find((call) => call.command === 'docker' && call.args[0] === 'build')
   assert.ok(build, '哈希 tag 第一次没命中，要构建')
-  assert.equal(build.command, join(fixture.home, 'node_modules', '.bin', 'sandcastle'))
-  assert.equal(build.args[0], 'docker')
-  assert.equal(build.options.cwd, fixture.repoDir)
-  assert.equal(build.args[build.args.indexOf('--image-name') + 1], prepared.imageName)
-  assert.ok(!build.args.includes('--dockerfile'), '默认 context 是客户仓里的 .sandcastle')
+  assert.equal(build.options.cwd, dirname(template))
+  assert.equal(build.args[build.args.indexOf('-f') + 1], template, '默认 Dockerfile 是工厂模板')
+  assert.ok(
+    build.args.some((arg) => arg.startsWith('AGENT_UID=')),
+    '要带宿主 UID 的 build-arg',
+  )
+  assert.ok(
+    build.args.some((arg) => arg.startsWith('AGENT_GID=')),
+    '要带宿主 GID 的 build-arg',
+  )
+  assert.equal(build.args.at(-1), dirname(template), '默认 context 是模板目录')
   assert.match(prepared.imageName, /^sandcastle:demo-[0-9a-f]{12}$/)
   assert.match(prepared.hash, /^[0-9a-f]{64}$/)
 
-  const inspect = hook.calls.find((call) => call.command === 'docker')
-  assert.equal(inspect.options.cwd, fixture.repoDir)
+  const inspect = hook.calls.find((call) => call.command === 'docker' && call.args[0] === 'image')
+  assert.equal(inspect.options.cwd, dirname(template))
 
   const script = await readFile(prepared.scriptPath, 'utf8')
   assert.match(script, /imageName: "sandcastle:demo-[0-9a-f]{12}"/)
@@ -1244,11 +1293,11 @@ test('建镜像 cwd 是客户仓，默认 context 是 .sandcastle，tag 带内�
   assert.equal(again.imageName, prepared.imageName)
 })
 
-test('Dockerfile 或模板改了，下一次点火换 tag 并重建', async (t) => {
+test('模板改了换 tag 并重建；客户仓副本不参与', async (t) => {
   const fixture = await runnerFixture(t, { image: 'sandcastle:demo' })
   await seedInstalledSandcastle(fixture.home)
-  const dockerfile = join(fixture.repoDir, '.sandcastle', 'Dockerfile')
-  await writeFile(dockerfile, 'FROM node:26-bookworm\n')
+  const customerDockerfile = join(fixture.repoDir, '.sandcastle', 'Dockerfile')
+  await writeFile(customerDockerfile, 'FROM node:26-bookworm\n')
   const template = join(fixture.root, 'template.Dockerfile')
   await writeFile(template, 'FROM node:26-bookworm\n')
   const hook = fakeExec()
@@ -1260,22 +1309,25 @@ test('Dockerfile 或模板改了，下一次点火换 tag 并重建', async (t) 
   })
 
   const first = await runner.prepare(runnerArgsFor(fixture))
-  await writeFile(dockerfile, 'FROM node:26-bookworm\nRUN apt-get install -y gh\n')
+  await writeFile(template, 'FROM node:26-bookworm\nRUN echo template-v2\n')
   const second = await runner.prepare(runnerArgsFor(fixture))
 
-  assert.equal(second.built, true, 'Dockerfile 改了下一次要重建')
+  assert.equal(second.built, true, '模板改了下一次要重建')
   assert.notEqual(second.imageName, first.imageName)
   assert.notEqual(second.hash, first.hash)
 
-  await writeFile(template, 'FROM node:26-bookworm\nRUN echo template-v2\n')
+  await writeFile(customerDockerfile, 'FROM node:26-bookworm\nRUN echo customer-v2\n')
   const third = await runner.prepare(runnerArgsFor(fixture))
 
-  assert.equal(third.built, true, '模板改了下一次也要重建')
-  assert.notEqual(third.imageName, second.imageName)
-  assert.equal(hook.calls.filter((call) => call.command.endsWith('.bin/sandcastle')).length, 3)
+  assert.equal(third.built, false, '客户仓副本不参与哈希，不该重建')
+  assert.equal(third.imageName, second.imageName)
+  assert.equal(
+    hook.calls.filter((call) => call.command === 'docker' && call.args[0] === 'build').length,
+    2,
+  )
 })
 
-test('显式 Dockerfile 用仓根做 context，CLI 收到绝对路径', async (t) => {
+test('显式 Dockerfile 用仓根做 context，-f 收到绝对路径', async (t) => {
   const fixture = await runnerFixture(t, { image: 'sandcastle:demo' })
   await seedInstalledSandcastle(fixture.home)
   await writeFile(join(fixture.repoDir, 'Dockerfile'), 'FROM node:26-bookworm\n')
@@ -1289,10 +1341,11 @@ test('显式 Dockerfile 用仓根做 context，CLI 收到绝对路径', async (t
 
   const prepared = await runner.prepare(runnerArgsFor(fixture, { dockerfile: 'Dockerfile' }))
 
-  const build = hook.calls.find((call) => call.command.endsWith('.bin/sandcastle'))
+  const build = hook.calls.find((call) => call.command === 'docker' && call.args[0] === 'build')
   assert.ok(build)
   assert.equal(build.options.cwd, fixture.repoDir)
-  assert.deepEqual(build.args.slice(-2), ['--dockerfile', join(fixture.repoDir, 'Dockerfile')])
+  assert.equal(build.args.at(-1), fixture.repoDir, '显式 Dockerfile 的 context 是仓根')
+  assert.equal(build.args[build.args.indexOf('-f') + 1], join(fixture.repoDir, 'Dockerfile'))
   assert.match(prepared.imageName, /^sandcastle:demo-[0-9a-f]{12}$/)
 })
 
@@ -1345,6 +1398,10 @@ test('ignite CLI --dry-run 只打印 prompt 和命令，不贴标签', async (t)
   assert.match(text, /^\/tdd$/m)
   assert.match(text, /SPEC-BODY-MARKER/)
   assert.match(text, /# 分支：req\/o-0001 → ticket\/\d+/)
+  assert.match(
+    text,
+    /# Dockerfile：工厂模板 backend\/scaffold\/\.sandcastle\/Dockerfile，context 是模板目录/,
+  )
   assert.match(text, /gh pr create --base req\/o-0001/)
   assert.deepEqual(labelsOf(fake, ticket.number), ['状态:排队中'])
 })

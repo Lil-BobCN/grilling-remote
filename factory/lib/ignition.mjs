@@ -10,6 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
+import { DEFAULT_MAX_ATTEMPTS, policyBackoffMs } from './job.mjs'
 import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
@@ -411,6 +412,12 @@ function oneLine(text, limit = 200) {
     .slice(0, limit)
 }
 
+/** 本地时间 HH:MM，给父工单进度行写「下次约 … 重试」。 */
+function localHhMm(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 /**
  * @param {object} options
  * @param {object} [options.config]
@@ -532,6 +539,11 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     const message = oneLine(error) || '未知错误'
     const link =
       ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`
+    const maxAttempts = config.jobPolicy?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
+    const retryNote =
+      attempt >= maxAttempts
+        ? '已停线，等运营者处理'
+        : `下次约 ${localHhMm(new Date(at.getTime() + policyBackoffMs(attempt, config.jobPolicy || {})))} 重试`
 
     await removeSandcastleIfPresent({ gh, owner, repo, number: ticket.number, log })
 
@@ -582,7 +594,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           step: '点火失败',
           round: maxProgressRound(comments) + 1,
           stuck: true,
-          note: oneLine(`${stage}：${message}`, 160),
+          note: oneLine(`${stage}（第 ${attempt} 次，${retryNote}）：${message}`, 160),
         }),
       })
     } catch (err) {
