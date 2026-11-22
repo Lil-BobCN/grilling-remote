@@ -158,12 +158,22 @@ function proposalBody(tickets = proposalTickets()) {
   return `提案：拆票\n\n共 1 张票。\n\n${encodeTicketsPayload(tickets)}`
 }
 
-function commentsGh(comments) {
+function commentsGh(comments, { children = [] } = {}) {
   const gh = {
     calls: 0,
+    createdComments: [],
+    children,
     async listComments() {
       gh.calls += 1
       return comments
+    },
+    async listSubIssues() {
+      return gh.children
+    },
+    async createComment({ number, body }) {
+      const row = { number, body }
+      gh.createdComments.push(row)
+      return { id: gh.createdComments.length, ...row }
     },
   }
   return gh
@@ -205,6 +215,109 @@ test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 
   assert.match(calls[0].brief, /父工单：#42/)
   assert.match(calls[0].brief, /bin\/tickets\.mjs/)
   assert.match(calls[0].allowedTools, /Bash\(node:\*\)/)
+})
+
+test('createDecompose 的 brief 不含建票命令，写清提案阶段禁止建票', async () => {
+  const calls = []
+  const runner = okRunner(calls)
+  const gh = commentsGh([{ body: proposalBody() }])
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, true)
+  const brief = calls[0].brief
+  assert.ok(!brief.includes('--from-proposal'), 'brief 不应带建票参数')
+  assert.ok(!brief.includes('tickets.mjs create'), 'brief 不应带建票命令')
+  assert.match(brief, /不建任何子票/)
+  assert.match(brief, /不要运行/)
+})
+
+test('createDecompose 发现 agent 在提案阶段建了子票时判失败，并在父工单写说明评论', async () => {
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+  const gh = commentsGh([{ body: proposalBody() }])
+  let reads = 0
+  gh.listSubIssues = async () => {
+    reads += 1
+    return reads === 1 ? [] : [{ number: 8 }, { number: 9 }]
+  }
+  const runner = {
+    async run() {
+      return { ok: true, code: 0, stdout: '' }
+    },
+  }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.created, [8, 9])
+  assert.match(result.reason, /#8/)
+  assert.match(result.reason, /#9/)
+  assert.match(result.reason, /提案阶段只出评论/)
+  assert.match(result.reason, /关闭/)
+  assert.equal(gh.createdComments.length, 1)
+  assert.equal(gh.createdComments[0].number, 42)
+  assert.match(gh.createdComments[0].body, /#8/)
+  assert.match(gh.createdComments[0].body, /关闭/)
+})
+
+test('createDecompose 在 agent 失败但建了子票时仍按建子票判失败', async () => {
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+  const gh = commentsGh([{ body: proposalBody() }])
+  let reads = 0
+  gh.listSubIssues = async () => {
+    reads += 1
+    return reads === 1 ? [] : [{ number: 8 }]
+  }
+  const runner = {
+    async run() {
+      return { ok: false, code: 1, stderr: '配额用完' }
+    },
+  }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.created, [8])
+  assert.match(result.reason, /#8/)
+  assert.equal(gh.createdComments.length, 1)
+})
+
+test('createDecompose 正常跑完子票数保持 0，跑 agent 前后各读一次子票', async () => {
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+  const gh = commentsGh([{ body: proposalBody() }])
+  let reads = 0
+  gh.listSubIssues = async () => {
+    reads += 1
+    return []
+  }
+
+  const result = await createDecompose({ runner: okRunner(), gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.ticketCount, 1)
+  assert.equal(reads, 2)
+  assert.equal(gh.createdComments.length, 0)
 })
 
 test('createDecompose 成功后校验最新提案，票单能解析才 ok', async () => {
@@ -288,6 +401,75 @@ test('createDecompose 没接 GitHub 客户端时判失败，不假成功', async
 
   assert.equal(result.ok, false)
   assert.match(result.reason, /GitHub/)
+})
+
+test('createDecompose 已有提案但父工单已有子票时判失败，不当作已提案跳过', async () => {
+  const calls = []
+  const runner = okRunner(calls)
+  const parent = {
+    number: 42,
+    title: '要个预约取货',
+    body: '',
+    comments: [{ body: proposalBody() }],
+  }
+  const gh = commentsGh([], { children: [{ number: 8 }] })
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.skipped, null)
+  assert.match(result.reason, /#8/)
+  assert.equal(calls.length, 0, '已有子票时不再跑 agent')
+})
+
+test('createDecompose 的 GitHub 客户端不支持 listSubIssues 时判失败，不假成功', async () => {
+  const runner = okRunner()
+  const gh = {
+    async listComments() {
+      return [{ body: proposalBody() }]
+    },
+  }
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+
+  const result = await createDecompose({ runner, gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /listSubIssues/)
+})
+
+test('createDecompose 写说明评论失败时仍判失败，不吞掉子票号', async () => {
+  const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
+  const gh = commentsGh([{ body: proposalBody() }])
+  let reads = 0
+  gh.listSubIssues = async () => {
+    reads += 1
+    return reads === 1 ? [] : [{ number: 8 }]
+  }
+  gh.createComment = async () => {
+    throw new Error('评论写不进去')
+  }
+
+  const result = await createDecompose({ runner: okRunner(), gh })({
+    owner: 'acme',
+    repo: 'demo',
+    parent,
+    spec: null,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.created.includes(8), true)
+  assert.match(result.reason, /#8/)
+  assert.match(result.reason, /评论写不进去/)
 })
 
 test('createDecompose 已有点头：拆票时直接跳过，不再校验提案', async () => {

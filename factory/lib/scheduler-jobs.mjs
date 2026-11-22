@@ -241,7 +241,6 @@ function decomposeBrief({ instructions, parent, spec, factoryDir }) {
     '',
     `父工单：#${parent.number} ${parent.title || ''}`.trim(),
     `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli} proposal --seams <接缝文件> --tickets <票文件>`,
-    `点头后用同一个路径建票：node ${cli} create --owner <owner> --repo <repo> --parent <父工单号> --from-proposal --point`,
     '',
     '父工单正文：',
     '',
@@ -251,7 +250,9 @@ function decomposeBrief({ instructions, parent, spec, factoryDir }) {
     '',
     spec ? `#${spec.number || ''} ${spec.title || ''}\n\n${String(spec.body || '')}`.trim() : '（没有 spec）',
     '',
-    '把 `提案：拆票` 写成父工单的一条评论。提案阶段只写评论，不建子票。',
+    '把 `提案：拆票` 写成父工单的一条评论（`gh issue comment <父工单号> --body-file <提案文件>`）。',
+    '提案阶段只写这一条评论，不建任何子票。',
+    '不要运行建票命令（`tickets.mjs` 的 `create`、`point` 子命令），也不要运行 `gh issue create`。点头后建票由运营者在控制台执行，不在这一跑里做。',
   ].join('\n')
 }
 
@@ -280,6 +281,29 @@ async function readLatestProposal({ gh, owner, repo, parent }) {
 }
 
 /**
+ * 读父工单当前子票号。客户端没有 listSubIssues 或读取失败都算失败，不猜。
+ */
+async function listChildNumbers({ gh, owner, repo, parent }) {
+  if (!gh || typeof gh.listSubIssues !== 'function') {
+    return {
+      ok: false,
+      reason: '拆票 job 的 GitHub 客户端不支持 listSubIssues，读不到父工单子票',
+    }
+  }
+  try {
+    const children = await gh.listSubIssues({ owner, repo, number: parent?.number })
+    return {
+      ok: true,
+      numbers: (Array.isArray(children) ? children : [])
+        .map((row) => Number(row?.number))
+        .filter((number) => Number.isFinite(number)),
+    }
+  } catch (error) {
+    return { ok: false, reason: `读父工单子票失败：${errorText(error)}` }
+  }
+}
+
+/**
  * 叫拆票 agent 跑一次。父工单最新关口已经是 `提案：拆票` 或 `点头：拆票`
  * 时不再重复跑；`AFK_DECOMPOSE_SKIP=0` 关掉这个幂等判断。
  *
@@ -287,6 +311,9 @@ async function readLatestProposal({ gh, owner, repo, parent }) {
  * 缺 marker、票单解不开或最新关口不是 `提案：拆票`，这次作业算失败，
  * 调度器按 attempt 退避重跑。已有提案但票单读不出来时也不跳过，直接重跑。
  * 校验要读 GitHub，装配时必须传 `gh`；没传时作业判失败，不假装成功。
+ *
+ * 提案阶段不允许建子票：跑 agent 前后各读一次父工单子票号，多出子票就
+ * 判失败，在父工单写一条说明评论，请运营者关闭后重跑。
  */
 export function createDecompose({
   runner,
@@ -304,12 +331,25 @@ export function createDecompose({
     if (skip && gate && DECOMPOSE_GATES.includes(gate.kind)) {
       // 点头说明票已经建过，不再拿 marker 判失败，免得建票后重出一份提案。
       if (gate.kind === '点头：拆票') return { ok: true, skipped: 'already-proposed' }
+      // 提案还在，但子票已经有了：跳过会把这件事盖掉，判失败让运营者处理。
+      const children = await listChildNumbers({ gh, owner, repo, parent })
+      if (!children.ok) return { ok: false, code: null, skipped: null, reason: children.reason }
+      if (children.numbers.length) {
+        return {
+          ok: false,
+          code: null,
+          skipped: null,
+          reason: `最新关口是「提案：拆票」，父工单已有子票：${children.numbers.map((number) => `#${number}`).join('、')}。提案阶段只出评论，跳过会掩盖这些票，请关闭后重跑。`,
+        }
+      }
       const existing = parseTicketsPayload(gate.body)
       if (Array.isArray(existing) && existing.length) {
         return { ok: true, skipped: 'already-proposed' }
       }
       // 已有提案但票单读不出来：不跳过，下面的重跑会出一条新提案。
     }
+    const before = await listChildNumbers({ gh, owner, repo, parent })
+    if (!before.ok) return { ok: false, code: null, skipped: null, reason: before.reason }
     const instructions = await readFile(join(agents, '拆票.md'), 'utf8')
     const preferred = repoRoot ? join(repoRoot, repo || '') : ''
     const cwd = preferred && (await dirExists(preferred)) ? preferred : process.cwd()
@@ -319,6 +359,44 @@ export function createDecompose({
       allowedTools: DECOMPOSE_TOOLS,
       brief: decomposeBrief({ instructions, parent, spec, factoryDir }),
     })
+    const after = await listChildNumbers({ gh, owner, repo, parent })
+    if (!after.ok) {
+      return {
+        ok: false,
+        code: run?.code,
+        skipped: null,
+        reason: after.reason,
+        stderr: String(run?.stderr || ''),
+      }
+    }
+    const beforeNumbers = new Set(before.numbers)
+    const created = after.numbers.filter((number) => !beforeNumbers.has(number))
+    if (created.length) {
+      const reason = `拆票 agent 在提案阶段建了子票：${created.map((number) => `#${number}`).join('、')}。提案阶段只出评论，请关闭这些票后重跑。`
+      let commentError = ''
+      try {
+        await gh.createComment({
+          owner,
+          repo,
+          number: parent.number,
+          body: [
+            `拆票 agent 在提案阶段建了子票：${created.map((number) => `#${number}`).join('、')}。`,
+            '',
+            '提案阶段只出评论，子票应由运营者点头后建。请关闭这些票，再重跑拆票作业。',
+          ].join('\n'),
+        })
+      } catch (error) {
+        commentError = errorText(error)
+      }
+      return {
+        ok: false,
+        code: run?.code,
+        skipped: null,
+        reason: commentError ? `${reason}父工单写说明评论也失败：${commentError}` : reason,
+        created,
+        stderr: String(run?.stderr || ''),
+      }
+    }
     if (!run?.ok) {
       return {
         ok: false,
