@@ -162,7 +162,7 @@ async function readTextOrEmpty(path) {
  * context 是模板所在目录，所以客户仓里的旧副本不再参与。
  * 显式传 `dockerfile` 时尊重调用方文件，context 是客户仓根。
  * tag 由实际 Dockerfile 内容和模板哈希生成，内容变了自动换 tag 并重建。
- * 宿主 UID/GID 作为 build-arg 传进去，对齐 Sandcastle 的镜像约定。
+ * 宿主 UID/GID 作为 build-arg 传进去，按 Sandcastle 的镜像约定。
  */
 export async function defaultBuildImage({
   image,
@@ -316,7 +316,6 @@ export function createSandcastleRunner({
       repoDir,
       dockerfile: dockerfile || '',
       templatePath,
-      home,
       env,
       exec,
     })

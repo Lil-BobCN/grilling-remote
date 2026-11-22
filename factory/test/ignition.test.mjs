@@ -885,6 +885,7 @@ test('点火失败进度行带第几次和下次重试时间，到上限写停�
   const runner = fakeRunner(async () => {
     throw new Error('容器起不来')
   })
+  const clockAt = new Date('2026-11-17T10:00:00+08:00')
   const ignite = createIgnite({
     config: ignitionConfig(fixture, gh, {
       jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
@@ -892,15 +893,23 @@ test('点火失败进度行带第几次和下次重试时间，到上限写停�
     runner: runner.run,
     openPr: fakeOpenPr().openPr,
     notifier: fakeNotifier(),
-    clock: () => new Date('2026-11-17T10:00:00+08:00'),
+    clock: () => new Date(clockAt.getTime()),
   })
 
   await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 1 })
 
+  // 期望时间用本地格式化算，不写死时区。
+  const retryAt = new Date(clockAt.getTime() + 60_000)
+  const pad = (value) => String(value).padStart(2, '0')
+  const expectedHhMm = `${pad(retryAt.getHours())}:${pad(retryAt.getMinutes())}`
   const progressOf = () =>
     commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
   assert.match(progressOf().at(-1), /第 1 次/)
   assert.match(progressOf().at(-1), /下次约 \d{2}:\d{2} 重试/)
+  assert.ok(
+    progressOf().at(-1).includes(`下次约 ${expectedHhMm} 重试`),
+    `退避基数是 60 秒，下次重试应是 ${expectedHhMm}：${progressOf().at(-1)}`,
+  )
 
   await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 3 })
 
@@ -1389,6 +1398,10 @@ test('ignite CLI --dry-run 只打印 prompt 和命令，不贴标签', async (t)
   assert.match(text, /^\/tdd$/m)
   assert.match(text, /SPEC-BODY-MARKER/)
   assert.match(text, /# 分支：req\/o-0001 → ticket\/\d+/)
+  assert.match(
+    text,
+    /# Dockerfile：工厂模板 backend\/scaffold\/\.sandcastle\/Dockerfile，context 是模板目录/,
+  )
   assert.match(text, /gh pr create --base req\/o-0001/)
   assert.deepEqual(labelsOf(fake, ticket.number), ['状态:排队中'])
 })

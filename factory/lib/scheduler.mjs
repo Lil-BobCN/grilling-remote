@@ -976,7 +976,7 @@ async function removeSandcastleLabel({ gh, owner, repo, ticketNumber }) {
   return { type: 'removeSandcastle', changed: true }
 }
 
-async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now }) {
+async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock }) {
   const ticketNumber = action.ticketNumber ?? action.ticket?.number
   const fresh = await gh.getIssue({ owner, repo, number: ticketNumber })
   if (labelNames(fresh).includes(SANDBOX_LABEL)) {
@@ -1023,6 +1023,7 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
     jobs: config.jobs || null,
     jobPolicy: config.jobPolicy || {},
     now,
+    clock,
   })
   config.pendingIgnitions.add(task)
   const forget = () => config.pendingIgnitions.delete(task)
@@ -1044,7 +1045,14 @@ async function runIgnitionInBackground({
   jobs,
   jobPolicy,
   now,
+  clock,
 }) {
+  // 点火可能跑很久，作业行的 lastBeat 要用失败那一刻的时间，不能拿轮次开始时间。
+  const currentTime = () => {
+    if (typeof clock !== 'function') return now || new Date()
+    const value = clock()
+    return value instanceof Date ? value : new Date(value)
+  }
   const writeFailure = async (reason) => {
     await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
     if (!jobs) return
@@ -1056,7 +1064,7 @@ async function runIgnitionInBackground({
         ticket: ticketNumber,
         action: 'ignite',
         reason,
-        now: now || new Date(),
+        now: currentTime(),
         policy: jobPolicy,
       })
       if (row?.stop) {
@@ -1108,7 +1116,7 @@ async function runIgnitionInBackground({
           parent: parent.number,
           ticket: ticketNumber,
           action: 'ignite',
-          now: now || new Date(),
+          now: currentTime(),
         })
       } catch (writeError) {
         ;(log || logLine)({
@@ -1191,6 +1199,7 @@ async function executeActions({
   notifier,
   config,
   now,
+  clock,
 }) {
   const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish })
   if (missing) return { skipped: missing, results: [] }
@@ -1248,7 +1257,7 @@ async function executeActions({
         )
       }
     } else if (action.type === 'ignite') {
-      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now })
+      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock })
       results.push(result)
       // 抢不到仓锁：这一轮整张票都不动，状态留给下一轮，避免没点火就先改开发中。
       if (result.skipped === 'locked') return { skipped: 'locked', results }
@@ -1896,6 +1905,7 @@ export async function runOnce({
                 notifier,
                 config,
                 now: nowDate,
+                clock,
               }),
             )
           } catch (error) {
@@ -1955,6 +1965,7 @@ export async function runOnce({
               notifier,
               config,
               now: nowDate,
+              clock,
             }),
           )
         } catch (error) {

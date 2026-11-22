@@ -46,16 +46,21 @@ export function backoffMs(attempt, { baseMs = DEFAULT_BACKOFF_BASE_MS, maxMs = D
   return Math.min(maxMs, baseMs * 2 ** (n - 1))
 }
 
+/** 调度器配置 `jobPolicy` 的退避键（`backoffBaseMs`/`backoffMaxMs`）映射到 `backoffMs` 的参数。 */
+export function policyBackoffMs(attempt, policy = {}) {
+  return backoffMs(attempt, {
+    baseMs: policy.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS,
+    maxMs: policy.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS,
+  })
+}
+
 /** 还要等多少毫秒才能重试；0 表示现在就能跑。 */
 export function retryDelayMs(row, { now, policy = {} } = {}) {
   if (!row || !row.attempt) return 0
   if (row.stop) return 0
   const last = Date.parse(row.lastBeat || '')
   if (!Number.isFinite(last)) return 0
-  const wait = backoffMs(row.attempt, {
-    baseMs: policy.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS,
-    maxMs: policy.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS,
-  })
+  const wait = policyBackoffMs(row.attempt, policy)
   return Math.max(0, last + wait - msOf(now))
 }
 

@@ -9,6 +9,7 @@ import {
   createJobStore,
   findJob,
   jobKey,
+  policyBackoffMs,
   retryDelayMs,
 } from '../lib/job.mjs'
 
@@ -240,6 +241,13 @@ test('退避按指数增长，有上限', () => {
   assert.equal(backoffMs(2, { baseMs: 60_000 }), 120_000)
   assert.equal(backoffMs(3, { baseMs: 60_000 }), 240_000)
   assert.equal(backoffMs(20, { baseMs: 60_000, maxMs: 600_000 }), 600_000)
+})
+
+test('调度器的退避配置键 backoffBaseMs/backoffMaxMs 映射到退避参数', () => {
+  assert.equal(policyBackoffMs(1, { backoffBaseMs: 60_000 }), 60_000)
+  assert.equal(policyBackoffMs(2, { backoffBaseMs: 60_000 }), 120_000)
+  assert.equal(policyBackoffMs(20, { backoffBaseMs: 60_000, backoffMaxMs: 600_000 }), 600_000)
+  assert.equal(policyBackoffMs(1, {}), 10 * 60_000, '没配就用默认基数')
 })
 
 test('一次写失败后，下一次写还能成功', async () => {

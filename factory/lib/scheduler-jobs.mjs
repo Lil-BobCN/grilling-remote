@@ -31,6 +31,17 @@ function errorText(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** 子票关联要移出父工单才清得掉，只关闭不清关联；给运营者可复制的命令。 */
+function removeSubIssuesAdvice({ owner, repo, parent, numbers = [] }) {
+  const list = numbers.map((number) => `#${number}`).join('、')
+  const command = `gh issue edit ${parent?.number ?? '<父工单号>'} --repo ${owner || '<owner>'}/${repo || '<repo>'} --remove-sub-issue ${numbers.join(',')}`
+  return {
+    list,
+    command,
+    text: `只关闭不够，要移出父工单的子票关联：${command}。移出后重跑拆票作业。`,
+  }
+}
+
 async function dirExists(path) {
   try {
     return (await stat(path)).isDirectory()
@@ -313,7 +324,7 @@ async function listChildNumbers({ gh, owner, repo, parent }) {
  * 校验要读 GitHub，装配时必须传 `gh`；没传时作业判失败，不假装成功。
  *
  * 提案阶段不允许建子票：跑 agent 前后各读一次父工单子票号，多出子票就
- * 判失败，在父工单写一条说明评论，请运营者关闭后重跑。
+ * 判失败，在父工单写一条说明评论，给出移出子票关联的命令，移出后重跑。
  */
 export function createDecompose({
   runner,
@@ -335,11 +346,17 @@ export function createDecompose({
       const children = await listChildNumbers({ gh, owner, repo, parent })
       if (!children.ok) return { ok: false, code: null, skipped: null, reason: children.reason }
       if (children.numbers.length) {
+        const advice = removeSubIssuesAdvice({
+          owner,
+          repo,
+          parent,
+          numbers: children.numbers,
+        })
         return {
           ok: false,
           code: null,
           skipped: null,
-          reason: `最新关口是「提案：拆票」，父工单已有子票：${children.numbers.map((number) => `#${number}`).join('、')}。提案阶段只出评论，跳过会掩盖这些票，请关闭后重跑。`,
+          reason: `最新关口是「提案：拆票」，父工单已有子票：${advice.list}。提案阶段只出评论，跳过会掩盖这些票。${advice.text}`,
         }
       }
       const existing = parseTicketsPayload(gate.body)
@@ -372,7 +389,8 @@ export function createDecompose({
     const beforeNumbers = new Set(before.numbers)
     const created = after.numbers.filter((number) => !beforeNumbers.has(number))
     if (created.length) {
-      const reason = `拆票 agent 在提案阶段建了子票：${created.map((number) => `#${number}`).join('、')}。提案阶段只出评论，请关闭这些票后重跑。`
+      const advice = removeSubIssuesAdvice({ owner, repo, parent, numbers: created })
+      const reason = `拆票 agent 在提案阶段建了子票：${advice.list}。提案阶段只出评论，子票应由运营者点头后建。${advice.text}`
       let commentError = ''
       try {
         await gh.createComment({
@@ -380,9 +398,13 @@ export function createDecompose({
           repo,
           number: parent.number,
           body: [
-            `拆票 agent 在提案阶段建了子票：${created.map((number) => `#${number}`).join('、')}。`,
+            `拆票 agent 在提案阶段建了子票：${advice.list}。`,
             '',
-            '提案阶段只出评论，子票应由运营者点头后建。请关闭这些票，再重跑拆票作业。',
+            '提案阶段只出评论，子票应由运营者点头后建。只关闭不够，要移出父工单的子票关联：',
+            '',
+            advice.command,
+            '',
+            '移出后重跑拆票作业。',
           ].join('\n'),
         })
       } catch (error) {

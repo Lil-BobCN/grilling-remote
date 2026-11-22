@@ -264,11 +264,18 @@ test('createDecompose 发现 agent 在提案阶段建了子票时判失败，并
   assert.match(result.reason, /#8/)
   assert.match(result.reason, /#9/)
   assert.match(result.reason, /提案阶段只出评论/)
-  assert.match(result.reason, /关闭/)
+  assert.match(result.reason, /只关闭不够/)
+  assert.match(result.reason, /--remove-sub-issue 8,9/, 'reason 里给可复制的移除命令')
+  assert.match(result.reason, /gh issue edit 42 --repo acme\/demo/, '命令带父工单号和仓库')
   assert.equal(gh.createdComments.length, 1)
   assert.equal(gh.createdComments[0].number, 42)
   assert.match(gh.createdComments[0].body, /#8/)
-  assert.match(gh.createdComments[0].body, /关闭/)
+  assert.match(gh.createdComments[0].body, /只关闭不够/)
+  assert.match(
+    gh.createdComments[0].body,
+    /gh issue edit 42 --repo acme\/demo --remove-sub-issue 8,9/,
+    '评论里给可复制的移除命令',
+  )
 })
 
 test('createDecompose 在 agent 失败但建了子票时仍按建子票判失败', async () => {
@@ -424,6 +431,9 @@ test('createDecompose 已有提案但父工单已有子票时判失败，不当�
   assert.equal(result.ok, false)
   assert.equal(result.skipped, null)
   assert.match(result.reason, /#8/)
+  assert.match(result.reason, /只关闭不够/, 'skip 分支也写清只关闭不清关联')
+  assert.match(result.reason, /--remove-sub-issue 8/, 'skip 分支给可复制的移除命令')
+  assert.match(result.reason, /gh issue edit 42 --repo acme\/demo/)
   assert.equal(calls.length, 0, '已有子票时不再跑 agent')
 })
 

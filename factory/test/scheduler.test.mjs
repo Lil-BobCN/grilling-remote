@@ -1882,6 +1882,41 @@ test('runOnce：后台点火失败记 attempt，下一轮退避不重发', async
   assert.equal(calls, 1, '退避期间不重复点火')
 })
 
+test('runOnce：后台点火失败写 lastBeat 用失败时刻，不是轮次开始时刻', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const ticket = await createChild(gh, parent)
+  let current = new Date(NOW.getTime())
+  const clock = () => new Date(current.getTime())
+  const ignite = async () => {
+    // 点火跑了五分钟才失败。
+    current = new Date(NOW.getTime() + 5 * 60_000)
+    return { ok: false, error: 'runner 起不来' }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'ignite',
+    ticket: ticket.number,
+  })
+  assert.equal(row.attempt, 1)
+  assert.equal(
+    row.lastBeat,
+    new Date(NOW.getTime() + 5 * 60_000).toISOString(),
+    '退避从失败时刻算，和父工单进度行的下次重试时间一致',
+  )
+})
+
 test('runOnce：点火返回 ok:false 也写作业表，按退避重试到 attempt 2', async (t) => {
   const { fake, gh } = await setupRepo(t)
   const parent = await createParent(gh, { state: '开发中' })

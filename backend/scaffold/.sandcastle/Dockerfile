@@ -11,7 +11,7 @@ RUN npm install -g @ai-hero/sandcastle@0.12.0 \
 
 # 下面是 Sandcastle 0.12.0 的镜像约定，改模板时保留：
 # 声明两个 build-arg，构建时传宿主 UID/GID；
-# 把基础镜像的 node 用户改名为 agent，UID/GID 对齐宿主。
+# 把基础镜像的 node 用户改名为 agent，UID/GID 和宿主一致。
 # 容器以 --user 宿主 UID:GID 启动，HOME 指向 /home/agent，这个目录必须可写。
 ARG AGENT_UID=1000
 ARG AGENT_GID=1000

@@ -10,7 +10,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGithub } from './github.mjs'
-import { backoffMs, DEFAULT_MAX_ATTEMPTS } from './job.mjs'
+import { DEFAULT_MAX_ATTEMPTS, policyBackoffMs } from './job.mjs'
 import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
@@ -543,7 +543,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     const retryNote =
       attempt >= maxAttempts
         ? '已停线，等运营者处理'
-        : `下次约 ${localHhMm(new Date(at.getTime() + backoffMs(attempt, config.jobPolicy || {})))} 重试`
+        : `下次约 ${localHhMm(new Date(at.getTime() + policyBackoffMs(attempt, config.jobPolicy || {})))} 重试`
 
     await removeSandcastleIfPresent({ gh, owner, repo, number: ticket.number, log })
 
