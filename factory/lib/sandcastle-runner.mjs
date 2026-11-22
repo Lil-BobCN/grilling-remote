@@ -204,20 +204,34 @@ export async function defaultBuildImage({
     throw new Error(`建镜像 ${taggedImage} 失败（退出码 ${result.code}）：${tail(result)}`)
   }
 
-  const smokeArgs = ['run', '--rm']
+  // 冒烟用镜像默认入口起一个常驻容器，再进去检查；Sandcastle 现场也是 docker run -d 不带命令。
+  const containerName = `afk-sandcastle-smoke-${String(hash).slice(0, 12)}-${process.pid}-${Date.now()}`
+  const smokeArgs = ['run', '-d', '--name', containerName]
   if (uid !== undefined && gid !== undefined) smokeArgs.push('--user', `${uid}:${gid}`)
-  smokeArgs.push(
-    '-e',
-    'HOME=/home/agent',
-    '--entrypoint',
-    'sh',
-    taggedImage,
-    '-c',
-    'test -w /home/agent && git config --global --add safe.directory /home/agent/workspace',
-  )
-  const smoke = await exec('docker', smokeArgs, { cwd: contextDir, env: baseEnv(env) })
-  if (smoke.code !== 0) {
-    throw new Error(`镜像 ${taggedImage} 冒烟失败（退出码 ${smoke.code}）：${tail(smoke)}`)
+  smokeArgs.push('-e', 'HOME=/home/agent', taggedImage)
+  try {
+    const started = await exec('docker', smokeArgs, { cwd: contextDir, env: baseEnv(env) })
+    if (started.code !== 0) {
+      throw new Error(
+        `镜像 ${taggedImage} 冒烟失败（容器启动退出码 ${started.code}）：${tail(started)}`,
+      )
+    }
+    const check = await exec(
+      'docker',
+      [
+        'exec',
+        containerName,
+        'sh',
+        '-c',
+        'test -w /home/agent && git config --global --add safe.directory /home/agent/workspace',
+      ],
+      { cwd: contextDir, env: baseEnv(env) },
+    )
+    if (check.code !== 0) {
+      throw new Error(`镜像 ${taggedImage} 冒烟失败（容器内检查退出码 ${check.code}）：${tail(check)}`)
+    }
+  } finally {
+    await exec('docker', ['rm', '-f', containerName], { cwd: contextDir, env: baseEnv(env) })
   }
   return { built: true, image: taggedImage, hash }
 }
