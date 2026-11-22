@@ -705,7 +705,39 @@ test('注入的 openPr 返回非零退出码且没有 PR 地址：点火失败',
   assert.match(commentsOf(fake, ticket.number)[0], /点火失败/)
 })
 
-test('没有提交时不 push、不开 PR，写「没有产生提交」，摘标签发通知写进度', async (t) => {
+test('本次 run 没有新提交但票分支已有提交：继续推送、开 PR', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const branch = `ticket/${ticket.number}`
+  let committed = ''
+  const runner = fakeRunner(async (args) => {
+    args.started()
+    await writeFile(join(args.worktree, 'src', 'feature.mjs'), 'export const FEATURE = "EXISTING"\n')
+    committed = await commitAll(args.worktree, 'FACTORY: 票实现')
+    return { commits: [], branch }
+  })
+  const push = fakePush()
+  const pr = fakeOpenPr('https://github.com/acme/demo/pull/15')
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh),
+    runner: runner.run,
+    openPr: pr.openPr,
+    push: push.push,
+    notifier: fakeNotifier(),
+  })
+
+  const result = await ignite({ owner: OWNER, repo: REPO, parent, ticket })
+
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(push.calls.length, 1)
+  assert.equal(push.calls[0].branch, branch)
+  assert.deepEqual(push.calls[0].commits, [committed])
+  assert.equal(pr.calls.length, 1)
+  assert.equal(pr.calls[0].head, branch)
+  assert.match(commentsOf(fake, ticket.number)[0], /点火完成/)
+})
+
+test('没有提交且票分支也没有时，不 push、不开 PR，写「没有产生提交」，摘标签发通知写进度', async (t) => {
   const fixture = await makeRepoFixture(t)
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const runner = fakeRunner(async () => ({ commits: [], branch: `ticket/${ticket.number}` }))

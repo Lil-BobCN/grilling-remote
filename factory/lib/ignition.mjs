@@ -349,6 +349,20 @@ function normalizeCommits(commits) {
     .filter(Boolean)
 }
 
+/** 票分支相对需求分支已有的提交；分支不存在或命令失败按没有处理。 */
+async function existingTicketCommits({ repoDir, reqBranch, ticketBranch }) {
+  if (!reqBranch || !ticketBranch) return []
+  try {
+    const output = await git(repoDir, ['rev-list', `${reqBranch}..${ticketBranch}`])
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 async function ensureSandcastleLabel({ gh, owner, repo, number }) {
   const current = await gh.getIssue({ owner, repo, number })
   if (hasLabel(current, SANDBOX_LABEL)) return false
@@ -856,9 +870,25 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       }
       // 脏文件先归档，再释放；改了已跟踪文件的工作树保留，路径回传给下一环。
       await tidyWorktree({ path: preservedWorktreePath || worktree })
-      const commits = normalizeCommits(result?.commits)
-      runCommits = commits
+      let commits = normalizeCommits(result?.commits)
       pushedBranch = result?.branch || ticketBranch
+      if (!commits.length) {
+        // 重试时上一次的提交可能已经在票分支上，本次 run 不再产生新提交；
+        // 票分支相对需求分支有提交就继续推送，不能当成没有成果。
+        commits = await existingTicketCommits({ repoDir, reqBranch, ticketBranch })
+        if (commits.length) {
+          log({
+            level: 'info',
+            msg: '本次 run 没有新提交，用票分支已有提交继续',
+            owner,
+            repo,
+            ticket: ticket.number,
+            ticketBranch,
+            commits: commits.length,
+          })
+        }
+      }
+      runCommits = commits
 
       if (!commits.length) {
         await ensureCommentOnce(gh, {
