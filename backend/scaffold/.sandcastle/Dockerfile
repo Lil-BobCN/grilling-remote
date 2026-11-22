@@ -20,3 +20,6 @@ RUN groupmod -o -g $AGENT_GID node && usermod -o -u $AGENT_UID -g $AGENT_GID -d 
 USER ${AGENT_UID}:${AGENT_GID}
 
 WORKDIR /home/agent
+
+# Sandcastle 用 docker run -d 不带命令起容器：镜像默认入口必须常驻，否则容器立即退出。
+ENTRYPOINT ["sleep", "infinity"]

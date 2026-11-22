@@ -17,7 +17,13 @@ async function makeFixture(t) {
   return { root, templateDir, templatePath, repoDir }
 }
 
-function fakeExec({ existingImages = [], smokeCode = 0, smokeStderr = '' } = {}) {
+function fakeExec({
+  existingImages = [],
+  runCode = 0,
+  runStderr = '',
+  execCode = 0,
+  execStderr = '',
+} = {}) {
   const calls = []
   const known = new Set(existingImages)
   return {
@@ -37,7 +43,10 @@ function fakeExec({ existingImages = [], smokeCode = 0, smokeStderr = '' } = {})
         return { code: 0, stdout: 'Successfully built', stderr: '' }
       }
       if (args[0] === 'run') {
-        return { code: smokeCode, stdout: '', stderr: smokeStderr }
+        return { code: runCode, stdout: '', stderr: runStderr }
+      }
+      if (args[0] === 'exec') {
+        return { code: execCode, stdout: '', stderr: execStderr }
       }
       return { code: 0, stdout: '', stderr: '' }
     },
@@ -77,7 +86,7 @@ test('默认构建用工厂模板和模板目录，带宿主 UID/GID 的 build-a
   assert.equal(argAfter(build.args, '-t'), result.image)
 })
 
-test('构建后用宿主 UID/GID 冒烟：能写 /home/agent 并设 safe.directory', async (t) => {
+test('构建后用宿主 UID/GID 冒烟：默认入口起常驻容器，exec 能写 /home/agent 并设 safe.directory', async (t) => {
   const fixture = await makeFixture(t)
   const hook = fakeExec()
   const result = await defaultBuildImage({
@@ -89,23 +98,33 @@ test('构建后用宿主 UID/GID 冒烟：能写 /home/agent 并设 safe.directo
     gid: 20,
   })
 
-  const smoke = hook.calls.find((call) => call.command === 'docker' && call.args[0] === 'run')
-  assert.ok(smoke, '真正构建过就要冒烟')
-  assert.ok(smoke.args.includes('--rm'))
+  const dockerCalls = hook.calls.filter((call) => call.command === 'docker')
+  const smokeIndex = dockerCalls.findIndex((call) => call.args[0] === 'run')
+  assert.ok(smokeIndex >= 0, '真正构建过就要冒烟')
+  const smoke = dockerCalls[smokeIndex]
+  assert.ok(smoke.args.includes('-d'), '后台起容器，不覆盖入口')
+  const containerName = argAfter(smoke.args, '--name')
+  assert.match(containerName, /^afk-sandcastle-smoke-[0-9a-f]{12}-\d+-\d+$/)
   assert.equal(argAfter(smoke.args, '--user'), '502:20')
   assert.equal(argAfter(smoke.args, '-e'), 'HOME=/home/agent')
-  assert.equal(argAfter(smoke.args, '--entrypoint'), 'sh')
-  assert.ok(smoke.args.includes(result.image), '冒烟容器用刚构建的镜像')
-  const script = argAfter(smoke.args, '-c')
+  assert.ok(!smoke.args.includes('--entrypoint'), '不覆盖镜像默认入口')
+  assert.equal(smoke.args.at(-1), result.image, '冒烟容器用刚构建的镜像')
+
+  const exec = dockerCalls[smokeIndex + 1]
+  assert.deepEqual(exec.args.slice(0, 3), ['exec', containerName, 'sh'])
+  const script = argAfter(exec.args, '-c')
   assert.match(script, /test -w \/home\/agent/)
   assert.match(script, /git config --global --add safe\.directory \/home\/agent\/workspace/)
+
+  const cleanup = dockerCalls.at(-1)
+  assert.deepEqual(cleanup.args, ['rm', '-f', containerName], '冒烟结束清理容器')
 })
 
 test('冒烟非 0 时抛错，信息带镜像名和输出尾部', async (t) => {
   const fixture = await makeFixture(t)
   const hook = fakeExec({
-    smokeCode: 255,
-    smokeStderr: 'error: could not lock config file /home/agent/.gitconfig: Permission denied',
+    execCode: 1,
+    execStderr: 'Error response from daemon: container 6da2eec8407f is not running',
   })
 
   await assert.rejects(
@@ -120,11 +139,15 @@ test('冒烟非 0 时抛错，信息带镜像名和输出尾部', async (t) => {
       }),
     (error) => {
       assert.match(error.message, /sandcastle:demo-[0-9a-f]{12}/)
-      assert.match(error.message, /255/)
-      assert.match(error.message, /could not lock config file/)
+      assert.match(error.message, /退出码 1/)
+      assert.match(error.message, /is not running/)
       return true
     },
   )
+
+  const cleanup = hook.calls.at(-1)
+  assert.equal(cleanup.command, 'docker')
+  assert.deepEqual(cleanup.args.slice(0, 2), ['rm', '-f'], '失败也要清理容器')
 })
 
 test('同 tag 镜像已存在时走 inspect 快路径，不构建也不冒烟', async (t) => {
@@ -166,6 +189,7 @@ test('工厂模板遵守 Sandcastle 0.12.0 的镜像约定', async () => {
   assert.match(template, /(groupmod|usermod).*node/)
   assert.match(template, /^USER \$\{AGENT_UID\}:\$\{AGENT_GID\}$/m)
   assert.match(template, /^WORKDIR \/home\/agent$/m)
+  assert.match(template, /^ENTRYPOINT \["sleep", "infinity"\]$/m)
   assert.match(template, /@ai-hero\/sandcastle@0\.12\.0/)
   assert.match(template, /@anthropic-ai\/claude-code/)
 })
