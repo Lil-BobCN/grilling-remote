@@ -1220,6 +1220,49 @@ test('点火留下只有未跟踪文件的工作树：先归档再重建，不�
   assert.ok(!left.includes('.sandcastle/worktrees'), `管线跑完还有工作树残留：\n${left}`)
 })
 
+test('脏票工作树里被忽略的证据：先提交到票分支再归档，证据不丢', async (t) => {
+  const { gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const worktree = join(repoDir, '.sandcastle', 'worktrees', `ticket-${ticket.number}`)
+  await mkdir(dirname(worktree), { recursive: true })
+  await git(repoDir, ['worktree', 'add', worktree, `ticket/${ticket.number}`])
+  // 验证 agent 或人工加的忽略规则：证据不进普通 git status。
+  await writeFile(
+    join(repoDir, '.git', 'info', 'exclude'),
+    `.audit/evidence/${ticket.number}/\n.audit/${ticket.number}.tsv\n`,
+  )
+  await mkdir(join(worktree, '.audit', 'evidence', String(ticket.number), 'v1'), {
+    recursive: true,
+  })
+  await writeFile(
+    join(worktree, '.audit', 'evidence', String(ticket.number), 'v1', 'after.png'),
+    'PNG',
+  )
+  // 上一次修票留下未提交的已跟踪改动，prepareTicket 会拒绝复用工作树。
+  await writeFile(join(worktree, 'src', 'app.mjs'), 'export const APP = 3\n')
+  const pipeline = createTicketPipeline({
+    runner: fakeRunner(),
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+
+  assert.equal(result.runs[0].reason, 'worktree_dirty', JSON.stringify(result.runs[0]))
+  const committed = await git(repoDir, [
+    'show',
+    `ticket/${ticket.number}:.audit/evidence/${ticket.number}/v1/after.png`,
+  ]).catch(() => '')
+  assert.equal(committed, 'PNG', '被忽略的证据要先提交到票分支，不能被归档卷走')
+})
+
 test('未跟踪证据挡住切票分支：先归档再切，不返回 branch-busy', async (t) => {
   const { fake, gh, parent, ticket } = await setupGithub(t)
   const { repoDir } = await makeRepoFixture(t, ticket.number)

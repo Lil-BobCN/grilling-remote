@@ -575,7 +575,7 @@ export function createRepoWorkspace({
     return result
   }
 
-  return { ensure, lock, prepareTicket, release, abort, sweep }
+  return { ensure, lock, prepareTicket, release, abort, sweep, worktreePath }
 }
 
 let sharedWorkspace = null
