@@ -3,6 +3,8 @@
  *
  * 检出用 `git worktree add --detach`，路径在系统临时目录，跑完删掉，不碰调用方的工作树。
  * 有 `package-lock.json` 或 `npm-shrinkwrap.json` 用 `npm ci`，没有用 `npm install`。
+ * 测试命令按检出里的 `package.json` 选：有 `scripts.test` 用 `npm test`，
+ * 否则有 `scripts.check` 用 `npm run check`，都没有报 `check` 失败。
  * 三类失败分开报：检出失败 `setup`、装依赖失败 `install`、测试失败 `check`。
  *
  * 结果绑在 head 上：返回的 `headSha` 就是这次检查的提交。调用方按它判断
@@ -11,7 +13,7 @@
  */
 import { execFile } from 'node:child_process'
 import { statSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -19,7 +21,6 @@ import { git } from './git.mjs'
 
 const execFileAsync = promisify(execFile)
 
-const DEFAULT_CHECK_COMMAND = 'npm test'
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
 /** trail 行里标记「这条 test 是干净检查写的」，用来区分验证 agent 自己的测试行。 */
@@ -52,17 +53,32 @@ function firstExisting(dir, names) {
   return ''
 }
 
+/** 按 package.json 的 scripts 选测试命令；没有可用脚本返回 null。 */
+function pickCheckCommand(manifestText) {
+  let scripts = {}
+  try {
+    const manifest = JSON.parse(manifestText)
+    if (manifest?.scripts && typeof manifest.scripts === 'object') scripts = manifest.scripts
+  } catch {
+    // 解析不了按缺脚本处理
+  }
+  if (typeof scripts.test === 'string' && scripts.test.trim()) return 'npm test'
+  if (typeof scripts.check === 'string' && scripts.check.trim()) return 'npm run check'
+  return null
+}
+
 /** 默认命令执行：`/bin/sh -c`，输出全收，超时杀进程。 */
-async function runShell({ command, cwd, env, timeoutMs }) {
+export async function runShell({ command, cwd, env, timeoutMs }) {
   const result = await execFileAsync('/bin/sh', ['-c', command], {
     cwd,
     timeout: timeoutMs,
     maxBuffer: 16 * 1024 * 1024,
     ...(env && Object.keys(env).length ? { env: { ...process.env, ...env } } : {}),
   }).catch((error) => error)
-  const code = typeof result.code === 'number' ? result.code : result.code === 0 ? 0 : 1
+  const failed = result instanceof Error
+  const code = failed ? (typeof result.code === 'number' ? result.code : 1) : 0
   return {
-    ok: code === 0,
+    ok: !failed,
     code,
     stdout: String(result.stdout || ''),
     stderr: String(result.stderr || ''),
@@ -90,7 +106,7 @@ async function writeLog(logPath, lines) {
  * @param {object} options
  * @param {string} options.repoDir 仓库或工作树路径，只用来建和删临时 checkout
  * @param {string} [options.ref] 要检查的提交或分支，默认 `HEAD`
- * @param {string} [options.checkCommand] 测试命令，默认 `npm test`
+ * @param {string} [options.checkCommand] 测试命令，默认按检出里的 `package.json` 选：有 `scripts.test` 用 `npm test`，否则有 `scripts.check` 用 `npm run check`
  * @param {Function} [options.git] git 命令替身，签名同 `lib/git.mjs` 的 `git(cwd, args)`
  * @param {Function} [options.run] 命令执行替身，收 `{command, cwd, env, timeoutMs}`
  * @param {string} [options.tempDir] 临时 checkout 的父目录，默认系统临时目录
@@ -103,7 +119,7 @@ async function writeLog(logPath, lines) {
 export async function verifyInCleanCheckout({
   repoDir,
   ref = 'HEAD',
-  checkCommand = DEFAULT_CHECK_COMMAND,
+  checkCommand = '',
   git: gitImpl = git,
   run = runShell,
   tempDir,
@@ -172,6 +188,23 @@ export async function verifyInCleanCheckout({
       })
     }
 
+    let command = checkCommand
+    if (!command) {
+      const manifestText = await readFile(join(checkout, 'package.json'), 'utf8').catch(() => '')
+      const picked = pickCheckCommand(manifestText)
+      if (!picked) {
+        lines.push('! package.json 没有 scripts.test 或 scripts.check')
+        return resultOf({
+          ok: false,
+          headSha,
+          reason: 'check',
+          missing: ['缺测试脚本：package.json 没有 scripts.test 或 scripts.check'],
+          logPath: await writeLog(logFile, lines),
+        })
+      }
+      command = picked
+    }
+
     const lockfile = firstExisting(checkout, LOCKFILES)
     const install = lockfile ? 'npm ci' : 'npm install'
     lines.push(`$ ${install}`)
@@ -188,17 +221,17 @@ export async function verifyInCleanCheckout({
       })
     }
 
-    lines.push(`$ ${checkCommand}`)
-    const checked = await run({ command: checkCommand, cwd: checkout, env, timeoutMs })
+    lines.push(`$ ${command}`)
+    const checked = await run({ command, cwd: checkout, env, timeoutMs })
     lines.push(tail(checked.stdout), tail(checked.stderr))
     if (!checked.ok) {
       return resultOf({
         ok: false,
         headSha,
         reason: 'check',
-        missing: [`干净检出测试失败：${checkCommand} 退出码 ${checked.code}`],
+        missing: [`干净检出测试失败：${command} 退出码 ${checked.code}`],
         logPath: await writeLog(logFile, lines),
-        command: checkCommand,
+        command,
       })
     }
 
@@ -206,7 +239,7 @@ export async function verifyInCleanCheckout({
       ok: true,
       headSha,
       logPath: await writeLog(logFile, lines),
-      command: checkCommand,
+      command,
     })
   } finally {
     await gitImpl(repoDir, ['worktree', 'remove', '--force', checkout]).catch(() => {})
