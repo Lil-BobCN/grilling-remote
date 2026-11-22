@@ -3,11 +3,17 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { verifyInCleanCheckout } from '../lib/clean-check.mjs'
+import { runShell, verifyInCleanCheckout } from '../lib/clean-check.mjs'
 
 const HEAD = 'a'.repeat(40)
 
-function fakeGit({ head = HEAD, manifest = true, lockfile = true, worktreeFails = false } = {}) {
+function fakeGit({
+  head = HEAD,
+  manifest = true,
+  lockfile = true,
+  worktreeFails = false,
+  packageJson = '{"scripts":{"test":"node --test"}}\n',
+} = {}) {
   const calls = []
   async function git(cwd, args) {
     calls.push(args)
@@ -20,7 +26,7 @@ function fakeGit({ head = HEAD, manifest = true, lockfile = true, worktreeFails 
       if (worktreeFails) throw new Error('fatal: 不是 git 仓库')
       const path = args[3]
       await mkdir(path, { recursive: true })
-      await writeFile(join(path, 'package.json'), '{"scripts":{"test":"node --test"}}\n')
+      await writeFile(join(path, 'package.json'), packageJson)
       if (lockfile) await writeFile(join(path, 'package-lock.json'), '{}\n')
       return ''
     }
@@ -51,6 +57,22 @@ function fakeRun({ installOk = true, checkOk = true } = {}) {
   }
   return { run, calls }
 }
+
+test('runShell 成功按退出码 0，失败取真实退出码', async () => {
+  const ok = await runShell({ command: 'exit 0', cwd: tmpdir(), timeoutMs: 5000 })
+  assert.equal(ok.ok, true)
+  assert.equal(ok.code, 0)
+
+  const failed = await runShell({ command: 'exit 3', cwd: tmpdir(), timeoutMs: 5000 })
+  assert.equal(failed.ok, false)
+  assert.equal(failed.code, 3)
+})
+
+test('runShell 超时算失败，退出码记 1', async () => {
+  const timedOut = await runShell({ command: 'sleep 5', cwd: tmpdir(), timeoutMs: 200 })
+  assert.equal(timedOut.ok, false)
+  assert.equal(timedOut.code, 1)
+})
 
 test('干净检出通过：有 lockfile 用 npm ci，测试命令过，结果绑 head', async () => {
   const base = join(tmpdir(), `afk-clean-check-test-${process.pid}`)
@@ -91,6 +113,80 @@ test('干净检出通过：有 lockfile 用 npm ci，测试命令过，结果绑
     const log = await readFile(logPath, 'utf8')
     assert.match(log, /npm ci/)
     assert.match(log, /测试输出/)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('package.json 只有 scripts.check 时用 npm run check', async () => {
+  const base = join(tmpdir(), `afk-clean-check-checkonly-${process.pid}`)
+  await mkdir(base, { recursive: true })
+  try {
+    const { git } = fakeGit({ packageJson: '{"scripts":{"check":"node --test"}}\n' })
+    const { run, calls } = fakeRun()
+    const result = await verifyInCleanCheckout({
+      repoDir: '/repo',
+      ref: HEAD,
+      git,
+      run,
+      tempDir: base,
+      logPath: join(base, 'check-only.log'),
+    })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(result.command, 'npm run check')
+    assert.deepEqual(
+      calls.map((row) => row.command),
+      ['npm ci', 'npm run check'],
+    )
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('package.json 没有 scripts.test 和 scripts.check 时报缺脚本', async () => {
+  const base = join(tmpdir(), `afk-clean-check-noscript-${process.pid}`)
+  await mkdir(base, { recursive: true })
+  try {
+    const { git } = fakeGit({ packageJson: '{"scripts":{"start":"node server.mjs"}}\n' })
+    const { run, calls } = fakeRun()
+    const result = await verifyInCleanCheckout({
+      repoDir: '/repo',
+      ref: HEAD,
+      git,
+      run,
+      tempDir: base,
+      logPath: join(base, 'no-script.log'),
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'check')
+    assert.match(result.missing.join('；'), /scripts\.test.*scripts\.check/)
+    assert.equal(calls.length, 0, '缺脚本就不装依赖')
+    assert.match(await readFile(result.logPath, 'utf8'), /没有 scripts\.test 或 scripts\.check/)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('显式 checkCommand 优先于 package.json 的脚本', async () => {
+  const base = join(tmpdir(), `afk-clean-check-explicit-${process.pid}`)
+  await mkdir(base, { recursive: true })
+  try {
+    const { git } = fakeGit({ packageJson: '{"scripts":{"check":"node --test"}}\n' })
+    const { run, calls } = fakeRun()
+    const result = await verifyInCleanCheckout({
+      repoDir: '/repo',
+      ref: HEAD,
+      git,
+      run,
+      tempDir: base,
+      logPath: join(base, 'explicit.log'),
+      checkCommand: 'npm run verify',
+    })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.deepEqual(
+      calls.map((row) => row.command),
+      ['npm ci', 'npm run verify'],
+    )
   } finally {
     await rm(base, { recursive: true, force: true })
   }
