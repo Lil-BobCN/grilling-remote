@@ -63,6 +63,60 @@ test('ensureRepoEnv 生成完整的 .sandcastle/.env，权限 600', async (t) =>
   assert.equal(mode, 0o600)
 })
 
+test('宿主回环地址写进客户仓时换成 host.docker.internal，端口和路径保留', async (t) => {
+  const cases = [
+    ['http://127.0.0.1:1234', 'http://host.docker.internal:1234'],
+    ['http://localhost:1234', 'http://host.docker.internal:1234'],
+    ['http://[::1]:1234', 'http://host.docker.internal:1234'],
+    ['http://127.0.0.1:1234/v1', 'http://host.docker.internal:1234/v1'],
+    ['https://api.example.com:8443/v1', 'https://api.example.com:8443/v1'],
+  ]
+  for (const [input, expected] of cases) {
+    const dir = await repoFixture(t)
+    await ensureRepoEnv({
+      repoDir: dir,
+      owner: 'Lil-BobCN',
+      repo: 'demo-shop',
+      env: { ...HOST_ENV, ANTHROPIC_BASE_URL: input },
+      minter: fakeMinter(),
+      now: NOW,
+    })
+    assert.equal((await readRepoEnv(dir)).ANTHROPIC_BASE_URL, expected, input)
+  }
+})
+
+test('已存在的客户仓 env 里是回环地址时修正，其他已有值不覆盖', async (t) => {
+  const dir = await repoFixture(t)
+  await mkdir(join(dir, '.sandcastle'), { recursive: true })
+  await writeFile(
+    repoEnvPath(dir),
+    [
+      'GH_TOKEN=ghs_existing',
+      `GH_TOKEN_EXPIRES_AT=${NOW + 30 * 60 * 1000}`,
+      'SANDCASTLE_IMAGE=my-image',
+      'CUSTOM_KEY=keep-me',
+      'ANTHROPIC_BASE_URL=http://127.0.0.1:5678/custom',
+      ...Object.entries(HOST_ENV)
+        .filter(([key]) => key !== 'ANTHROPIC_BASE_URL')
+        .map(([key, value]) => `${key}=${value}`),
+    ].join('\n') + '\n',
+  )
+  const result = await ensureRepoEnv({
+    repoDir: dir,
+    owner: 'Lil-BobCN',
+    repo: 'demo-shop',
+    env: { ...HOST_ENV, ANTHROPIC_BASE_URL: 'http://localhost:9999' },
+    minter: fakeMinter(),
+    now: NOW,
+  })
+  assert.equal(result.minted, false)
+  const values = await readRepoEnv(dir)
+  assert.equal(values.ANTHROPIC_BASE_URL, 'http://host.docker.internal:5678/custom')
+  assert.equal(values.GH_TOKEN, 'ghs_existing')
+  assert.equal(values.SANDCASTLE_IMAGE, 'my-image')
+  assert.equal(values.CUSTOM_KEY, 'keep-me')
+})
+
 test('已有值和额外键保留，token 没过期不重签', async (t) => {
   const dir = await repoFixture(t)
   await mkdir(join(dir, '.sandcastle'), { recursive: true })

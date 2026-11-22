@@ -35,6 +35,27 @@ export const REQUIRED_KEYS = [
 
 const TOKEN_REFRESH_MS = 10 * 60 * 1000
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+
+/**
+ * 客户仓的 `.env` 会被容器里的 agent 读取。宿主的 127.0.0.1 在容器里指容器自己，
+ * 换成容器可达的 host.docker.internal；协议、端口和路径保持不变。
+ */
+function containerBaseUrl(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return text
+  let url
+  try {
+    url = new URL(text)
+  } catch {
+    return text
+  }
+  if (!LOOPBACK_HOSTS.has(url.hostname.toLowerCase())) return text
+  url.hostname = 'host.docker.internal'
+  const rendered = url.toString()
+  return rendered.endsWith('/') && !text.endsWith('/') ? rendered.slice(0, -1) : rendered
+}
+
 export function repoEnvPath(repoDir) {
   return join(repoDir, '.sandcastle', '.env')
 }
@@ -75,7 +96,7 @@ function hostValues({ env, model, image, repo }) {
   const sameModel = (key) => String(env[key] || env.ANTHROPIC_MODEL || modelName).trim()
   return {
     ANTHROPIC_AUTH_TOKEN: String(env.ANTHROPIC_AUTH_TOKEN || '').trim(),
-    ANTHROPIC_BASE_URL: String(env.ANTHROPIC_BASE_URL || '').trim(),
+    ANTHROPIC_BASE_URL: containerBaseUrl(env.ANTHROPIC_BASE_URL),
     ANTHROPIC_MODEL: modelName,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: sameModel('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
     ANTHROPIC_DEFAULT_SONNET_MODEL: sameModel('ANTHROPIC_DEFAULT_SONNET_MODEL'),
@@ -95,6 +116,7 @@ function renderEnv(values) {
 /**
  * 生成或补齐 `.sandcastle/.env`。
  * 已有值不覆盖；缺的模型和 git 键从宿主环境补；GH_TOKEN 过期或缺失时按仓重签。
+ * 唯一例外：已有的 ANTHROPIC_BASE_URL 是宿主回环地址时，改写成容器可达的地址。
  * `minter.mintRepoToken({ owner, repo })` 返回 `{ token, expiresAt }`。
  */
 export async function ensureRepoEnv({
@@ -117,6 +139,9 @@ export async function ensureRepoEnv({
   const values = { ...existing }
   for (const [key, value] of Object.entries(hostValues({ env, model, image, repo }))) {
     if (!String(values[key] ?? '').trim() && String(value ?? '').trim()) values[key] = value
+  }
+  if (String(values.ANTHROPIC_BASE_URL ?? '').trim()) {
+    values.ANTHROPIC_BASE_URL = containerBaseUrl(values.ANTHROPIC_BASE_URL)
   }
 
   const expiresAt = Number(values.GH_TOKEN_EXPIRES_AT || 0)
