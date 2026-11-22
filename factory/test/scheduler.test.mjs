@@ -1882,6 +1882,139 @@ test('runOnce：后台点火失败记 attempt，下一轮退避不重发', async
   assert.equal(calls, 1, '退避期间不重复点火')
 })
 
+test('runOnce：点火返回 ok:false 也写作业表，按退避重试到 attempt 2', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const ticket = await createChild(gh, parent)
+  let calls = 0
+  const ignite = async () => {
+    calls += 1
+    return { ok: false, error: 'Sandcastle 退出码 1' }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+  const rowOf = () =>
+    findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+      action: 'ignite',
+      ticket: ticket.number,
+    })
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+
+  assert.equal(calls, 1)
+  assert.equal(rowOf()?.attempt, 1, '第一次失败写 attempt=1')
+  assert.match(rowOf().reason, /Sandcastle 退出码 1/, 'reason 带失败原文')
+  assert.ok(!labelsOf(fake, OWNER, REPO, ticket.number).includes('Sandcastle'), '失败后摘掉认领标签')
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+  assert.equal(calls, 1, '退避期间不重复点火')
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ignite,
+    clock: () => new Date(NOW.getTime() + 61_000),
+    config,
+  })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+
+  assert.equal(calls, 2, '过了退避再点')
+  assert.equal(rowOf()?.attempt, 2, '第二次失败写 attempt=2')
+  assert.match(rowOf().reason, /Sandcastle 退出码 1/)
+})
+
+test('runOnce：点火重试成功后 attempt 归 0，stop 和 reason 清空', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const ticket = await createChild(gh, parent)
+  let calls = 0
+  const ignite = async () => {
+    calls += 1
+    return calls === 1 ? { ok: false, error: 'Sandcastle 退出码 1' } : { ok: true }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+  const rowOf = () =>
+    findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+      action: 'ignite',
+      ticket: ticket.number,
+    })
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+  assert.equal(rowOf()?.attempt, 1)
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ignite,
+    clock: () => new Date(NOW.getTime() + 61_000),
+    config,
+  })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+
+  assert.equal(calls, 2)
+  assert.equal(rowOf()?.attempt, 0, '成功后 attempt 归 0')
+  assert.equal(rowOf()?.stop, '')
+  assert.equal(rowOf()?.reason, '')
+})
+
+test('runOnce：点火被跳过不写作业表，下一轮立刻还能点', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const ticket = await createChild(gh, parent)
+  let calls = 0
+  const ignite = async ({ ticket: current }) => {
+    calls += 1
+    if (calls === 1) {
+      // 真实 createIgnite 在 skipped 分支自己摘掉 Sandcastle；fake 照这个约定做。
+      await gh.removeLabel({ owner: OWNER, repo: REPO, number: current.number, name: 'Sandcastle' })
+      return { ok: false, skipped: 'busy' }
+    }
+    return { ok: true }
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+  const rowOf = () =>
+    findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+      action: 'ignite',
+      ticket: ticket.number,
+    })
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+  assert.equal(calls, 1)
+  assert.equal(rowOf(), null, '跳过的点火不写作业表')
+  assert.ok(!labelsOf(fake, OWNER, REPO, ticket.number).includes('Sandcastle'))
+
+  await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite, clock: () => NOW, config })
+  await Promise.allSettled([...(config.pendingIgnitions || [])])
+  assert.equal(calls, 2, '跳过不进退避，下一轮还能点')
+  assert.equal(rowOf()?.attempt, 0)
+})
+
 test('同一仓已有 Sandcastle 票，不点第二张', async (t) => {
   const { fake, gh } = await setupRepo(t)
   const runningParent = await createParent(gh, { state: '开发中', title: '正在做的单' })
