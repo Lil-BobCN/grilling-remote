@@ -308,7 +308,7 @@ async function commitEvidenceFiles({ repoDir, rows, ticketBranch, ticket }) {
   const files = await evidenceFilesInWorktree(repoDir, rows)
   if (files.length === 0) return { headSha: '', files: [] }
   await git(repoDir, ['checkout', ticketBranch])
-  await git(repoDir, ['add', '--', ...files])
+  await git(repoDir, ['add', '-f', '--', ...files])
   const staged = await git(repoDir, ['diff', '--cached', '--name-only', '--', ...files])
   const changed = staged ? staged.split(/\r?\n/).filter(Boolean) : []
   if (changed.length === 0) return { headSha: '', files: [] }

@@ -234,9 +234,8 @@ export function createTicketPipeline({
    * 只提交 `.audit`，agent 留下的其他未跟踪文件交给 release 归档。
    */
   async function commitAuditFiles({ worktree, ticket }) {
-    const dirty = await gitImpl(worktree, ['status', '--porcelain', '--', '.audit']).catch(() => '')
-    if (!dirty) return ''
-    await gitImpl(worktree, ['add', '-A', '--', '.audit'])
+    // `.git/info/exclude` 之类的忽略规则会挡住普通 git add，证据必须进分支，强制加入。
+    await gitImpl(worktree, ['add', '-f', '-A', '--', '.audit']).catch(() => {})
     const staged = await gitImpl(worktree, ['diff', '--cached', '--name-only', '--', '.audit']).catch(
       () => '',
     )
@@ -359,7 +358,15 @@ export function createTicketPipeline({
       try {
         return await workspace.prepareTicket({ repoDir, base: reqBranch, ticketBranch })
       } catch (error) {
-        // 上一次点火留下的脏工作树：先归档未跟踪文件；只剩已跟踪改动时交给人。
+        // 上一次点火留下的脏工作树：先把证据提交到票分支，再归档未跟踪文件；只剩已跟踪改动时交给人。
+        try {
+          await commitAuditFiles({
+            worktree: workspace.worktreePath(repoDir, ticketBranch),
+            ticket: ticket.number,
+          })
+        } catch {
+          // 提交失败不挡 release，归档路径仍把文件留在本地。
+        }
         const released = await workspace.release({ repoDir, branch: ticketBranch }).catch(() => null)
         if (released?.archived?.length) archived.push(...released.archived)
         if (released?.kept) {
