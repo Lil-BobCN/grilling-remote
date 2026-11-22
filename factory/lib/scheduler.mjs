@@ -1045,16 +1045,83 @@ async function runIgnitionInBackground({
   jobPolicy,
   now,
 }) {
+  const writeFailure = async (reason) => {
+    await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
+    if (!jobs) return
+    try {
+      const row = await jobs.recordFailure({
+        owner,
+        repo,
+        parent: parent.number,
+        ticket: ticketNumber,
+        action: 'ignite',
+        reason,
+        now: now || new Date(),
+        policy: jobPolicy,
+      })
+      if (row?.stop) {
+        await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
+      }
+    } catch (writeError) {
+      ;(log || logLine)({
+        level: 'error',
+        msg: '点火失败没写进作业表',
+        owner,
+        repo,
+        ticket: ticketNumber,
+        error: writeError.message,
+      })
+    }
+  }
+
   try {
-    await ignite({
+    const result = await ignite({
       owner,
       repo,
       parent: { number: parent.number, title: parent.title, body: parent.body },
       ticket,
       attempt,
     })
+    if (result?.skipped) {
+      // busy/blocked：这次没真正跑，不写作业表，不涨 attempt，不进退避。
+      return
+    }
+    if (result?.ok === false) {
+      const detail = String(result.error || result.reason || '').trim()
+      const reason = result.timeout ? '点火超时' : detail ? `点火失败：${detail}` : '点火失败'
+      ;(log || logLine)({
+        level: 'error',
+        msg: '后台点火失败',
+        owner,
+        repo,
+        ticket: ticketNumber,
+        error: reason,
+      })
+      await writeFailure(reason)
+      return
+    }
+    if (jobs) {
+      try {
+        await jobs.recordSuccess({
+          owner,
+          repo,
+          parent: parent.number,
+          ticket: ticketNumber,
+          action: 'ignite',
+          now: now || new Date(),
+        })
+      } catch (writeError) {
+        ;(log || logLine)({
+          level: 'error',
+          msg: '点火成功没写进作业表',
+          owner,
+          repo,
+          ticket: ticketNumber,
+          error: writeError.message,
+        })
+      }
+    }
   } catch (error) {
-    await gh.removeLabel({ owner, repo, number: ticketNumber, name: SANDBOX_LABEL }).catch(() => {})
     const reason = `点火失败：${String(error?.message || error)}`
     ;(log || logLine)({
       level: 'error',
@@ -1064,32 +1131,7 @@ async function runIgnitionInBackground({
       ticket: ticketNumber,
       error: String(error?.message || error),
     })
-    if (jobs) {
-      try {
-        const row = await jobs.recordFailure({
-          owner,
-          repo,
-          parent: parent.number,
-          ticket: ticketNumber,
-          action: 'ignite',
-          reason,
-          now: now || new Date(),
-          policy: jobPolicy,
-        })
-        if (row?.stop) {
-          await ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
-        }
-      } catch (writeError) {
-        ;(log || logLine)({
-          level: 'error',
-          msg: '点火失败没写进作业表',
-          owner,
-          repo,
-          ticket: ticketNumber,
-          error: writeError.message,
-        })
-      }
-    }
+    await writeFailure(reason)
   } finally {
     await lock.release()
   }
@@ -1524,19 +1566,6 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
     } else {
       await recordRetry('decompose', decomposeResult)
     }
-  }
-
-  for (const igniteResult of results.filter((row) => row.type === 'ignite' && row.started)) {
-    await guard(
-      jobs.recordSuccess({
-        owner,
-        repo,
-        parent: parent.number,
-        ticket: igniteResult.ticket,
-        action: 'ignite',
-        now,
-      }),
-    )
   }
 }
 

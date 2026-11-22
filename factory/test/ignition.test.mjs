@@ -879,6 +879,35 @@ test('连续三次点火失败：父工单三圈进度，stallHits 读到三圈�
   )
 })
 
+test('点火失败进度行带第几次和下次重试时间，到上限写停线', async (t) => {
+  const fixture = await makeRepoFixture(t)
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const runner = fakeRunner(async () => {
+    throw new Error('容器起不来')
+  })
+  const ignite = createIgnite({
+    config: ignitionConfig(fixture, gh, {
+      jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+    }),
+    runner: runner.run,
+    openPr: fakeOpenPr().openPr,
+    notifier: fakeNotifier(),
+    clock: () => new Date('2026-11-17T10:00:00+08:00'),
+  })
+
+  await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 1 })
+
+  const progressOf = () =>
+    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  assert.match(progressOf().at(-1), /第 1 次/)
+  assert.match(progressOf().at(-1), /下次约 \d{2}:\d{2} 重试/)
+
+  await ignite({ owner: OWNER, repo: REPO, parent, ticket, attempt: 3 })
+
+  assert.match(progressOf().at(-1), /第 3 次/)
+  assert.match(progressOf().at(-1), /已停线，等运营者处理/)
+})
+
 test('票里没点文件时，相关代码放 git ls-files 前 100 行', async (t) => {
   const fixture = await makeRepoFixture(t)
   const ticketBody = [
