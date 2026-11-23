@@ -531,9 +531,36 @@ function toSpecBrief({ instructions, parent, owner, repo }) {
   ].join('\n')
 }
 
+async function readParentGate({ gh, owner, repo, parent }) {
+  if (!gh || typeof gh.listComments !== 'function') {
+    return { ok: false, reason: 'to-spec job 的 GitHub 客户端不支持 listComments，读不到父工单评论' }
+  }
+  try {
+    const comments = await gh.listComments({ owner, repo, number: parent?.number })
+    return { ok: true, gate: latestGate(Array.isArray(comments) ? comments : []) }
+  } catch (error) {
+    return { ok: false, reason: `读父工单评论失败：${errorText(error)}` }
+  }
+}
+
+/** 发布后发现父工单已解锁：关闭 spec 并留一条作废评论。 */
+async function discardSpec({ gh, owner, repo, spec }) {
+  if (!gh || typeof gh.createComment !== 'function' || typeof gh.closeIssue !== 'function') {
+    return { ok: false, reason: 'GitHub 客户端不支持关闭 spec' }
+  }
+  try {
+    await gh.createComment({ owner, repo, number: spec.number, body: '作废：已解锁' })
+    await gh.closeIssue({ owner, repo, number: spec.number, stateReason: 'not_planned' })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: errorText(error) }
+  }
+}
+
 /**
  * 调度器自动跑 to-spec：没有 spec 时叫 agent 生成并发布。
- * 先查已有 spec，已有就跳过；跑完再查一次，标题、标签和需求名都对得上才算成功。
+ * 先查已有 spec，已有就跳过；跑完重读父工单最新关口，不是 `点头：补缺口`
+ * 就把新 spec 关掉并判失败；最后查标题、标签和需求名。
  * 读不到 GitHub 或 agent 没产出都返回原因，调度器按 attempt 退避。
  */
 export function createToSpec({
@@ -585,6 +612,26 @@ export function createToSpec({
       return { ok: false, reason: `读 to-spec 结果失败：${errorText(error)}` }
     }
     const created = specIssueFor(issues, requirement)
+
+    const parentGate = await readParentGate({ gh, owner, repo, parent })
+    if (!parentGate.ok) {
+      return { ok: false, code: run?.code, reason: parentGate.reason }
+    }
+    if (parentGate.gate?.kind !== '点头：补缺口') {
+      const reason = '父工单已解锁，本次 spec 作废'
+      if (!created) return { ok: false, code: run?.code, reason }
+      const discarded = await discardSpec({ gh, owner, repo, spec: created })
+      if (!discarded.ok) {
+        return {
+          ok: false,
+          code: run?.code,
+          reason: `${reason}；关闭 spec #${created.number} 失败：${discarded.reason}`,
+          number: created.number,
+        }
+      }
+      return { ok: false, code: run?.code, reason, number: created.number }
+    }
+
     if (!created) {
       return { ok: false, reason: 'to-spec agent 没有产出挂 ready-for-agent 的 spec issue' }
     }

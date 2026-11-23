@@ -83,6 +83,15 @@ async function setup(t, { labels = ['状态:已提交', '大小:小需求'], bod
   return { fake, gh, parent }
 }
 
+async function proposalOn(gh, parent) {
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parent.number,
+    body: '提案：补缺口\n\n1. 题：顾客预约要不要用微信登录？\n   推荐：不用，留手机号就行',
+  })
+}
+
 test('isSmallRequirement：有需求草稿、没有地图才是小需求', async (t) => {
   assert.equal(await isSmallRequirement(await scratch(t)), true)
   assert.equal(await isSmallRequirement(await scratch(t, { map: true })), false)
@@ -224,6 +233,7 @@ test('createSmallImplementationTicket：父工单没有验收条件就停，不�
 test('pointSmallRequirement：先建票、再写点头，末行是实现票编号', async (t) => {
   const { fake, gh, parent } = await setup(t)
   const dir = await scratch(t)
+  await proposalOn(gh, parent)
   fake.state.requests.length = 0
 
   const result = await pointSmallRequirement({
@@ -261,6 +271,7 @@ test('pointSmallRequirement：先建票、再写点头，末行是实现票编�
 test('pointSmallRequirement：建票失败就不写点头', async (t) => {
   const { fake, gh, parent } = await setup(t)
   const dir = await scratch(t)
+  await proposalOn(gh, parent)
   const broken = Object.create(gh)
   broken.createIssue = async () => {
     throw new Error('建票失败')
@@ -288,6 +299,7 @@ test('pointSmallRequirement：建票失败就不写点头', async (t) => {
 test('pointSmallRequirement：重跑不建第二张票，也不写第二条点头', async (t) => {
   const { fake, gh, parent } = await setup(t)
   const dir = await scratch(t)
+  await proposalOn(gh, parent)
   const args = {
     gh,
     owner: OWNER,
@@ -314,6 +326,39 @@ test('pointSmallRequirement：重跑不建第二张票，也不写第二条点�
   assert.equal(creates.length, 1)
   assert.equal(first.posted, true)
   assert.equal(second.posted, false)
+})
+
+test('pointSmallRequirement：父工单出现改口：时拒绝，不建实现票', async (t) => {
+  const { fake, gh, parent } = await setup(t)
+  const dir = await scratch(t)
+  await proposalOn(gh, parent)
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parent.number,
+    body: '改口：重传 2026-11-24T10:00:00.000Z，旧的提案和点头作废。',
+  })
+
+  await assert.rejects(
+    pointSmallRequirement({
+      gh,
+      owner: OWNER,
+      repo: REPO,
+      parent: parent.number,
+      scratchDir: dir,
+      operatorAnswers: ['顾客不用微信登录'],
+    }),
+    (error) => error.name === 'GateConflictError' && error.kind === '改口：',
+  )
+
+  const store = fake.state.issues.get(`${OWNER}/${REPO}`)
+  assert.equal(store.filter((row) => row.title === TITLE && row.number !== parent.number).length, 0)
+  assert.equal(
+    store
+      .find((row) => row.number === parent.number)
+      .comments.filter((row) => row.body.startsWith('点头：补缺口')).length,
+    0,
+  )
 })
 
 // ---- 调度器：只核对 #463 的路由，不改它 ----

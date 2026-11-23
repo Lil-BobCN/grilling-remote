@@ -37,7 +37,8 @@
 
 ## 怎么交
 
-1. 先在仓库里查有没有满足以下三条的 open issue：挂 `ready-for-agent`、标题或正文含需求名、七字段齐全。有就停下，不建第二张。
-2. 没有就写一份草稿到 `.audit/to-spec-<父工单号>.md`，用 `gh issue create` 发到当前客户仓，标题写成「spec：<需求名>」，正文是七字段，挂 `ready-for-agent`。
-3. 不建子票，不改代码，不提交，不推分支。
-4. 发完在父工单写一条评论，第一行是「工厂已跑 to-spec：<spec issue 链接>」。
+1. 发布前跑 `gh issue view <父工单号> --comments --repo <owner>/<repo>`，看最新一条关口评论。最新不是 `点头：补缺口` 就不发 spec，在父工单写清原因后退出。
+2. 再在仓库里查有没有满足以下三条的 open issue：挂 `ready-for-agent`、标题或正文含需求名、七字段齐全。有就停下，不建第二张。
+3. 没有就写一份草稿到 `.audit/to-spec-<父工单号>.md`，用 `gh issue create` 发到当前客户仓，标题写成「spec：<需求名>」，正文是七字段，挂 `ready-for-agent`。
+4. 不建子票，不改代码，不提交，不推分支。
+5. 发完在父工单写一条评论，第一行是「工厂已跑 to-spec：<spec issue 链接>」。

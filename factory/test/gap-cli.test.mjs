@@ -122,6 +122,53 @@ test('CLI apply-map 建图，propose 发到父工单，point 过关后写点头'
   assert.match(point.body, /## 正文影响\n\n无/)
 })
 
+test('CLI point 在父工单出现改口：时拒绝，不写点头', async (t) => {
+  const { gh, parent, sink } = await setup(t)
+  await gh.updateIssue({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+    body: `${PARENT_BODY}\n\n- 地图：https://github.com/acme/acme-shuiguo/issues/99`,
+  })
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+    body: '提案：补缺口\n\n1. 题：用什么技术栈？',
+  })
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+    body: '改口：重传 2026-11-24T10:00:00.000Z，旧的提案和点头作废。',
+  })
+
+  await assert.rejects(
+    run(
+      [
+        'point',
+        '--owner',
+        'acme',
+        '--repo',
+        'acme-shuiguo',
+        '--number',
+        String(parent.number),
+        '--answers',
+        JSON.stringify(['技术栈：Next.js + Postgres']),
+      ],
+      { gh, log: sink },
+    ),
+    (error) => error.name === 'GateConflictError' && error.kind === '改口：',
+  )
+
+  const comments = await gh.listComments({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+  })
+  assert.equal(comments.filter((row) => row.body.startsWith('点头：补缺口')).length, 0)
+})
+
 test('CLI apply-map 小需求返回 skipped', async (t) => {
   const { gh, parent, sink } = await setup(t)
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises')

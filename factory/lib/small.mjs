@@ -6,7 +6,7 @@
  */
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { draftProposal, renderPoint } from './gap.mjs'
+import { draftProposal, assertPointGate, renderPoint } from './gap.mjs'
 import { ensureCommentOnce, ensureLabel, ensureSubIssue } from './issues.mjs'
 import { parseParentAcceptance, QUEUE_LABEL } from './tickets.mjs'
 
@@ -190,6 +190,16 @@ export async function pointSmallRequirement({
   const number = parentNumber(parent)
   const { answers, impacts } = normalizeAnswers(operatorAnswers)
 
+  // 先看最新关口：改口、拆票、没有提案或答案变了，都不许碰实现票。
+  await assertPointGate({
+    gh,
+    owner,
+    repo,
+    number,
+    body: renderPoint({ answers, impacts }),
+    ignoreTicketLine: true,
+  })
+
   const nextStep = new Map([
     ['start', 'create-ticket'],
     ['create-ticket', 'write-point'],
@@ -208,6 +218,8 @@ export async function pointSmallRequirement({
   enter('create-ticket')
   const ticket = await createSmallImplementationTicket({ gh, owner, repo, parent: number })
   const pointBody = renderSmallPoint({ ticketNumber: ticket.number, answers, impacts })
+  const check = await assertPointGate({ gh, owner, repo, number, body: pointBody })
+  if (check.idempotent) return { ticket, pointBody, posted: false }
 
   enter('write-point')
   const posted = await ensureCommentOnce(gh, { owner, repo, number, body: pointBody })

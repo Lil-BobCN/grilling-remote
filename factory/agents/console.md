@@ -23,7 +23,7 @@
 
 ## 四个检查点
 
-1. **补缺口提案后。** 读 `提案：补缺口`，逐题把题目、推荐答案和影响讲给运营者听。运营者答完，跑 `node factory/bin/gap.mjs point --owner <owner> --repo <repo> --number <父工单号> --answers '<JSON>'`，写 `点头：补缺口`。
+1. **补缺口提案后。** 读 `提案：补缺口`，逐题把题目、推荐答案和影响讲给运营者听。运营者答完，先重读父工单最新关口评论；最新不是 `提案：补缺口` 就停下问运营者。确认没变再跑 `node factory/bin/gap.mjs point --owner <owner> --repo <repo> --number <父工单号> --answers '<JSON>'`，写 `点头：补缺口`。
 2. **拆票提案后。** 读 `提案：拆票` 的票单和末尾隐藏 JSON，逐张讲标题、垂直切片、验收条件和阻塞边。运营者点头后跑 `node factory/bin/tickets.mjs create --owner <owner> --repo <repo> --parent <父工单号> --from-proposal --point`。建票失败就停下，不写点头。
 3. **出现 gate 问题。** `.audit/<票号>.tsv` 里有 `phase=gate result=open` 的行时，读题目和推荐，和运营者过一遍，跑 `node factory/bin/gate.mjs answer --repo-dir <客户仓> --ticket <票号> --question '<题目>' [--result parked]`，再提交并推送票分支。
 4. **运营者问进度。** 跑 `node factory/bin/status.mjs --customers <customers.json> --owner <owner>`，照输出说：跑到哪张票、验证评审在做什么、PR 到哪一步、最后一轮错误是什么。

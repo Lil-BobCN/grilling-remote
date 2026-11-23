@@ -6,6 +6,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   draftProposal,
+  GateConflictError,
   GateNotReadyError,
   gateReady,
   postPoint,
@@ -220,8 +221,113 @@ test('renderPoint 两段格式，正文影响为空写「无」', () => {
   assert.match(changed, /## 正文影响\n\n- 「要在线支付」/)
 })
 
+async function gateSetup(t, comments = []) {
+  const fake = await startFakeGithub({
+    repos: [{ owner: 'acme', name: 'acme-shuiguo' }],
+    issues: [{ owner: 'acme', repo: 'acme-shuiguo', title: '父工单', body: PARENT_BODY }],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const parent = await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: 1 })
+  for (const body of comments) {
+    await gh.createComment({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number, body })
+  }
+  return { gh, parent }
+}
+
+const PROPOSAL = '提案：补缺口\n\n1. 题：用什么技术栈？\n   推荐：Next.js'
+
+test('postPoint：父工单还没有提案时拒绝写点头', async (t) => {
+  const { gh, parent } = await gateSetup(t)
+  await assert.rejects(
+    postPoint({
+      gh,
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: parent.number,
+      mapIssueNumber: 2,
+      answers: ['技术栈：Next.js'],
+    }),
+    (error) => error instanceof GateConflictError && error.kind === null,
+  )
+})
+
+test('postPoint：最新关口是改口：时拒绝，等新的提案', async (t) => {
+  const { gh, parent } = await gateSetup(t, [
+    PROPOSAL,
+    '改口：重传 2026-11-24T10:00:00.000Z，旧的提案和点头作废。',
+  ])
+  await assert.rejects(
+    postPoint({
+      gh,
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: parent.number,
+      mapIssueNumber: 2,
+      answers: ['技术栈：Next.js'],
+    }),
+    (error) => error instanceof GateConflictError && error.kind === '改口：',
+  )
+})
+
+test('postPoint：最新是同一条点头时幂等返回，不重写', async (t) => {
+  const point = renderPoint({ answers: ['技术栈：Next.js + Postgres'] })
+  const { gh, parent } = await gateSetup(t, [PROPOSAL, point])
+
+  const posted = await postPoint({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+    answers: ['技术栈：Next.js + Postgres'],
+    impacts: [],
+  })
+  assert.equal(posted, false)
+  const comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })
+  assert.equal(comments.filter((row) => row.body.startsWith('点头：补缺口')).length, 1)
+})
+
+test('postPoint：最新是另一条点头时拒绝，答案要先改口', async (t) => {
+  const { gh, parent } = await gateSetup(t, [
+    PROPOSAL,
+    renderPoint({ answers: ['技术栈：Next.js + Postgres'] }),
+  ])
+  await assert.rejects(
+    postPoint({
+      gh,
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: parent.number,
+      mapIssueNumber: 2,
+      answers: ['技术栈：Vue + MySQL'],
+    }),
+    (error) => error instanceof GateConflictError && error.kind === '点头：补缺口',
+  )
+})
+
+test('postPoint：已经过拆票时拒绝', async (t) => {
+  const { gh, parent } = await gateSetup(t, [PROPOSAL, '提案：拆票\n\n1. 建票'])
+  await assert.rejects(
+    postPoint({
+      gh,
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: parent.number,
+      mapIssueNumber: 2,
+      answers: ['技术栈：Next.js'],
+    }),
+    (error) => error instanceof GateConflictError && error.kind === '提案：拆票',
+  )
+})
+
 test('postPoint 未就绪时拒绝并只留一条提醒，补完后才写点头', async (t) => {
   const { gh, parent, mapIssue } = await githubSetup(t)
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: parent.number,
+    body: PROPOSAL,
+  })
   const parentBefore = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })).body
   let mapBody = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })).body
   mapBody = mapBody.replace(
