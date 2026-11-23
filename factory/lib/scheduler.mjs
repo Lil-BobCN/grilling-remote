@@ -345,13 +345,23 @@ export function routeParent({
     return []
   }
 
+  // 驳回后重跑对应 Agent：已提交重列补缺口；排队中有 spec、没子票时重拆票。
+  // 小需求不走拆票。新的提案、改口和其余驳回仍然停。
+  const rerunGap = state === '已提交' && signal?.kind === '驳回：补缺口'
+  const rerunDecompose =
+    !small &&
+    state === '排队中' &&
+    signal?.kind === '驳回：拆票' &&
+    Boolean(spec) &&
+    subIssues.length === 0
+
   // 开发中读到驳回、并且驳回后面已经写过进度行，说明修复子票已建，接着点火；
   // 其余等待信号（新的提案、没处理过的驳回、改口）仍然停。
   const handledRejection =
     state === '开发中' &&
     signal?.kind === '驳回：' &&
     progressAfter(comments, signal.index)
-  if (isWaitingSignal(signal?.kind) && !handledRejection) return []
+  if (isWaitingSignal(signal?.kind) && !handledRejection && !rerunGap && !rerunDecompose) return []
 
   if (small) {
     if (state === '排队中') {
@@ -386,6 +396,11 @@ export function routeParent({
         { type: 'comment', body: progressFor({ parent, state: '开发中', comments }) },
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
+    }
+    if (rerunGap) {
+      const gapJob = findJob(jobs, { action: 'gap-proposal' })
+      if (jobBlocked(gapJob, { now, policy: jobPolicy })) return []
+      return [{ type: 'runGapProposal' }]
     }
     if (state === '开发中') {
       const finish = finishActions({ parent, subIssues, jobs, now, jobPolicy })

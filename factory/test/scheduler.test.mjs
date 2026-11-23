@@ -209,8 +209,8 @@ test('已提交+没有关口评论 → 叫补缺口提案', () => {
   assert.deepEqual(types(route({ comments: [] })), ['runGapProposal'])
 })
 
-test('已提交+驳回：补缺口 → 停，等下一次点头', () => {
-  assert.deepEqual(route({ comments: [gate('驳回：补缺口')] }), [])
+test('已提交+驳回：补缺口 → 重跑补缺口提案', () => {
+  assert.deepEqual(types(route({ comments: [gate('驳回：补缺口')] })), ['runGapProposal'])
 })
 
 test('已提交+改口： → 停', () => {

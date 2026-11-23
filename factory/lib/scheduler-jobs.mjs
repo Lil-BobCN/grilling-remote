@@ -32,6 +32,25 @@ function errorText(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** 最新一条 `驳回：` 评论全文；没有返回空串。 */
+function latestRejectionText(comments = []) {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const first = String(comments[index]?.body || '')
+      .replace(/^﻿/, '')
+      .trimStart()
+      .split(/\r?\n/)[0]
+      .trim()
+    if (first.startsWith('驳回：')) return String(comments[index].body || '')
+  }
+  return ''
+}
+
+/** 重跑时把驳回理由原样递给 agent；没有驳回就不加这一节。 */
+function rejectionSection(comments = []) {
+  const text = latestRejectionText(comments)
+  return text ? ['', '## 这次驳回的理由', '', text] : []
+}
+
 /** 子票关联要移出父工单才清得掉，只关闭不清关联；给运营者可复制的命令。 */
 function removeSubIssuesAdvice({ owner, repo, parent, numbers = [] }) {
   const list = numbers.map((number) => `#${number}`).join('、')
@@ -253,6 +272,7 @@ function decomposeBrief({ instructions, parent, spec, factoryDir }) {
     '',
     `父工单：#${parent.number} ${parent.title || ''}`.trim(),
     `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli} proposal --seams <接缝文件> --tickets <票文件>`,
+    ...rejectionSection(parent?.comments),
     '',
     '父工单正文：',
     '',
@@ -447,6 +467,7 @@ function gapBrief({ instructions, owner, repo, parent, factoryDir }) {
     `父工单：#${parent?.number || ''} ${parent?.title || ''}`.trim(),
     `仓库：${owner}/${repo}`,
     `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli}`,
+    ...rejectionSection(parent?.comments),
     '',
     '依次跑这两条，两条的 stdout/stderr 都会随这一跑写进调度器日志：',
     `1. node ${cli} apply-map --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --requirement <需求名> --parent <父工单链接>`,
