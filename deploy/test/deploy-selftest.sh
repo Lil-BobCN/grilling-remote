@@ -374,6 +374,11 @@ test_release_fingerprint() {
     bad "package.sh 用相对源目录失败：$(cat "$TMP/package-relative.log")"
   fi
   if [[ -s $relative_pkg ]]; then ok "相对源目录的发布包非空"; else bad "相对源目录的发布包是空文件"; fi
+  local relative_release="$TMP/release-relative"
+  mkdir -p "$relative_release"
+  tar -xzf "$relative_pkg" -C "$relative_release"
+  assert_eq "1.0.1" "$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$relative_release/release.json" | head -1)" "相对源目录的发布包记下版本号"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$relative_release/release.json" | head -1)" "相对源目录的发布包记下来源提交"
 
   mkdir -p "$TMP/release"
   tar -xzf "$pkg" -C "$TMP/release"
