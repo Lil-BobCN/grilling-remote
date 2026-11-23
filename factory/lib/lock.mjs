@@ -4,7 +4,7 @@
  * 和 `backend/lib/store.mjs` 的 `withFileLock` 同一做法：`open(..., 'wx')` 抢锁，
  * 进程退出后内核关掉句柄，锁文件残留由 mtime 过期清掉。
  */
-import { mkdir, open, readFile, stat, unlink, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 async function openLock(lockPath, { timeoutMs, staleMs }) {
@@ -140,12 +140,22 @@ export async function acquireTicketLease({
       if (alive && fresh) {
         return { acquired: false, reason: 'busy', path, holder: { ...previous, mtimeMs } }
       }
-      await unlink(path).catch(() => {})
+      // 接管用 rename 把旧租约挪走，再由 wx 抢新文件；并发接管时只有一个 rename 成功。
+      const quarantine = `${path}.stale.${process.pid}.${Date.now()}`
+      try {
+        await rename(path, quarantine)
+      } catch (moveError) {
+        if (moveError.code === 'ENOENT') continue
+        throw moveError
+      }
       try {
         await writeFile(path, content, { flag: 'wx', mode: 0o600 })
+        await unlink(quarantine).catch(() => {})
         return { acquired: true, path, takeover: true, previous: previous || {}, mtimeMs, token: content }
       } catch (retry) {
-        if (retry.code !== 'EEXIST') throw retry
+        await unlink(quarantine).catch(() => {})
+        if (retry.code === 'EEXIST') continue
+        throw retry
       }
     }
   }

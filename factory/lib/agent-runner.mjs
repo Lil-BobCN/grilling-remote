@@ -231,7 +231,7 @@ export function createAgentRunner({
     const stdout = String(result?.stdout || '')
     const stderr = String(result?.stderr || '')
     const authMessage = authFailureMessage(stdout, stderr)
-    const aborted = Boolean(result?.aborted || signal?.aborted || timedOut)
+    const aborted = Boolean(result?.aborted || signal?.aborted) && !timedOut
     return {
       ok: code === 0 && !timedOut,
       code,

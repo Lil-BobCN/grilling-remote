@@ -718,7 +718,7 @@ export function createTicketPipeline({
     try {
     for (const parent of parents || []) {
       for (const ticket of parent.subIssues || []) {
-        if (signal?.aborted) return { runs, aborted: true, active: state.lastActive }
+        if (signal?.aborted) return { runs, aborted: true, active: state.active }
         const ready =
           ticket.state !== 'closed' &&
           !hasLabel(ticket, PENDING_LABEL) &&
@@ -827,7 +827,7 @@ export function createTicketPipeline({
             const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir, signal: runSignal })
             if (outcome) runs.push(outcome)
             if (outcome?.reason === 'aborted' || runSignal.aborted) {
-              return { runs, aborted: true, active: state.lastActive }
+              return { runs, aborted: true, active: state.active }
             }
           } finally {
             clearInterval(beat)
