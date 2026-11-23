@@ -1,0 +1,31 @@
+{"step":"preflight","owner":"Lil-BobCN","repo":"scratch-bot-sim","private":true,"created":false,"url":"https://github.com/Lil-BobCN/scratch-bot-sim"}
+{"step":"reset","deleted":13}
+{"step":"labels","names":["状态:已提交","状态:排队中","ready-for-agent"]}
+{"step":"parent","key":"gap","number":92,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/92"}
+{"step":"parent","key":"split","number":93,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/93"}
+{"step":"parent","key":"ignite","number":94,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/94"}
+{"step":"inbox","root":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state","count":3}
+{"step":"apply-map","parent":92,"map":95,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/95","tickets":["01"]}
+{"step":"apply-map","parent":93,"map":97,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/97","tickets":["01"]}
+{"step":"apply-map","parent":94,"map":99,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/99","tickets":["01"]}
+{"step":"propose","parent":93}
+{"step":"point","parent":93,"posted":true}
+{"step":"propose","parent":94}
+{"step":"point","parent":94,"posted":true}
+{"step":"spec","key":"gap","parent":92,"number":101,"title":"规格：咖啡店预约取货（yuyue-kafei）"}
+{"step":"spec","key":"split","parent":93,"number":102,"title":"规格：门店报修工单（baoxiu-gongdan）"}
+{"step":"spec","key":"ignite","parent":94,"number":103,"title":"规格：库存盘点清单（pandian-qingdan）"}
+{"step":"split-point","parent":94,"child":104}
+{"step":"seed-ready","waitMs":11359}
+{"step":"customers","path":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/customers.json","repos":1,"fullName":"Lil-BobCN/scratch-bot-sim"}
+{"step":"notifier","home":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/notifier","loadedHome":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/notifier","isolated":true,"mode":"recording","events":1}
+{"step":"round","repo":"Lil-BobCN/scratch-bot-sim","parent":94,"decision":"develop","actions":[{"type":"setState","from":"排队中","to":"开发中"},{"type":"comment","body":"进度 v1｜路径：其余｜客户档：开发中｜细阶段：开工｜轮次：1｜卡住：否"},{"type":"ignite","ticket":104}],"reason":"状态:排队中｜最新关口:点头：拆票｜点火:#104","errors":[]}
+{"step":"round","repo":"Lil-BobCN/scratch-bot-sim","parent":93,"decision":"decompose","actions":[{"type":"runDecompose"}],"reason":"状态:排队中｜最新关口:点头：补缺口","errors":[]}
+{"step":"round","repo":"Lil-BobCN/scratch-bot-sim","parent":92,"decision":"gap-proposal","actions":[{"type":"runGapProposal"}],"reason":"状态:已提交","errors":[]}
+{"step":"fake-ignite","calls":[{"owner":"Lil-BobCN","repo":"scratch-bot-sim","parent":94,"ticket":104,"action":"ignite"}],"sandcastle":false,"containers":0}
+{"step":"no-pull","pulls":0}
+{"step":"jobs","path":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/jobs.json","row":{"owner":"Lil-BobCN","repo":"scratch-bot-sim","parent":94,"ticket":104,"action":"ignite","lastBeat":"2026-11-23T22:52:33.288Z","updatedAt":"2026-11-23T22:52:33.288Z","attempt":0,"stop":"","reason":"","running":false}}
+{"step":"lock","dir":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/locks","staleFiles":0}
+{"step":"main-paths","unchanged":{"jobs":false,"lockDir":true,"schedulerLog":true,"notifierConfig":true},"metadataOnly":true,"mainSchedulerInvoked":false,"mainSchedulerRunning":true,"note":"主作业表和主日志若变了，是生产调度器自己的活动；本次只写临时路径","snapshot":{"jobs":{"exists":true,"mtimeMs":1795474338034,"size":3903},"lockDir":{"exists":true,"mtimeMs":1795460626357,"size":64},"schedulerLog":{"exists":true,"mtimeMs":1795474164087,"size":61532},"notifierConfig":{"exists":true,"mtimeMs":1794812304809,"size":347}}}
+{"step":"summary","repo":"https://github.com/Lil-BobCN/scratch-bot-sim","parents":{"gap":{"number":92,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/92","decision":"gap-proposal","inbox":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/inbox/upload-sim-0001"},"split":{"number":93,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/93","decision":"decompose","inbox":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/inbox/upload-sim-0002"},"ignite":{"number":94,"url":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/94","decision":"develop","inbox":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/inbox/upload-sim-0003"}},"maps":{"gap":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/95","split":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/97","ignite":"https://github.com/Lil-BobCN/scratch-bot-sim/issues/99"},"specs":{"gap":101,"split":102,"ignite":103},"child":104,"fakeIgnite":{"owner":"Lil-BobCN","repo":"scratch-bot-sim","parent":94,"ticket":104,"action":"ignite"},"jobs":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/jobs.json","notifierHome":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state/notifier","stateDir":"/Users/Admin/orca/workspaces/grilling 远程/issue-0268/factory/test/sim/.state"}
+{"step":"ok","checks":12}
