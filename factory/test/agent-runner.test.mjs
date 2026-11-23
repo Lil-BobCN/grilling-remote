@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import {
   AGENT_TOOLS,
@@ -7,11 +9,13 @@ import {
   REVIEW_TOOLS,
   VERIFY_TOOLS,
   createAgentRunner,
+  defaultExec,
 } from '../lib/agent-runner.mjs'
 
 test('默认 command 是 claude，提示词在前，跑 -p --restricted，brief 同时留文件', async () => {
   const calls = []
   const runner = createAgentRunner({
+    model: 'test-model',
     exec: async (command, args, options) => {
       calls.push({ command, args, options })
       return { code: 0, stdout: '验证通过', stderr: '' }
@@ -29,8 +33,10 @@ test('默认 command 是 claude，提示词在前，跑 -p --restricted，brief 
   assert.equal(calls[0].args[0], '按验收条件点一遍应用')
   assert.equal(calls[0].args[1], '-p')
   assert.equal(calls[0].args[2], '--restricted')
-  assert.equal(calls[0].args[3], '--tools')
-  assert.equal(calls[0].args[4], AGENT_TOOLS)
+  assert.equal(calls[0].args[3], '--model')
+  assert.equal(calls[0].args[4], 'test-model')
+  assert.equal(calls[0].args[5], '--tools')
+  assert.equal(calls[0].args[6], AGENT_TOOLS)
   assert.equal(AGENT_TOOLS, 'Bash,Read,Write,Edit')
   assert.ok(calls[0].args.includes('按验收条件点一遍应用'))
   assert.equal(calls[0].options.cwd, '/tmp/example')
@@ -193,4 +199,102 @@ test('验证和评审的 args 里没有 Write/Edit，--tools 也只给 Bash,Read
   }
   assert.match(calls[0], /--allowedTools Read,Bash\(bash:\*\)/)
   assert.match(calls[1], /--allowedTools Read,Bash\(gh:\*\)/)
+})
+
+test('模型显式传给 claude --model；没有模型时构造就失败', async () => {
+  const calls = []
+  const runner = createAgentRunner({
+    model: 'test-model',
+    exec: async (command, args) => {
+      calls.push(args)
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+  await runner.run({ brief: '验证这张票', tools: NO_WRITE_TOOLS })
+  const index = calls[0].indexOf('--model')
+  assert.ok(index > 1)
+  assert.equal(calls[0][index + 1], 'test-model')
+
+  assert.throws(() => createAgentRunner({ model: '' }), /缺模型/)
+})
+
+test('外部信号已取消时不再起子进程', async () => {
+  let called = false
+  const runner = createAgentRunner({
+    model: 'test-model',
+    exec: async () => {
+      called = true
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+  const controller = new AbortController()
+  controller.abort()
+  const result = await runner.run({ brief: '验证', signal: controller.signal })
+  assert.equal(result.ok, false)
+  assert.equal(result.aborted, true)
+  assert.equal(called, false)
+})
+
+test('取消时杀整个进程组，父进程和孙进程都退出', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-kill-group-'))
+  const pidFile = join(dir, 'pids.json')
+  const script = [
+    "const { spawn } = require('node:child_process')",
+    "const { writeFileSync } = require('node:fs')",
+    "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+    'writeFileSync(process.argv[1], JSON.stringify({ parent: process.pid, child: child.pid }))',
+    'setInterval(() => {}, 1000)',
+  ].join('\n')
+
+  const controller = new AbortController()
+  const running = defaultExec(process.execPath, ['-e', script, pidFile], {
+    signal: controller.signal,
+  })
+  let pids = null
+  for (let i = 0; i < 100 && !pids; i += 1) {
+    try {
+      pids = JSON.parse(await readFile(pidFile, 'utf8'))
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+  assert.ok(pids, '子进程应写出自己的 pid')
+
+  controller.abort()
+  const result = await running
+  assert.equal(result.aborted, true)
+
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return error.code !== 'ESRCH'
+    }
+  }
+  for (let i = 0; i < 100 && (alive(pids.parent) || alive(pids.child)); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(alive(pids.parent), false, '父进程应退出')
+  assert.equal(alive(pids.child), false, '孙进程应退出')
+  await rm(dir, { recursive: true, force: true })
+})
+
+test('agent 自身超时按失败返回，不标成管道取消', async () => {
+  const runner = createAgentRunner({
+    model: 'test-model',
+    timeoutMs: 30,
+    exec: (command, args, { signal }) =>
+      new Promise((resolve) => {
+        signal.addEventListener(
+          'abort',
+          () => resolve({ code: 1, stdout: '', stderr: '', aborted: true }),
+          { once: true },
+        )
+      }),
+  })
+  const result = await runner.run({ brief: '验证这张票' })
+  assert.equal(result.ok, false)
+  assert.equal(result.timedOut, true)
+  assert.equal(result.aborted, undefined, '超时不算管道取消，要写失败行')
 })

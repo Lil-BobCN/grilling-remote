@@ -46,6 +46,7 @@ import {
   collectRepos,
   collectSnapshot,
   hasLabel,
+  resolveTimeouts,
   routeRepo,
   runLoop,
   runOnce,
@@ -265,6 +266,7 @@ export async function run(
       backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
     },
     stepTimeoutMs: Number(process.env.AFK_STEP_TIMEOUT_MS) || undefined,
+    pipelineTimeoutMs: Number(process.env.AFK_PIPELINE_TIMEOUT_MS) || undefined,
     jobHeartbeatMs: Number(process.env.AFK_JOB_HEARTBEAT_MS) || undefined,
     roundTimeoutMs: Number(process.env.AFK_ROUND_TIMEOUT_MS) || undefined,
     watchdogIntervalMs: Number(process.env.AFK_HEARTBEAT_MS) || undefined,
@@ -296,6 +298,8 @@ export async function run(
     createTicketPipeline({
       runner: createAgentRunner({
         command: process.env.AFK_AGENT_COMMAND || 'claude',
+        model: process.env.AFK_AGENT_MODEL || process.env.ANTHROPIC_MODEL || '',
+        timeoutMs: Number(process.env.AFK_AGENT_TIMEOUT_MS) || undefined,
       }),
       notifier: notify,
       log: configOverrides.log || logLine,
@@ -438,6 +442,8 @@ export async function start(
 ) {
   const loaded = await loadConfig({ env, envFile, probeModel, readFile })
   applyConfigEnv(loaded)
+  const timeouts = resolveTimeouts(process.env)
+  logLine({ level: 'info', msg: '启动配置', ...timeouts })
   const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
   if (!owner) {
     const target = loaded.found ? `${loaded.envFile} 里也没有` : `${loaded.envFile} 不存在`

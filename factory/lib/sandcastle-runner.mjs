@@ -51,17 +51,64 @@ async function exists(path) {
   }
 }
 
-export function defaultExec(command, args, { cwd, env, onStart } = {}) {
+export function defaultExec(
+  command,
+  args,
+  { cwd, env, onStart, signal, killGraceMs = 5000 } = {},
+) {
+  if (signal?.aborted) {
+    return Promise.resolve({ code: 1, stdout: '', stderr: '', aborted: true })
+  }
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    })
     let started = false
     let stdout = ''
     let stderr = ''
+    let settled = false
+    let killTimer = null
+    let aborted = false
+
     const mark = () => {
       if (started) return
       started = true
       if (typeof onStart === 'function') onStart()
     }
+
+    const killGroup = (sig) => {
+      if (!child.pid) return
+      try {
+        process.kill(-child.pid, sig)
+      } catch (error) {
+        if (error.code === 'ESRCH') return
+        try {
+          child.kill(sig)
+        } catch {
+          // 进程已经没了。
+        }
+      }
+    }
+
+    const onAbort = () => {
+      aborted = true
+      killGroup('SIGTERM')
+      killTimer = setTimeout(() => killGroup('SIGKILL'), killGraceMs)
+      killTimer?.unref?.()
+    }
+
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      if (killTimer) clearTimeout(killTimer)
+      signal?.removeEventListener?.('abort', onAbort)
+      resolve(result)
+    }
+
+    signal?.addEventListener?.('abort', onAbort, { once: true })
     child.once('spawn', mark)
     child.stdout.on('data', (chunk) => {
       stdout += chunk
@@ -70,10 +117,10 @@ export function defaultExec(command, args, { cwd, env, onStart } = {}) {
       stderr += chunk
     })
     child.once('error', (error) => {
-      resolve({ code: 1, stdout, stderr: `${stderr}${error.message}` })
+      finish({ code: 1, stdout, stderr: `${stderr}${error.message}`, aborted })
     })
     child.once('close', (code) => {
-      resolve({ code: Number.isInteger(code) ? code : 1, stdout, stderr })
+      finish({ code: Number.isInteger(code) ? code : 1, stdout, stderr, aborted })
     })
   })
 }
@@ -294,6 +341,29 @@ function parseResult(stdout, ticketBranch) {
   }
 }
 
+async function listSandcastleContainers({ exec, cwd, env }) {
+  const result = await exec('docker', ['ps', '-aq', '--filter', 'name=^sandcastle-'], { cwd, env })
+  // 列不出来时返回 null，不能当成空集：否则取消时会误删同机别的容器。
+  if (result?.code !== 0) return null
+  return new Set(
+    String(result.stdout || '')
+      .split(/\s+/)
+      .filter(Boolean),
+  )
+}
+
+/** 取消后只清这次新起的容器，不碰同机别的票或别的仓的沙箱。 */
+async function removeNewSandcastleContainers({ exec, cwd, env, before }) {
+  if (!before) return []
+  const after = await listSandcastleContainers({ exec, cwd, env })
+  if (!after) return []
+  const fresh = [...after].filter((id) => !before.has(id))
+  for (const id of fresh) {
+    await exec('docker', ['rm', '-f', id], { cwd, env })
+  }
+  return fresh
+}
+
 /**
  * @param {object} [options]
  * @param {string} [options.home] runner 目录，默认 `AFK_SANDCASTLE_HOME` 或 `~/.afkfactory/sandcastle`
@@ -354,24 +424,37 @@ export function createSandcastleRunner({
 
   /** 真正起容器和会话；子进程起来时调用 started() 回执。 */
   async function run(args) {
-    const { repoDir, ticketBranch, started, prepared } = args
+    const { repoDir, ticketBranch, started, prepared, signal } = args
     if (!prepared?.scriptPath) throw new Error('先跑 prepare()，拿到 scriptPath 再 run()')
 
+    const runEnv = { ...baseEnv(env), NODE_PATH: join(home, 'node_modules') }
+    // 取消要带走这次起的沙箱容器；先记下已有的，结束后只删新增的。
+    const before = signal ? await listSandcastleContainers({ exec, cwd: repoDir, env: runEnv }) : null
     const result = await exec(join(home, 'node_modules', '.bin', 'tsx'), [prepared.scriptPath], {
       cwd: repoDir,
-      env: { ...baseEnv(env), NODE_PATH: join(home, 'node_modules') },
+      env: runEnv,
+      signal,
       onStart: () => {
         if (typeof started === 'function') started()
       },
     })
+    const cleanedContainers =
+      signal?.aborted && before
+        ? await removeNewSandcastleContainers({ exec, cwd: repoDir, env: runEnv, before })
+        : []
 
     if (result.code !== 0) {
       const error = new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
       const parsed = tryParseResult(result.stdout)
       if (parsed?.preservedWorktreePath) error.preservedWorktreePath = parsed.preservedWorktreePath
+      if (result.aborted || signal?.aborted) error.aborted = true
+      if (cleanedContainers.length) error.cleanedContainers = cleanedContainers
       throw error
     }
-    return parseResult(result.stdout, ticketBranch)
+    return {
+      ...parseResult(result.stdout, ticketBranch),
+      ...(cleanedContainers.length ? { cleanedContainers } : {}),
+    }
   }
 
   return { prepare, run }

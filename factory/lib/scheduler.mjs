@@ -7,6 +7,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { eventKey } from '../../backend/lib/protocol.mjs'
+import { DEFAULT_AGENT_TIMEOUT_MS } from './agent-runner.mjs'
 import { readTrail } from './evidence.mjs'
 import { git } from './git.mjs'
 import { latestGate } from './gate.mjs'
@@ -976,7 +977,7 @@ async function removeSandcastleLabel({ gh, owner, repo, ticketNumber }) {
   return { type: 'removeSandcastle', changed: true }
 }
 
-async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock }) {
+async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock, signal }) {
   const ticketNumber = action.ticketNumber ?? action.ticket?.number
   const fresh = await gh.getIssue({ owner, repo, number: ticketNumber })
   if (labelNames(fresh).includes(SANDBOX_LABEL)) {
@@ -1024,6 +1025,7 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
     jobPolicy: config.jobPolicy || {},
     now,
     clock,
+    signal,
   })
   config.pendingIgnitions.add(task)
   const forget = () => config.pendingIgnitions.delete(task)
@@ -1046,6 +1048,7 @@ async function runIgnitionInBackground({
   jobPolicy,
   now,
   clock,
+  signal,
 }) {
   // 点火可能跑很久，作业行的 lastBeat 要用失败那一刻的时间，不能拿轮次开始时间。
   const currentTime = () => {
@@ -1089,6 +1092,7 @@ async function runIgnitionInBackground({
       parent: { number: parent.number, title: parent.title, body: parent.body },
       ticket,
       attempt,
+      signal,
     })
     if (result?.skipped) {
       // busy/blocked：这次没真正跑，不写作业表，不涨 attempt，不进退避。
@@ -1200,6 +1204,7 @@ async function executeActions({
   config,
   now,
   clock,
+  signal,
 }) {
   const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish })
   if (missing) return { skipped: missing, results: [] }
@@ -1257,7 +1262,7 @@ async function executeActions({
         )
       }
     } else if (action.type === 'ignite') {
-      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock })
+      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock, signal })
       results.push(result)
       // 抢不到仓锁：这一轮整张票都不动，状态留给下一轮，避免没点火就先改开发中。
       if (result.skipped === 'locked') return { skipped: 'locked', results }
@@ -1376,6 +1381,21 @@ function localDateOffset(date, days) {
 const DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_ROUND_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_HEARTBEAT_MS = 60 * 1000
+export const DEFAULT_PIPELINE_TIMEOUT_MS = 2 * 60 * 60 * 1000
+export const DEFAULT_CANCEL_GRACE_MS = 10 * 1000
+
+/** 三个硬上限：非 agent 步骤 30 分钟、单个 agent 45 分钟、一条管道 2 小时。 */
+export function resolveTimeouts(env = process.env) {
+  const pick = (key, fallback) => {
+    const value = Number(env[key])
+    return Number.isFinite(value) && value > 0 ? value : fallback
+  }
+  return {
+    stepTimeoutMs: pick('AFK_STEP_TIMEOUT_MS', DEFAULT_STEP_TIMEOUT_MS),
+    agentTimeoutMs: pick('AFK_AGENT_TIMEOUT_MS', DEFAULT_AGENT_TIMEOUT_MS),
+    pipelineTimeoutMs: pick('AFK_PIPELINE_TIMEOUT_MS', DEFAULT_PIPELINE_TIMEOUT_MS),
+  }
+}
 
 export class StepTimeoutError extends Error {
   constructor(label, timeoutMs) {
@@ -1386,9 +1406,19 @@ export class StepTimeoutError extends Error {
   }
 }
 
-/** 跑一步：跑的时候按时写心跳，超时就抛 StepTimeoutError。 */
-export async function runJobStep({ jobs, clock = () => new Date(), config = {}, label = '这一步', task }) {
-  const timeoutMs = config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
+/**
+ * 跑一步：跑的时候按时写心跳，超时就取消任务再抛 StepTimeoutError。
+ * 取消后最多等 cancelGraceMs，让子进程和管道收尾，下一轮不会和这一轮叠着跑。
+ */
+export async function runJobStep({
+  jobs,
+  clock = () => new Date(),
+  config = {},
+  label = '这一步',
+  task,
+  timeoutMs: timeoutOverride,
+}) {
+  const timeoutMs = timeoutOverride ?? config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
   const heartbeatMs = config.jobHeartbeatMs ?? DEFAULT_HEARTBEAT_MS
   const log = config.log || logLine
   // 计时器可注入：测试用确定性触发，不跟真实时间赛跑。
@@ -1407,14 +1437,32 @@ export async function runJobStep({ jobs, clock = () => new Date(), config = {}, 
     }, heartbeatMs)
     beatTimer?.unref?.()
   }
-  const work = Promise.resolve().then(task)
+  const controller = new AbortController()
+  const work = Promise.resolve().then(() => task({ signal: controller.signal }))
   try {
     if (timeoutMs <= 0) return await work
     const limit = new Promise((resolve, reject) => {
-      timeoutTimer = timeout(() => reject(new StepTimeoutError(label, timeoutMs)), timeoutMs)
+      timeoutTimer = timeout(() => {
+        const error = new StepTimeoutError(label, timeoutMs)
+        controller.abort(error)
+        reject(error)
+      }, timeoutMs)
       timeoutTimer?.unref?.()
     })
     return await Promise.race([work, limit])
+  } catch (error) {
+    if (error instanceof StepTimeoutError) {
+      const grace = config.cancelGraceMs ?? DEFAULT_CANCEL_GRACE_MS
+      const boxed = await Promise.race([
+        work.then((value) => ({ value })).catch(() => null),
+        new Promise((resolve) => {
+          const timer = timeout(() => resolve(null), grace)
+          timer?.unref?.()
+        }),
+      ])
+      if (boxed) error.cancelledResult = boxed.value
+    }
+    throw error
   } finally {
     if (beatTimer) clearIntervalFn(beatTimer)
     if (timeoutTimer) clearTimeoutFn(timeoutTimer)
@@ -1736,6 +1784,41 @@ async function noteAuthFailures({ report, jobs, gh, notifier, config, now, facts
   }
 }
 
+/**
+ * 管道超时：写 pipeline 作业行，reason 含「超时」，按 attempt 退避。
+ * 能定位到正在跑的那张票就只写它；定位不到就把有活跃子票的父工单都记上。
+ */
+async function notePipelineTimeout({ jobs, gh, owner, repo, parents, active, error, now, jobPolicy, report }) {
+  if (!jobs) return
+  const targets = active?.parent
+    ? [{ parent: active.parent, ticket: active.ticket ?? null }]
+    : (parents || [])
+        .filter((parent) => (parent.subIssues || []).some((ticket) => stillSandcastle(ticket)))
+        .map((parent) => ({ parent: parent.number, ticket: null }))
+  const seen = new Set()
+  for (const target of targets) {
+    if (seen.has(target.parent)) continue
+    seen.add(target.parent)
+    try {
+      const row = await jobs.recordFailure({
+        owner,
+        repo,
+        parent: target.parent,
+        ticket: target.ticket,
+        action: 'pipeline',
+        reason: `管道超时：${error.message}`,
+        now,
+        policy: jobPolicy,
+      })
+      if (row?.stop) {
+        await ensureIssueLabel({ gh, owner, repo, number: target.parent, name: NEEDS_INFO_LABEL })
+      }
+    } catch (writeError) {
+      report.errors.push({ repo, parent: target.parent, jobs: true, message: writeError.message })
+    }
+  }
+}
+
 /** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
 async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
   if (!jobs) return
@@ -1843,7 +1926,8 @@ export async function runOnce({
   const jobs = config.jobs || null
   const jobPolicy = config.jobPolicy || {}
   const log = config.log || logLine
-  const step = (label, task) => runJobStep({ jobs, clock, config: { ...config, log }, label, task })
+  const step = (label, task, opts = {}) =>
+    runJobStep({ jobs, clock, config: { ...config, log }, label, task, ...opts })
 
   const report = {
     now: nowDate.toISOString(),
@@ -1949,14 +2033,20 @@ export async function runOnce({
       let pipeline = null
       if (typeof ticketPipeline === 'function') {
         try {
-          pipeline = await step(`跑 ${row.repo} 流水线`, () =>
-            ticketPipeline({
-              gh,
-              owner: row.owner,
-              repo: row.repo,
-              parents: snapshot.parents,
-              repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
-            }),
+          pipeline = await step(
+            `跑 ${row.repo} 流水线`,
+            ({ signal }) =>
+              ticketPipeline({
+                gh,
+                owner: row.owner,
+                repo: row.repo,
+                parents: snapshot.parents,
+                repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
+                jobs,
+                lockDir: config.lockDir || '',
+                signal,
+              }),
+            { timeoutMs: config.pipelineTimeoutMs ?? DEFAULT_PIPELINE_TIMEOUT_MS },
           )
         } catch (error) {
           report.errors.push({
@@ -1966,6 +2056,20 @@ export async function runOnce({
             auth: authStatusOf(error),
             message: error.message,
           })
+          if (error instanceof StepTimeoutError) {
+            await notePipelineTimeout({
+              jobs,
+              gh,
+              owner: row.owner,
+              repo: row.repo,
+              parents: snapshot.parents,
+              active: error.cancelledResult?.active || null,
+              error,
+              now: nowDate,
+              jobPolicy,
+              report,
+            })
+          }
         }
       }
       await notePipelineStops({
@@ -1996,7 +2100,7 @@ export async function runOnce({
         let executed = { skipped: null, results: [] }
         if (actions.length) {
           try {
-            executed = await step(`执行父工单 #${parent.number} 的动作`, () =>
+            executed = await step(`执行父工单 #${parent.number} 的动作`, ({ signal }) =>
               executeActions({
                 gh,
                 owner: row.owner,
@@ -2012,6 +2116,7 @@ export async function runOnce({
                 config,
                 now: nowDate,
                 clock,
+                signal,
               }),
             )
           } catch (error) {
@@ -2063,7 +2168,7 @@ export async function runOnce({
       for (const { map, actions } of routed.maps) {
         let executed = { skipped: null, results: [] }
         try {
-          executed = await step(`执行地图 #${map.number} 的动作`, () =>
+          executed = await step(`执行地图 #${map.number} 的动作`, ({ signal }) =>
             executeActions({
               gh,
               owner: row.owner,
@@ -2078,6 +2183,7 @@ export async function runOnce({
               config,
               now: nowDate,
               clock,
+              signal,
             }),
           )
         } catch (error) {

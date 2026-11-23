@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -9,8 +9,11 @@ import { ensureLabel } from '../lib/issues.mjs'
 import { createTicketPipeline } from '../lib/pipeline.mjs'
 import { freshVerifiers, mergeTicket, parseTrail, readTrail } from '../lib/evidence.mjs'
 import { FIXER_TOOLS } from '../lib/agent-runner.mjs'
-import { stallHits } from '../lib/scheduler.mjs'
+import { stallHits, runOnce } from '../lib/scheduler.mjs'
 import { startFakeGithub } from './fake-github.mjs'
+
+const LEASE_DIR = join(tmpdir(), `afk-pipeline-locks-${process.pid}`)
+process.env.AFK_LOCK_DIR = LEASE_DIR
 
 const OWNER = 'acme'
 const REPO = 'demo'
@@ -1332,4 +1335,159 @@ test('归档处理不了时返回 branch_conflict，不再报 branch-busy', asyn
   assert.equal(result.runs[0].reason, 'branch_conflict')
   assert.notEqual(result.runs[0].skipped, 'branch-busy')
   assert.equal(runner.calls.length, 0, '切不过去就不跑验证和评审')
+})
+
+async function waitFor(check, { timeoutMs = 3000 } = {}) {
+  const started = Date.now()
+  while (!check()) {
+    if (Date.now() - started > timeoutMs) throw new Error('等待超时')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+test('同一票两条管道并发：第二条 busy，第一条还在跑', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  let release
+  const gate = new Promise((resolve) => {
+    release = resolve
+  })
+  let calls = 0
+  const runner = {
+    async run() {
+      calls += 1
+      await gate
+      return {
+        ok: true,
+        code: 0,
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}\n',
+        stderr: '',
+      }
+    },
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+  const context = {
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  }
+
+  const first = pipeline(context)
+  await waitFor(() => calls === 1)
+  const second = await pipeline(context)
+  assert.equal(second.runs[0].skipped, 'busy')
+  assert.equal(calls, 1, '第二条管道没有调用 runner')
+
+  release()
+  const result = await first
+  assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
+  await stat(join(LEASE_DIR, `${OWNER}__${REPO}__ticket-${ticket.number}.lock`)).then(
+    () => assert.fail('管道结束后租约应删掉'),
+    () => {},
+  )
+})
+
+test('管道收到取消：正在跑的 agent 拿到 signal，返回 aborted，不写失败行', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  let calls = 0
+  const runner = {
+    async run(args) {
+      calls += 1
+      return new Promise((resolve) => {
+        args.signal?.addEventListener(
+          'abort',
+          () => resolve({ ok: false, aborted: true, stdout: '', stderr: '' }),
+          { once: true },
+        )
+      })
+    },
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+  const controller = new AbortController()
+  const running = pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+    signal: controller.signal,
+  })
+  await waitFor(() => calls === 1)
+  controller.abort()
+  const result = await running
+  assert.equal(result.aborted, true)
+  assert.equal(result.runs[0].reason, 'aborted')
+  assert.equal(result.runs[0].ok, false)
+  const comments = commentsOf(fake, parent.number)
+  assert.ok(
+    !comments.some((body) => /验证没过|评审没过/.test(body)),
+    '取消不写验证或评审失败行',
+  )
+})
+
+test('两个 runOnce 同时进同一票：第二条 busy，runner 只被调用一次', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { root } = await makeRepoFixture(t, ticket.number)
+  let release
+  const gate = new Promise((resolve) => {
+    release = resolve
+  })
+  let calls = 0
+  const runner = {
+    async run() {
+      calls += 1
+      await gate
+      return {
+        ok: true,
+        code: 0,
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}\n',
+        stderr: '',
+      }
+    },
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+  const config = { owner: OWNER, lockDir: LEASE_DIR, maxActive: 5, repoRoot: root }
+  const customers = [
+    { id: 'c-0001', short_name: 'acme', status: 'active', repos: { demo: REPO } },
+  ]
+  const clock = () => new Date('2026-11-17T10:00:00+08:00')
+  const run = () =>
+    runOnce({
+      gh,
+      customers,
+      notifier: fakeNotifier(),
+      ticketPipeline: pipeline,
+      clock,
+      config,
+    })
+
+  const first = run()
+  await waitFor(() => calls === 1)
+  const second = await run()
+  assert.equal(second.repos[0].pipeline.runs[0].skipped, 'busy')
+  assert.equal(calls, 1, '第二条 runOnce 没有调用 runner')
+
+  release()
+  const firstReport = await first
+  assert.equal(firstReport.repos[0].pipeline.runs[0].ok, true)
 })
