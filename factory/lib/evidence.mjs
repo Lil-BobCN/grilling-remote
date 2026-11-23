@@ -355,6 +355,28 @@ export async function lastCodeCommit(repoDir, headSha) {
 }
 
 /**
+ * evidenceReady 的候选 SHA：head、最近代码提交，以及两者之间的提交。
+ * 干净检查可能跑在中间的 audit-only 证据提交上，这一层不能丢。
+ */
+async function evidenceCandidates({ repoDir, head, codeHead }) {
+  const shas = [head, codeHead].filter(Boolean)
+  if (repoDir && head && codeHead) {
+    try {
+      const output = await git(repoDir, ['rev-list', `${codeHead}..${head}`])
+      for (const sha of output
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)) {
+        shas.push(sha)
+      }
+    } catch {
+      // 查不了就只用 head 和代码头
+    }
+  }
+  return [...new Set(shas)]
+}
+
+/**
  * 四样证据里靠 trail 行就能判断的三条轴：验证、评审标准、评审 spec。
  * 测试行和截图路径另外查；合并前补齐证据也用它，避免两处判据不一致。
  *
@@ -389,6 +411,7 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
     head = await git(repoDir, ['rev-parse', 'HEAD']).catch(() => '')
   }
   const codeHead = repoDir ? await lastCodeCommit(repoDir, head) : head
+  const candidates = await evidenceCandidates({ repoDir, head, codeHead })
 
   const missing = []
   const missingAxes = missingEvidenceAxes(rows)
@@ -402,7 +425,7 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
       missing.push('验证截图或 trace（phase=verify 的 evidence）')
     } else {
       for (const token of media) {
-        if (repoDir && !(await existsInRepo(repoDir, token, [head, codeHead]))) {
+        if (repoDir && !(await existsInRepo(repoDir, token, candidates))) {
           missing.push(`证据路径不存在：${token}`)
         }
       }
@@ -419,9 +442,8 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
         row.result === 'pass' &&
         String(row.why || '').includes(CLEAN_CHECK_MARKER),
     )
-    const shas = [head, codeHead].filter(Boolean)
     const fresh = cleanChecks.some((row) =>
-      shas.some((sha) => mentionsSha(row.why, sha) || mentionsSha(row.decision, sha)),
+      candidates.some((sha) => mentionsSha(row.why, sha) || mentionsSha(row.decision, sha)),
     )
     if (cleanChecks.length > 0 && !fresh) {
       missing.push(`测试（干净检查的 pass 行没有指向当前 head ${head || '未知'}）`)
@@ -439,12 +461,12 @@ export async function evidenceReady({ trail, headSha, repoDir }) {
     const fresh =
       rows.some(
         (row) =>
-          [head, codeHead].filter(Boolean).some(
+          candidates.some(
             (sha) => mentionsSha(row.why, sha) || mentionsSha(row.decision, sha),
           ),
       ) ||
       verifyRows.some((row) =>
-        [head, codeHead].filter(Boolean).some((sha) =>
+        candidates.some((sha) =>
           shaTokens(row.evidence.replace(/sha=([0-9a-f]{7,40})/gi, '$1')).some((token) =>
             sameSha(token, sha),
           ),
