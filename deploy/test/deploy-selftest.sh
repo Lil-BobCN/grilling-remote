@@ -366,6 +366,15 @@ test_release_fingerprint() {
     return
   fi
 
+  # 文档里的用法是在仓库根用相对源目录打包；脚本内部的第二次 tar -C 不能把它解析到元数据目录下。
+  local relative_pkg="$TMP/afkapp-relative.tgz"
+  if (cd "$root" && bash "$REPO/deploy/backend/package.sh" backend 1.0.1 "$relative_pkg") >"$TMP/package-relative.log" 2>&1; then
+    ok "package.sh 在仓库根用相对源目录打出发布包"
+  else
+    bad "package.sh 用相对源目录失败：$(cat "$TMP/package-relative.log")"
+  fi
+  if [[ -s $relative_pkg ]]; then ok "相对源目录的发布包非空"; else bad "相对源目录的发布包是空文件"; fi
+
   mkdir -p "$TMP/release"
   tar -xzf "$pkg" -C "$TMP/release"
   if [[ -f $TMP/release/release.json ]]; then ok "发布包根有 release.json"; else bad "发布包根没有 release.json"; fi
