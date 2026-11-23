@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -1490,4 +1490,55 @@ test('两个 runOnce 同时进同一票：第二条 busy，runner 只被调用�
   release()
   const firstReport = await first
   assert.equal(firstReport.repos[0].pipeline.runs[0].ok, true)
+})
+
+test('exclude 在管道里被改：被忽略的证据仍进分支，日志有 evidence_ignored', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const common = (await git(repoDir, ['rev-parse', '--git-common-dir'])).trim()
+  const excludePath = join(
+    common.startsWith('/') ? common : join(repoDir, common),
+    'info',
+    'exclude',
+  )
+  const logs = []
+  let calls = 0
+  const runner = {
+    async run(args) {
+      calls += 1
+      if (calls === 1) {
+        await appendFile(excludePath, '.audit/ignored.txt\n')
+        await writeFile(join(args.cwd, '.audit', 'ignored.txt'), 'ignored-evidence')
+      }
+      return {
+        ok: true,
+        code: 0,
+        stdout:
+          'AFK_VERDICT {"ok":true,"evidence":[".audit/verify/after.png"],"problems":[],"tests":[{"command":"npm test","result":"pass"}]}\n',
+        stderr: '',
+      }
+    },
+  }
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: (fields) => logs.push(fields),
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+  assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
+
+  const committed = await git(repoDir, ['show', `${REQ_BRANCH}:.audit/ignored.txt`]).catch(() => '')
+  assert.equal(committed, 'ignored-evidence', '被忽略的证据也要提交到票分支')
+
+  const hit = logs.find((row) => row.msg === 'evidence_ignored')
+  assert.ok(hit, 'exclude 变了要写 evidence_ignored 日志')
+  assert.ok(hit.added.includes('.audit/ignored.txt'))
 })
