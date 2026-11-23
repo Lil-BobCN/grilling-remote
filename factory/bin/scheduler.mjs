@@ -447,6 +447,7 @@ export async function start(
     })
   }
   const client = runOptions.gh || createGithub({ token: loaded.githubToken })
+  // checkToken 传 null 只给离线测试跳过网络；生产启动一律检查。
   if (checkToken !== null) {
     await (checkToken || verifyGithubToken)({ gh: client, envFile: loaded.envFile, ...(log ? { log } : {}) })
   }

@@ -1414,6 +1414,11 @@ test('runOnce：运行中 GitHub 401 写 auth stop、挂 needs-info，同一故�
   assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
   assert.equal(notifier.calls.length, 1)
   assert.match([...notifier.delivered.keys()][0], /认证失败/)
+  const incident = notifier.calls[0]
+  assert.equal(incident.data.customer, 'acme')
+  assert.ok(incident.data.requirement)
+  assert.ok(incident.data.tried)
+  assert.equal(incident.data.status, 401)
 
   await runOnce({
     gh: failing,
@@ -1423,6 +1428,61 @@ test('runOnce：运行中 GitHub 401 写 auth stop、挂 needs-info，同一故�
     config,
   })
   assert.equal(notifier.calls.length, 1, '同一故障不重复通知')
+
+  // 换回好 token 并摘掉 needs-info：下一轮清掉 auth stop，继续推进。
+  await gh.removeLabel({ owner: OWNER, repo: REPO, number: parent.number, name: 'needs-info' })
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier,
+    clock: () => new Date(NOW.getTime() + 120_000),
+    config,
+  })
+  const recovered = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(recovered.stop, '', '摘标签后清掉 auth stop')
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:排队中'))
+})
+
+test('runOnce：运行中 GitHub 403 同样停线并通知', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const failing = {
+    ...gh,
+    addLabels: async (args) => {
+      if ((args.labels || []).includes('状态:排队中')) {
+        throw Object.assign(new Error('Resource not accessible by integration'), { status: 403 })
+      }
+      return gh.addLabels(args)
+    },
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+
+  const report = await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+    },
+  })
+
+  assert.ok(report.errors.some((error) => error.auth === 403 && error.parent === parent.number))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(row.stop, 'auth-failed')
+  assert.match(row.reason, /403/)
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+  assert.equal(notifier.calls.length, 1)
 })
 
 test('runOnce：一轮开始写心跳，结束记完成时间', async (t) => {

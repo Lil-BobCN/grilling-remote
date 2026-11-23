@@ -1421,10 +1421,13 @@ export async function runJobStep({ jobs, clock = () => new Date(), config = {}, 
   }
 }
 
-/** GitHub 401/403 归为认证失败；其它错误（网络、5xx）不归。 */
+/** GitHub 401/403 归为认证失败；限流的 403 不算，其它错误（网络、5xx）也不归。 */
 function authStatusOf(error) {
   const status = Number(error?.status || 0)
-  return status === 401 || status === 403 ? status : 0
+  if (status !== 401 && status !== 403) return 0
+  const message = String(error?.body?.message || error?.message || '')
+  if (status === 403 && /rate limit/i.test(message)) return 0
+  return status
 }
 
 function failureText(result) {
@@ -1673,7 +1676,7 @@ async function notePipelineStops({ jobs, gh, owner, repo, parents, pipeline, now
  * 运行中 GitHub 401/403：能定位到父工单的写 stop、挂 needs-info、发一次「出事」；
  * 拿不到父工单（比如读快照就失败）时至少发一条稳定 key 的通知，让运营者看到停线。
  */
-async function noteAuthFailures({ report, jobs, gh, notifier, config, now }) {
+async function noteAuthFailures({ report, jobs, gh, notifier, config, now, facts }) {
   const failures = (report.errors || []).filter((row) => row.auth)
   if (!failures.length) return
   const seen = new Set()
@@ -1703,10 +1706,20 @@ async function noteAuthFailures({ report, jobs, gh, notifier, config, now }) {
       }
     }
     const subject = row.parent ? `#${row.parent}` : '仓库'
+    const fact = row.parent
+      ? facts?.parent?.get(`${row.owner}/${row.repo}#${row.parent}`)
+      : facts?.repo?.get(`${row.owner}/${row.repo}`)
     const event = {
       event: '出事',
       key: eventKey({ owner: row.owner, repo: row.repo, subject, event: '认证失败' }),
-      data: { reason, status: row.auth },
+      data: {
+        customer: fact?.customer || '未知客户',
+        requirement: fact?.requirement || row.repo || '未知需求',
+        reason,
+        tried: String(row.message || reason),
+        status: row.auth,
+      },
+      ...(fact?.link ? { link: fact.link } : {}),
     }
     try {
       const result = await deliverEvent({ notifier, event, config, now })
@@ -1897,6 +1910,21 @@ export async function runOnce({
     for (const { snapshot } of snapshots) {
       for (const parent of snapshot.parents) {
         for (const ticket of parent.subIssues) if (stillSandcastle(ticket)) activeCount += 1
+      }
+    }
+
+    const parentFactsByKey = new Map()
+    const repoFactsByKey = new Map()
+    for (const { row, snapshot } of snapshots) {
+      repoFactsByKey.set(`${row.owner}/${row.repo}`, {
+        customer: row.shortName || '未知客户',
+        requirement: row.product || row.repo,
+      })
+      for (const parent of snapshot.parents) {
+        parentFactsByKey.set(`${row.owner}/${row.repo}#${parent.number}`, {
+          ...parentFacts(parent),
+          link: parentLink(parent, row.owner, row.repo),
+        })
       }
     }
 
@@ -2152,7 +2180,15 @@ export async function runOnce({
       }
     }
 
-    await noteAuthFailures({ report, jobs, gh, notifier, config, now: nowDate })
+    await noteAuthFailures({
+      report,
+      jobs,
+      gh,
+      notifier,
+      config,
+      now: nowDate,
+      facts: { parent: parentFactsByKey, repo: repoFactsByKey },
+    })
 
     if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
       try {
