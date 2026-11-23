@@ -116,6 +116,16 @@ env_set() { # 文件 键 值；没有这个键就追加
   mv "$tmp" "$file"
 }
 
+database_url() { # .env 路径；用文件里的 DB 凭据拼连接串，缺凭据返回 1
+  local env=$1 db user pass host
+  db=$(env_get "$env" DB_NAME)
+  user=$(env_get "$env" DB_USER)
+  pass=$(env_get "$env" DB_PASSWORD)
+  host=$(env_get "$env" PG_HOST)
+  [[ -n $db && -n $user && -n $pass && -n $host ]] || return 1
+  printf 'postgresql://%s:%s@%s:5432/%s' "$user" "$pass" "$host" "$db"
+}
+
 # 应用 env 契约：从应用自己的 .env.example 读键，缺的补进 .env。
 # 契约里有默认值就用默认值；APP_NAME 留空时按交付地址生成；其余留空的键不猜，直接失败。
 fill_env_contract() { # 目录 契约文件
@@ -661,6 +671,8 @@ cmd_init() {
     APP_GID=${AFK_APP_GID:-1000}
     APP_INTERNAL_PORT=${AFK_APP_INTERNAL_PORT:-3000}
     IMAGE=$image
+    PG_HOST=$PG_CONTAINER
+    DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${PG_HOST}:5432/${DB_NAME}"
     cat >"$env" <<EOF
 IMAGE=$IMAGE
 PORT=$PORT
@@ -668,7 +680,7 @@ APP_NETWORK=$APP_NETWORK
 APP_UID=$APP_UID
 APP_GID=$APP_GID
 APP_INTERNAL_PORT=$APP_INTERNAL_PORT
-PG_HOST=$PG_CONTAINER
+PG_HOST=$PG_HOST
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
@@ -677,6 +689,7 @@ ADMIN_PASSWORD=$ADMIN_PASSWORD
 ADMIN_PATH=$ADMIN_PATH
 ADMIN_PASSPHRASE=$ADMIN_PASSPHRASE
 SESSION_SECRET=$SESSION_SECRET
+DATABASE_URL=$DATABASE_URL
 EOF
     chmod 600 "$env"
     chown_if_root root:root "$env"
@@ -704,6 +717,15 @@ EOF
     env_set "$env" SESSION_SECRET "$(random_hex 32)"
     env_changed=1
     log "补上会话密钥 SESSION_SECRET，写在 $env"
+  fi
+  # 首次部署失败留下的旧 .env 可能只有 DB 凭据、没有连接串；用现有凭据回填。
+  if [[ -z $(env_get "$env" DATABASE_URL) ]]; then
+    local db_url
+    if db_url=$(database_url "$env"); then
+      env_set "$env" DATABASE_URL "$db_url"
+      env_changed=1
+      log "补上数据库连接串 DATABASE_URL，写在 $env"
+    fi
   fi
   if [[ $env_changed -eq 1 ]]; then
     chown_if_root root:root "$env"

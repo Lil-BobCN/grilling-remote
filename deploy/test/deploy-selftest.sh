@@ -230,6 +230,41 @@ EOF
   assert_eq "$address" "$(env_get "$env" APP_NAME)" "APP_NAME 按地址生成"
   assert_eq "19100" "$(env_get "$env" PORT)" "PORT 用挑好的端口，不被契约默认值覆盖"
 
+  # 应用契约把 DATABASE_URL 留空时，product-init 用 DB 凭据生成连接串。
+  local db_contract="$TMP/db.env.example"
+  cat >"$db_contract" <<'EOF'
+PORT=3000
+HOST=0.0.0.0
+APP_NAME=
+DATABASE_URL=
+EOF
+  local db_address="acme-db.afkfactory.space"
+  out=$(run_init "$db_address" "$template" --env-example "$db_contract" 2>&1)
+  status=$?
+  if [[ $status -eq 0 ]]; then
+    ok "契约留空 DATABASE_URL 时 init 成功"
+  else
+    bad "契约留空 DATABASE_URL 时 init 失败：$out"
+  fi
+  local db_env="$TMP/contract/products/$db_address/.env"
+  local db_name db_user db_pass
+  db_name=$(env_get "$db_env" DB_NAME)
+  db_user=$(env_get "$db_env" DB_USER)
+  db_pass=$(env_get "$db_env" DB_PASSWORD)
+  assert_eq "postgresql://${db_user}:${db_pass}@afk-test-pg:5432/${db_name}" "$(env_get "$db_env" DATABASE_URL)" "首次 init 写 DATABASE_URL"
+
+  # 已有 .env（首次失败留下的）缺 DATABASE_URL：重跑 init 用现有凭据回填。
+  grep -v '^DATABASE_URL=' "$db_env" >"$TMP/db-without-url.env"
+  cat "$TMP/db-without-url.env" >"$db_env"
+  out=$(run_init "$db_address" "$template" 2>&1)
+  status=$?
+  if [[ $status -eq 0 ]]; then
+    ok "已有 .env 缺 DATABASE_URL 时重跑 init 成功"
+  else
+    bad "已有 .env 缺 DATABASE_URL 时重跑 init 失败：$out"
+  fi
+  assert_eq "postgresql://${db_user}:${db_pass}@afk-test-pg:5432/${db_name}" "$(env_get "$db_env" DATABASE_URL)" "重跑 init 回填 DATABASE_URL"
+
   # 契约里留空的键，helper 不知道怎么生成就失败，并点名。
   local template_missing="$TMP/template-missing"
   prepare_template "$template_missing"
