@@ -153,8 +153,8 @@ class TestTemplates(unittest.TestCase):
             ),
             (
                 "该跑 to-spec",
-                "B 店 · 预约送货 · 该跑 to-spec 了",
-                "补缺口已点头，状态改成排队中。手动跑 to-spec，写完再拆票。"
+                "B 店 · 预约送货 · 工厂开始跑 to-spec",
+                "补缺口已点头，状态改成排队中。工厂开始跑 to-spec，写完直接拆票，不用你动手。"
                 "https://example.test/1",
             ),
             (

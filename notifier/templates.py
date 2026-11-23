@@ -58,8 +58,8 @@ def _gap_proposal(data, link):
 
 def _run_to_spec(data, link):
     return (
-        f"{data['customer']} · {data['requirement']} · 该跑 to-spec 了",
-        f"补缺口已点头，状态改成排队中。手动跑 to-spec，写完再拆票。{link}",
+        f"{data['customer']} · {data['requirement']} · 工厂开始跑 to-spec",
+        f"补缺口已点头，状态改成排队中。工厂开始跑 to-spec，写完直接拆票，不用你动手。{link}",
     )
 
 

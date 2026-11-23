@@ -1,5 +1,5 @@
 /**
- * 调度器的四个默认实现：叫拆票、建修复子票、读 PR head 的待答问题、
+ * 调度器的默认实现：叫 to-spec、叫拆票、建修复子票、读 PR head 的待答问题、
  * 读前一天合进主干的 PR。外部命令全部可注入，测试不跑真模型、不碰真 GitHub。
  *
  * 判断只看可检查的事实：父工单评论里的关口词、trail 的六列、PR 的
@@ -13,6 +13,7 @@ import { createAgentRunner, DECOMPOSE_TOOLS, GAP_TOOLS } from './agent-runner.mj
 import { parseTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { runGh, runHelper } from './helper.mjs'
+import { parentRequirement } from './ignition.mjs'
 import { ensureLabel, ensureSubIssue } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { parseParentAcceptance } from './tickets.mjs'
@@ -495,6 +496,99 @@ export function createGapProposal({
       stderr: result.stderr,
     })
     return result
+  }
+}
+
+function issueHasLabel(issue, name) {
+  return (issue?.labels || []).some((label) => (typeof label === 'string' ? label : label?.name) === name)
+}
+
+function specIssueFor(issues, requirement) {
+  return (
+    (issues || []).find(
+      (issue) =>
+        issueHasLabel(issue, 'ready-for-agent') &&
+        requirement &&
+        (String(issue.title || '').includes(requirement) ||
+          String(issue.body || '').includes(requirement)),
+    ) || null
+  )
+}
+
+function toSpecBrief({ instructions, parent, owner, repo }) {
+  return [
+    String(instructions || '').trim(),
+    '',
+    '## 这次 to-spec',
+    '',
+    `父工单：#${parent?.number || ''} ${parent?.title || ''}`.trim(),
+    `客户仓：${owner}/${repo}`,
+    `用 gh 发 spec issue 时必须带 --repo ${owner}/${repo}。`,
+    '',
+    '父工单正文：',
+    '',
+    String(parent?.body || ''),
+  ].join('\n')
+}
+
+/**
+ * 调度器自动跑 to-spec：没有 spec 时叫 agent 生成并发布。
+ * 先查已有 spec，已有就跳过；跑完再查一次，标题、标签和需求名都对得上才算成功。
+ * 读不到 GitHub 或 agent 没产出都返回原因，调度器按 attempt 退避。
+ */
+export function createToSpec({
+  runner,
+  command = process.env.AFK_AGENT_COMMAND || 'claude',
+  agentsDir,
+  repoRoot = '',
+  gh = null,
+} = {}) {
+  const agentRunner = runner || createAgentRunner({ command })
+  const agents = agentsDir || DEFAULT_AGENTS_DIR
+  return async function toSpec({ owner, repo, parent, spec = null } = {}) {
+    if (spec) return { ok: true, skipped: 'spec-exists', number: spec.number }
+    if (!gh || typeof gh.listIssues !== 'function') {
+      return { ok: false, reason: 'to-spec job 没有 GitHub 客户端，读不到已有 spec' }
+    }
+    const requirement =
+      parentRequirement(parent?.body) || parent?.requirement || parent?.title || ''
+    let issues
+    try {
+      issues = await gh.listIssues({ owner, repo, state: 'open' })
+    } catch (error) {
+      return { ok: false, reason: `读 issue 列表失败：${errorText(error)}` }
+    }
+    const existing = specIssueFor(issues, requirement)
+    if (existing) return { ok: true, skipped: 'spec-exists', number: existing.number }
+
+    const instructions = await readFile(join(agents, 'to-spec.md'), 'utf8')
+    const preferred = repoRoot ? join(repoRoot, repo || '') : ''
+    const cwd = preferred && (await dirExists(preferred)) ? preferred : process.cwd()
+    const run = await agentRunner.run({
+      name: `to-spec-${parent?.number || 'parent'}`,
+      cwd,
+      allowedTools: GAP_TOOLS,
+      brief: toSpecBrief({ instructions, parent, owner, repo }),
+    })
+    if (!run?.ok) {
+      const detail = String(run?.stderr || run?.stdout || '').trim().slice(-500)
+      return {
+        ok: false,
+        code: run?.code,
+        reason: `to-spec agent 退出码 ${run?.code ?? 1}${detail ? `：${detail}` : ''}`,
+      }
+    }
+
+    try {
+      issues = await gh.listIssues({ owner, repo, state: 'open' })
+    } catch (error) {
+      return { ok: false, reason: `读 to-spec 结果失败：${errorText(error)}` }
+    }
+    const created = specIssueFor(issues, requirement)
+    if (!created) {
+      return { ok: false, reason: 'to-spec agent 没有产出挂 ready-for-agent 的 spec issue' }
+    }
+    return { ok: true, number: created.number, title: created.title }
   }
 }
 

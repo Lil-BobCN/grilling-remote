@@ -266,14 +266,24 @@ test('listWaiting 列出点头后没 spec 的父工单，有 spec 或没点头�
   assert.deepEqual(rows.map((row) => [row.kind, row.ticket]), [['spec', 2]])
 })
 
-test('answerWaiting 对 spec 直接说没有写回命令', async () => {
-  await assert.rejects(
-    () => answerWaiting({ entry: { kind: 'spec', owner: 'o', repo: 'r', ticket: 2 } }),
-    /手动步骤/,
-  )
+test('answerWaiting 对 spec 触发一次 to-spec 重跑', async () => {
+  const calls = []
+  const run = async (command, args) => {
+    calls.push([command, args])
+    return '{"ok":true}'
+  }
+  await answerWaiting({
+    entry: { kind: 'spec', owner: 'o', repo: 'r', ticket: 2 },
+    run,
+    node: 'node',
+    repoRoot: '/repo',
+  })
+  assert.equal(calls[0][0], 'node')
+  assert.ok(calls[0][1][0].endsWith('factory/bin/to-spec.mjs'))
+  assert.equal(calls[0][1][calls[0][1].indexOf('--parent') + 1], '2')
 })
 
-test('console show 对 spec 给出手动处理提示', async () => {
+test('console show 对 spec 说明工厂会自动跑', async () => {
   const gh = {
     listIssues: async () => [parentIssue({ number: 2, requirement: 'kucun' })],
     listComments: async () => [{ body: '点头：补缺口' }],
@@ -283,7 +293,7 @@ test('console show 对 spec 给出手动处理提示', async () => {
     gh,
     out: (line) => lines.push(line),
   })
-  assert.ok(lines.some((line) => line.includes('手动跑 to-spec')))
+  assert.ok(lines.some((line) => line.includes('工厂会自动跑 to-spec')))
 })
 
 test('console 拒绝未知类型，错误里列出四种可选类型', async () => {
