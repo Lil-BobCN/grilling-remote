@@ -444,7 +444,7 @@ export function createSandcastleRunner({
       const error = new Error(`Sandcastle 退出码 ${result.code}：${tail(result)}`)
       const parsed = tryParseResult(result.stdout)
       if (parsed?.preservedWorktreePath) error.preservedWorktreePath = parsed.preservedWorktreePath
-      if (result.aborted) error.aborted = true
+      if (result.aborted || signal?.aborted) error.aborted = true
       if (cleanedContainers.length) error.cleanedContainers = cleanedContainers
       throw error
     }

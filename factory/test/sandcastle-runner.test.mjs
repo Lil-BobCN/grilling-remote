@@ -193,3 +193,46 @@ test('工厂模板遵守 Sandcastle 0.12.0 的镜像约定', async () => {
   assert.match(template, /@ai-hero\/sandcastle@0\.12\.0/)
   assert.match(template, /@anthropic-ai\/claude-code/)
 })
+
+test('取消后清理这次新起的 sandcastle 容器，不动已有容器', async (t) => {
+  const fixture = await makeFixture(t)
+  const calls = []
+  let psCount = 0
+  const exec = async (command, args) => {
+    calls.push({ command, args })
+    if (command === 'docker' && args[0] === 'ps') {
+      psCount += 1
+      return { code: 0, stdout: psCount === 1 ? 'old1\n' : 'old1\nnew1\nnew2\n', stderr: '' }
+    }
+    if (command === 'docker' && args[0] === 'rm') {
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    return { code: 1, stdout: '', stderr: 'killed' }
+  }
+  const controller = new AbortController()
+  controller.abort()
+  const runner = createSandcastleRunner({
+    home: join(fixture.root, 'sandcastle'),
+    exec,
+    env: {},
+  })
+
+  await assert.rejects(
+    () =>
+      runner.run({
+        repoDir: fixture.repoDir,
+        ticketBranch: 'ticket/51',
+        prepared: { scriptPath: join(fixture.root, 'sandcastle', 'run-51.mts') },
+        signal: controller.signal,
+      }),
+    (error) => {
+      assert.equal(error.aborted, true)
+      assert.deepEqual(error.cleanedContainers, ['new1', 'new2'])
+      return true
+    },
+  )
+  const removed = calls
+    .filter((call) => call.command === 'docker' && call.args[0] === 'rm')
+    .map((call) => call.args.at(-1))
+  assert.deepEqual(removed, ['new1', 'new2'])
+})
