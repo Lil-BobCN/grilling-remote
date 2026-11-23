@@ -51,3 +51,6 @@ venv/
 # Python
 __pycache__/
 *.pyc
+
+# 模拟环境临时状态，不进仓库
+factory/test/sim/.state/
