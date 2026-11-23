@@ -89,3 +89,25 @@ test('心跳更新 mtime，释放删掉文件', async (t) => {
   await releaseTicketLease(lease.path)
   await assert.rejects(stat(lease.path))
 })
+
+test('租约被接管后，旧持有者不能删或改新租约', async (t) => {
+  const lockDir = await dir(t)
+  const first = await acquireTicketLease({ lockDir, owner: 'acme', repo: 'demo', ticket: 51, pid: 4242 })
+  const second = await acquireTicketLease({
+    lockDir,
+    owner: 'acme',
+    repo: 'demo',
+    ticket: 51,
+    pid: 4343,
+    isAlive: () => false,
+  })
+  assert.equal(second.takeover, true)
+
+  assert.equal(await releaseTicketLease(first.path, { token: first.token }), false)
+  const content = JSON.parse(await readFile(second.path, 'utf8'))
+  assert.equal(content.pid, 4343, '旧持有者释放后新租约还在')
+
+  await assert.rejects(() => touchTicketLease(first.path, { token: first.token }), /已被接管/)
+  await releaseTicketLease(second.path, { token: second.token })
+  await assert.rejects(stat(second.path))
+})

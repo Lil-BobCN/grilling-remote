@@ -266,7 +266,6 @@ export async function run(
       backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
     },
     stepTimeoutMs: Number(process.env.AFK_STEP_TIMEOUT_MS) || undefined,
-    agentTimeoutMs: Number(process.env.AFK_AGENT_TIMEOUT_MS) || undefined,
     pipelineTimeoutMs: Number(process.env.AFK_PIPELINE_TIMEOUT_MS) || undefined,
     jobHeartbeatMs: Number(process.env.AFK_JOB_HEARTBEAT_MS) || undefined,
     roundTimeoutMs: Number(process.env.AFK_ROUND_TIMEOUT_MS) || undefined,

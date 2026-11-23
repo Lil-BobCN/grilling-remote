@@ -343,7 +343,8 @@ function parseResult(stdout, ticketBranch) {
 
 async function listSandcastleContainers({ exec, cwd, env }) {
   const result = await exec('docker', ['ps', '-aq', '--filter', 'name=^sandcastle-'], { cwd, env })
-  if (result?.code !== 0) return new Set()
+  // 列不出来时返回 null，不能当成空集：否则取消时会误删同机别的容器。
+  if (result?.code !== 0) return null
   return new Set(
     String(result.stdout || '')
       .split(/\s+/)
@@ -353,7 +354,9 @@ async function listSandcastleContainers({ exec, cwd, env }) {
 
 /** 取消后只清这次新起的容器，不碰同机别的票或别的仓的沙箱。 */
 async function removeNewSandcastleContainers({ exec, cwd, env, before }) {
+  if (!before) return []
   const after = await listSandcastleContainers({ exec, cwd, env })
+  if (!after) return []
   const fresh = [...after].filter((id) => !before.has(id))
   for (const id of fresh) {
     await exec('docker', ['rm', '-f', id], { cwd, env })
