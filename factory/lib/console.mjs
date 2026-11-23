@@ -257,12 +257,13 @@ export async function answerWaiting({
     return run(node, args)
   }
   if (entry.kind === 'spec') {
-    // to-spec 由调度器自动跑；这个命令给「失败后重试」，直接触发一次。
+    // 不在这里同步跑 agent：重置作业退避，调度器下一轮重新跑 to-spec。
     return run(node, [
-      bin('to-spec.mjs'),
+      bin('job-reset.mjs'),
       '--owner', entry.owner,
       '--repo', entry.repo,
       '--parent', String(entry.ticket),
+      '--action', 'to-spec',
     ])
   }
   throw new Error(`不认识的待办类型：${entry.kind}`)

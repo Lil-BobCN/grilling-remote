@@ -1263,7 +1263,7 @@ async function executeActions({
           owner,
           repo,
           number: parent.number,
-          body: `to-spec 失败：${failureText(result)}。下一轮按退避重试。`,
+          body: `to-spec 失败：${failureText(result)}。按退避重试，到上限会挂 needs-info。`,
         })
       }
     } else if (action.type === 'runGapProposal') {

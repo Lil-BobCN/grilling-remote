@@ -59,7 +59,8 @@ def _gap_proposal(data, link):
 def _run_to_spec(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 工厂开始跑 to-spec",
-        f"补缺口已点头，状态改成排队中。工厂开始跑 to-spec，写完直接拆票，不用你动手。{link}",
+        f"补缺口已点头，状态改成排队中。工厂会自动跑 to-spec，写完直接拆票，不用你动手；"
+        f"一直失败时看父工单的 needs-info。{link}",
     )
 
 

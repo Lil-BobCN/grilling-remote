@@ -279,8 +279,9 @@ test('answerWaiting 对 spec 触发一次 to-spec 重跑', async () => {
     repoRoot: '/repo',
   })
   assert.equal(calls[0][0], 'node')
-  assert.ok(calls[0][1][0].endsWith('factory/bin/to-spec.mjs'))
+  assert.ok(calls[0][1][0].endsWith('factory/bin/job-reset.mjs'))
   assert.equal(calls[0][1][calls[0][1].indexOf('--parent') + 1], '2')
+  assert.equal(calls[0][1][calls[0][1].indexOf('--action') + 1], 'to-spec')
 })
 
 test('console show 对 spec 说明工厂会自动跑', async () => {
