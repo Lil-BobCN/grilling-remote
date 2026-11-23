@@ -50,7 +50,7 @@ log() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
 for file in compose.template.yml app.env.example afk-product backup.sh \
-  caddy/product.caddy caddy/preview.caddy caddy/not-found.caddy \
+  caddy/product.caddy caddy/preview.caddy caddy/not-found.caddy caddy/main-include.caddy \
   systemd/afk-product-backup.service systemd/afk-product-backup.timer; do
   if [[ -L $HERE/$file && ! -e $HERE/$file ]]; then
     if [[ $file == app.env.example ]]; then

@@ -477,6 +477,17 @@ test_helper_package() {
     bad "app.env.example 断链提示不对：$out"
   fi
 
+  local missing="$TMP/helper-missing"
+  cp -R "$unpack" "$missing"
+  rm -f "$missing/deploy/products/caddy/main-include.caddy"
+  out=$(bash "$missing/deploy/products/install.sh" --check-files 2>&1)
+  status=$?
+  if [[ $status -ne 0 ]] && printf '%s' "$out" | grep -q 'main-include.caddy'; then
+    ok "缺 main-include.caddy 时文件预检失败并点名"
+  else
+    bad "缺 main-include.caddy 的预检不对：$out"
+  fi
+
   local mini="$TMP/mini-repo"
   mkdir -p "$mini/deploy/products" "$mini/deploy/lib" "$mini/backend/scaffold"
   cp "$REPO/deploy/products/package.sh" "$mini/deploy/products/package.sh"

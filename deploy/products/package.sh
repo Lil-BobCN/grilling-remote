@@ -4,7 +4,7 @@
 #   bash deploy/products/package.sh [输出文件]
 #
 # 默认输出 output/afk-products-helper.tgz。包从仓库根打，保留 deploy/ 和
-# backend/ 的相对布局；软链默认解引用，app.env.example 进包后是普通文件。
+# backend/ 的相对布局；打包时解引用软链，app.env.example 进包后是普通文件。
 # 解包后到解包目录跑 sudo bash deploy/products/install.sh。
 
 set -euo pipefail
@@ -16,7 +16,8 @@ REPO=$(cd -- "$HERE/../.." && pwd)
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
-for target in deploy/products deploy/lib backend/scaffold/.env.example; do
+for target in deploy/products deploy/lib backend/scaffold/.env.example \
+  deploy/products/caddy/main-include.caddy; do
   [[ -e $REPO/$target ]] || die "缺文件：$REPO/$target"
 done
 
