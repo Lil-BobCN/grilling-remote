@@ -66,5 +66,71 @@ class TestRetryConfig(unittest.TestCase):
                 load_config(str(self.home))
 
 
+class TestOrcaBotConfig(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="notifier-config-"))
+
+    def write(self, config):
+        (self.home / "config.json").write_text(
+            json.dumps(config, ensure_ascii=False), encoding="utf-8")
+
+    def test_missing_block_means_disabled(self):
+        self.write(BASE)
+        config = load_config(str(self.home))
+        self.assertFalse(config.orca_bot.enabled)
+        self.assertEqual(config.orca_bot.command, "orca")
+
+    def test_enabled_reads_bot_timeout_and_command(self):
+        data = json.loads(json.dumps(BASE))
+        data["channels"]["orca_bot"] = {
+            "enabled": True,
+            "bot": "莹宝（AFK）",
+            "timeout_seconds": 20,
+            "command": "/opt/orca/bin/orca",
+        }
+        self.write(data)
+        config = load_config(str(self.home))
+        self.assertTrue(config.orca_bot.enabled)
+        self.assertEqual(config.orca_bot.bot, "莹宝（AFK）")
+        self.assertEqual(config.orca_bot.timeout, 20.0)
+        self.assertEqual(config.orca_bot.command, "/opt/orca/bin/orca")
+
+    def test_enabled_requires_bot_name(self):
+        for block in (
+            {"enabled": True, "timeout_seconds": 20},
+            {"enabled": True, "bot": "", "timeout_seconds": 20},
+            {"enabled": True, "bot": "  ", "timeout_seconds": 20},
+        ):
+            with self.subTest(block=block):
+                data = json.loads(json.dumps(BASE))
+                data["channels"]["orca_bot"] = block
+                self.write(data)
+                with self.assertRaises(ConfigError) as raised:
+                    load_config(str(self.home))
+                self.assertIn("bot", str(raised.exception))
+
+    def test_enabled_requires_positive_timeout(self):
+        data = json.loads(json.dumps(BASE))
+        data["channels"]["orca_bot"] = {
+            "enabled": True, "bot": "afk", "timeout_seconds": 0,
+        }
+        self.write(data)
+        with self.assertRaises(ConfigError):
+            load_config(str(self.home))
+
+    def test_bad_enabled_and_command(self):
+        for block in (
+            {"enabled": "true", "bot": "afk", "timeout_seconds": 20},
+            {"enabled": True, "bot": "afk", "timeout_seconds": 20,
+             "command": ""},
+        ):
+            with self.subTest(block=block):
+                data = json.loads(json.dumps(BASE))
+                data["channels"]["orca_bot"] = block
+                self.write(data)
+                with self.assertRaises(ConfigError):
+                    load_config(str(self.home))
+
+
 if __name__ == "__main__":
     unittest.main()

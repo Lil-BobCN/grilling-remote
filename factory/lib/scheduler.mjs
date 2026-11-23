@@ -529,6 +529,15 @@ export function toSpecWaiting({ parent, latestGate } = {}) {
 }
 
 /**
+ * 提案事件的 scope 带关口评论 id（缺了用 created_at），
+ * 同一天的第二份提案也换新 key，24 小时重复靠天数再换一次。
+ */
+function proposalScope(comment, days) {
+  const stamp = comment?.id ?? comment?.created_at ?? ''
+  return [String(stamp), String(days)].filter(Boolean).join(':')
+}
+
+/**
  * 四条等人待办：提案：补缺口、点头：补缺口但没 spec、提案：拆票、需要你答。
  * 每 24 小时换一个新 scope，通知模块按 key 去重，同一事实同一天只送一次。
  * 给了 owner 和 repo 时 key 带仓库身份，两个客户仓同号不会相撞。
@@ -565,7 +574,7 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [], own
     return {
       event: '补缺口提案',
       days_waited: days,
-      key: eventKey({ ...base, event: '补缺口提案', scope: String(days) }),
+      key: eventKey({ ...base, event: '补缺口提案', scope: proposalScope(latestGate.comment, days) }),
       gate: latestGate,
     }
   }
@@ -584,7 +593,7 @@ export function pendingReminder({ parent, latestGate, now, needsAnswer = [], own
     return {
       event: '拆票提案',
       days_waited: days,
-      key: eventKey({ ...base, event: '拆票提案', scope: String(days) }),
+      key: eventKey({ ...base, event: '拆票提案', scope: proposalScope(latestGate.comment, days) }),
       gate: latestGate,
     }
   }
@@ -717,6 +726,7 @@ function slimComments(comments = []) {
     id: comment.id,
     body: comment.body,
     created_at: comment.created_at,
+    html_url: comment.html_url,
   }))
 }
 
@@ -1360,7 +1370,7 @@ function countTickets(body) {
   return (String(body || '').match(/^\s*-\s*\d+\.\s/gm) || []).length
 }
 
-function reminderEvent({ reminder, parent, owner, repo, repoRoot = '' }) {
+export function reminderEvent({ reminder, parent, owner, repo, repoRoot = '' }) {
   const facts = parentFacts(parent)
   const kind =
     reminder.event === '补缺口提案'
@@ -1384,9 +1394,15 @@ function reminderEvent({ reminder, parent, owner, repo, repoRoot = '' }) {
   }
   if (reminder.event === '补缺口提案') {
     event.data.question_count = countQuestions(reminder.gate?.body)
+    if (reminder.gate?.comment?.html_url) {
+      event.data.comment_url = reminder.gate.comment.html_url
+    }
   }
   if (reminder.event === '拆票提案') {
     event.data.ticket_count = countTickets(reminder.gate?.body)
+    if (reminder.gate?.comment?.html_url) {
+      event.data.comment_url = reminder.gate.comment.html_url
+    }
   }
   if (reminder.event === '需要你答') {
     event.data.question = reminder.item.question

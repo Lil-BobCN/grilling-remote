@@ -151,6 +151,7 @@ def _post(content: str, secret: str, timeout: float) -> None:
         raise ChannelError(f"企业微信返回 {text[:200]}")
 
 
-def send(config: PushConfig, title: str, body: str, secret: str) -> None:
+def send(config: PushConfig, title: str, body: str, secret: str,
+         event=None) -> None:
     for content in _contents(title, body):
         _post(content, secret, config.timeout)

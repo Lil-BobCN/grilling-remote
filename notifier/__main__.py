@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import config as config_module
 from . import state as state_module
+from .channels import orca_bot as orca_bot_channel
 from .channels import push as push_channel
 from .channels import smtp as smtp_channel
 from .templates import EVENTS, EventError, render_event
@@ -30,8 +31,8 @@ EXIT_OK = 0
 EXIT_CHANNEL_FAILED = 1
 EXIT_BAD_INPUT = 2
 
-CHANNEL_ORDER = ("push", "email")
-RETRY_CHANNELS = frozenset({"push"})
+CHANNEL_ORDER = ("push", "email", "orca_bot")
+RETRY_CHANNELS = frozenset({"push", "orca_bot"})
 ALERT_CHANNEL = "email"
 ALERT_TITLE = "通知通道可能断了"
 ALERT_THRESHOLD = 3
@@ -40,7 +41,11 @@ SECRET_SERVICES = {
     "email": config_module.KEYCHAIN_SMTP_PASSWORD,
     "push": config_module.KEYCHAIN_WECOM_WEBHOOK,
 }
-DEFAULT_SENDERS = {"email": smtp_channel.send, "push": push_channel.send}
+DEFAULT_SENDERS = {
+    "email": smtp_channel.send,
+    "push": push_channel.send,
+    "orca_bot": orca_bot_channel.send,
+}
 
 
 def _now():
@@ -78,7 +83,19 @@ def _load_event(path):
 
 
 def _enabled(config, name):
-    return config.email.enabled if name == "email" else config.push.enabled
+    return {
+        "email": config.email.enabled,
+        "push": config.push.enabled,
+        "orca_bot": config.orca_bot.enabled,
+    }[name]
+
+
+def _channel_config(config, name):
+    return {
+        "email": config.email,
+        "push": config.push,
+        "orca_bot": config.orca_bot,
+    }[name]
 
 
 def _effective_channels(event_name, requested, config):
@@ -110,14 +127,14 @@ def _deliver_channel(name, *, event, title, body, config, senders, secret,
                      state, home, clock):
     """按配置重试一个通道，逐次写日志和连续失败计数。"""
     attempts = config.retry.attempts if name in RETRY_CHANNELS else 1
-    channel_config = config.email if name == "email" else config.push
+    channel_config = _channel_config(config, name)
     total_started = time.monotonic()
     last_error = None
     for attempt in range(1, attempts + 1):
         started = time.monotonic()
         error = None
         try:
-            senders[name](channel_config, title, body, secret)
+            senders[name](channel_config, title, body, secret, event=event)
         except Exception as exc:  # 这一路失败，继续按策略重试或结束
             error = f"{type(exc).__name__}: {exc}"
         elapsed = int((time.monotonic() - started) * 1000)
@@ -169,10 +186,11 @@ def _flush_pending(*, state, home, config, channel, senders, secret_reader, cloc
         return
     secret = None
     secret_error = None
-    try:
-        secret = secret_reader(SECRET_SERVICES[channel])
-    except config_module.ConfigError as exc:
-        secret_error = str(exc)
+    if channel in SECRET_SERVICES:
+        try:
+            secret = secret_reader(SECRET_SERVICES[channel])
+        except config_module.ConfigError as exc:
+            secret_error = str(exc)
     for key, entry in list(state["pending"].items()):
         if channel not in entry["failed"]:
             continue
@@ -189,8 +207,9 @@ def _flush_pending(*, state, home, config, channel, senders, secret_reader, cloc
             else:
                 started = time.monotonic()
                 try:
-                    channel_config = config.email if channel == "email" else config.push
-                    senders[channel](channel_config, title, body, secret)
+                    channel_config = _channel_config(config, channel)
+                    senders[channel](
+                        channel_config, title, body, secret, event=event)
                 except Exception as exc:
                     error = f"{type(exc).__name__}: {exc}"
                 elapsed = int((time.monotonic() - started) * 1000)
@@ -293,7 +312,9 @@ def run(argv=None, *, home=None, secret_reader=None, senders=None, clock=None):
 
     try:
         secrets = {
-            name: secret_reader(SECRET_SERVICES[name]) for name in channels
+            name: secret_reader(SECRET_SERVICES[name])
+            if name in SECRET_SERVICES else None
+            for name in channels
         }
     except config_module.ConfigError as exc:
         print(f"error {exc}", file=sys.stderr)

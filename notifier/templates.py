@@ -9,6 +9,23 @@ from typing import Any, Callable
 
 EMAIL = "email"
 PUSH = "push"
+ORCA_BOT = "orca_bot"
+
+
+def _proposal_links(data, link):
+    parts = [link]
+    comment_url = data.get("comment_url")
+    if comment_url:
+        parts.append(f"提案评论：{comment_url}")
+    return "\n".join(parts)
+
+
+def _gap_chat_title(data):
+    return f"补缺口 {data['owner']}/{data['repo']}#{data['ticket']}"
+
+
+def _split_chat_title(data):
+    return f"拆票 {data['owner']}/{data['repo']}#{data['ticket']}"
 
 
 class EventError(Exception):
@@ -52,7 +69,8 @@ def _reupload_map(data, link):
 def _gap_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你补缺口（{data['question_count']} 题）",
-        f"闸门题和推荐答案列好了。打开待办：\n{_console_command(data)}\n{link}",
+        f"闸门题和推荐答案列好了。到 bot chat「{_gap_chat_title(data)}」里看题和答。\n"
+        f"控制台兜底：\n{_console_command(data)}\n{_proposal_links(data, link)}",
     )
 
 
@@ -67,7 +85,9 @@ def _run_to_spec(data, link):
 def _split_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你点头拆票（{data['ticket_count']} 张）",
-        f"接缝、票单、每票验收条件已备好。打开待办：\n{_console_command(data)}\n{link}",
+        f"接缝、票单、每票验收条件已备好。"
+        f"到 bot chat「{_split_chat_title(data)}」里看票和点头。\n"
+        f"控制台兜底：\n{_console_command(data)}\n{_proposal_links(data, link)}",
     )
 
 
@@ -75,7 +95,7 @@ def _need_answer(data, link):
     note = "" if data.get("repo_dir") else "\n（repoDir 没配，把 <客户仓> 换成客户仓路径）"
     return (
         f"{data['customer']} · {data['requirement']} · 等你答：{data['question']}",
-        f"{data['question']}。推荐：{data['recommended']}。打开待办：\n"
+        f"{data['question']}。推荐：{data['recommended']}。到 bot chat 里答题；控制台兜底：\n"
         f"{_console_command(data)}{note}\n{link}",
     )
 
@@ -83,7 +103,7 @@ def _need_answer(data, link):
 def _incident(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 卡住：{data['reason']}",
-        f"停在这条线上了。试过：{data['tried']}。来处理：继续、换法或停。{link}",
+        f"停在这条线上了。试过：{data['tried']}。到 bot chat 里说继续、换法或停。{link}",
     )
 
 
@@ -97,14 +117,15 @@ def _self_merged(data, link):
 def _deployed(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 已部署",
-        f"部署好了，地址：{data['address']}。客户那条微信待你发。{link}",
+        f"部署好了，地址：{data['address']}。客户那条微信待你发；"
+        f"有问题到 bot chat 里说。{link}",
     )
 
 
 def _needs_info(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 需要人看：状态对不上",
-        f"标签和评论对不上，调度器没有猜。看一眼父工单。{link}",
+        f"标签和评论对不上，调度器没有猜。到 bot chat 里看，或打开父工单。{link}",
     )
 
 
@@ -138,28 +159,28 @@ EVENTS: dict[str, EventSpec] = {
     "重传地图已更新": EventSpec(
         (PUSH,), ("customer", "requirement"), True, _reupload_map),
     "补缺口提案": EventSpec(
-        (PUSH, EMAIL),
+        (PUSH, EMAIL, ORCA_BOT),
         ("customer", "requirement", "question_count", "owner", "repo", "ticket", "kind"),
         True, _gap_proposal),
     "该跑 to-spec": EventSpec(
         (PUSH, EMAIL), ("customer", "requirement"), True, _run_to_spec),
     "拆票提案": EventSpec(
-        (PUSH, EMAIL),
+        (PUSH, EMAIL, ORCA_BOT),
         ("customer", "requirement", "ticket_count", "owner", "repo", "ticket", "kind"),
         True, _split_proposal),
     "需要你答": EventSpec(
-        (PUSH, EMAIL),
+        (PUSH, EMAIL, ORCA_BOT),
         ("customer", "requirement", "question", "recommended", "owner", "repo", "ticket", "kind"),
         True, _need_answer),
     "出事": EventSpec(
-        (PUSH, EMAIL), ("customer", "requirement", "reason", "tried"),
+        (PUSH, EMAIL, ORCA_BOT), ("customer", "requirement", "reason", "tried"),
         True, _incident),
     "自己合并": EventSpec(
         (PUSH,), ("customer", "requirement", "pr"), True, _self_merged),
     "部署完成": EventSpec(
-        (PUSH,), ("customer", "requirement", "address"), True, _deployed),
+        (PUSH, ORCA_BOT), ("customer", "requirement", "address"), True, _deployed),
     "needs-info": EventSpec(
-        (PUSH,), ("customer", "requirement"), True, _needs_info),
+        (PUSH, ORCA_BOT), ("customer", "requirement"), True, _needs_info),
     "点火超时": EventSpec(
         (EMAIL,), ("customer", "requirement"), True, _ignite_timeout),
     "import_failed": EventSpec(
@@ -215,6 +236,10 @@ def _validate(event: str, spec: EventSpec, data: dict[str, Any], link: str | Non
     repo_dir = data.get("repo_dir")
     if repo_dir is not None and (not isinstance(repo_dir, str) or not repo_dir.strip()):
         raise EventError(f"事件「{event}」的 data.repo_dir 必须是非空字符串")
+    comment_url = data.get("comment_url")
+    if comment_url is not None and (
+            not isinstance(comment_url, str) or not comment_url.strip()):
+        raise EventError(f"事件「{event}」的 data.comment_url 必须是非空字符串")
     if spec.needs_link and (not isinstance(link, str) or not link.strip()):
         raise EventError(f"事件「{event}」缺少 link")
     days = data.get("days_waited")
