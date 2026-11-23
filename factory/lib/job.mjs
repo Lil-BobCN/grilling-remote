@@ -217,6 +217,7 @@ export function createJobStore({
         attempt,
         stop: attempt >= maxAttempts ? 'retry-exhausted' : '',
         reason: String(reason || ''),
+        running: false,
       })
       await flush()
       return row
@@ -230,7 +231,49 @@ export function createJobStore({
         attempt: 0,
         stop: '',
         reason: '',
+        running: false,
       })
+      await flush()
+      return row
+    },
+
+    /** 管道开始：写 running 标记，屏幕和 status 能看到这张票正在跑。 */
+    async markRunning({ owner, repo, parent, ticket = null, action, reason = '', now: at } = {}) {
+      const key = jobKey({ owner, repo, parent, ticket, action })
+      const previous = table.jobs[key] || {}
+      const when = stamp(at)
+      const row = putRow(key, {
+        ...previous,
+        owner,
+        repo,
+        parent,
+        ticket,
+        action,
+        running: true,
+        startedAt: previous.startedAt || when,
+        lastBeat: when,
+        updatedAt: when,
+        ...(reason ? { reason: String(reason) } : {}),
+      })
+      await flush()
+      return row
+    },
+
+    /** 心跳：只更新这一行的 lastBeat，不动 attempt 和 stop。 */
+    async beatJob({ owner, repo, parent, ticket = null, action, now: at } = {}) {
+      const key = jobKey({ owner, repo, parent, ticket, action })
+      if (!table.jobs[key]) return null
+      const when = stamp(at)
+      const row = putRow(key, { lastBeat: when, updatedAt: when })
+      await flush()
+      return row
+    },
+
+    /** 管道结束：清 running，保留 attempt、stop 和 reason。 */
+    async clearRunning({ owner, repo, parent, ticket = null, action, now: at } = {}) {
+      const key = jobKey({ owner, repo, parent, ticket, action })
+      if (!table.jobs[key]) return null
+      const row = putRow(key, { running: false, lastBeat: stamp(at), updatedAt: stamp(at) })
       await flush()
       return row
     },
@@ -244,6 +287,7 @@ export function createJobStore({
         attempt: previous?.attempt || 0,
         stop: reasonKey || 'stopped',
         reason: String(reason || ''),
+        running: false,
       })
       await flush()
       return row

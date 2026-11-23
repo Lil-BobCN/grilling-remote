@@ -1376,6 +1376,22 @@ function localDateOffset(date, days) {
 const DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_ROUND_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_HEARTBEAT_MS = 60 * 1000
+export const DEFAULT_AGENT_TIMEOUT_MS = 45 * 60 * 1000
+export const DEFAULT_PIPELINE_TIMEOUT_MS = 2 * 60 * 60 * 1000
+export const DEFAULT_CANCEL_GRACE_MS = 10 * 1000
+
+/** 三个硬上限：非 agent 步骤 30 分钟、单个 agent 45 分钟、一条管道 2 小时。 */
+export function resolveTimeouts(env = process.env) {
+  const pick = (key, fallback) => {
+    const value = Number(env[key])
+    return Number.isFinite(value) && value > 0 ? value : fallback
+  }
+  return {
+    stepTimeoutMs: pick('AFK_STEP_TIMEOUT_MS', DEFAULT_STEP_TIMEOUT_MS),
+    agentTimeoutMs: pick('AFK_AGENT_TIMEOUT_MS', DEFAULT_AGENT_TIMEOUT_MS),
+    pipelineTimeoutMs: pick('AFK_PIPELINE_TIMEOUT_MS', DEFAULT_PIPELINE_TIMEOUT_MS),
+  }
+}
 
 export class StepTimeoutError extends Error {
   constructor(label, timeoutMs) {
@@ -1386,9 +1402,19 @@ export class StepTimeoutError extends Error {
   }
 }
 
-/** 跑一步：跑的时候按时写心跳，超时就抛 StepTimeoutError。 */
-export async function runJobStep({ jobs, clock = () => new Date(), config = {}, label = '这一步', task }) {
-  const timeoutMs = config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
+/**
+ * 跑一步：跑的时候按时写心跳，超时就取消任务再抛 StepTimeoutError。
+ * 取消后最多等 cancelGraceMs，让子进程和管道收尾，下一轮不会和这一轮叠着跑。
+ */
+export async function runJobStep({
+  jobs,
+  clock = () => new Date(),
+  config = {},
+  label = '这一步',
+  task,
+  timeoutMs: timeoutOverride,
+}) {
+  const timeoutMs = timeoutOverride ?? config.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
   const heartbeatMs = config.jobHeartbeatMs ?? DEFAULT_HEARTBEAT_MS
   const log = config.log || logLine
   // 计时器可注入：测试用确定性触发，不跟真实时间赛跑。
@@ -1407,14 +1433,32 @@ export async function runJobStep({ jobs, clock = () => new Date(), config = {}, 
     }, heartbeatMs)
     beatTimer?.unref?.()
   }
-  const work = Promise.resolve().then(task)
+  const controller = new AbortController()
+  const work = Promise.resolve().then(() => task({ signal: controller.signal }))
   try {
     if (timeoutMs <= 0) return await work
     const limit = new Promise((resolve, reject) => {
-      timeoutTimer = timeout(() => reject(new StepTimeoutError(label, timeoutMs)), timeoutMs)
+      timeoutTimer = timeout(() => {
+        const error = new StepTimeoutError(label, timeoutMs)
+        controller.abort(error)
+        reject(error)
+      }, timeoutMs)
       timeoutTimer?.unref?.()
     })
     return await Promise.race([work, limit])
+  } catch (error) {
+    if (error instanceof StepTimeoutError) {
+      const grace = config.cancelGraceMs ?? DEFAULT_CANCEL_GRACE_MS
+      const boxed = await Promise.race([
+        work.then((value) => ({ value })).catch(() => null),
+        new Promise((resolve) => {
+          const timer = timeout(() => resolve(null), grace)
+          timer?.unref?.()
+        }),
+      ])
+      if (boxed) error.cancelledResult = boxed.value
+    }
+    throw error
   } finally {
     if (beatTimer) clearIntervalFn(beatTimer)
     if (timeoutTimer) clearTimeoutFn(timeoutTimer)
@@ -1663,6 +1707,41 @@ async function notePipelineStops({ jobs, gh, owner, repo, parents, pipeline, now
   }
 }
 
+/**
+ * 管道超时：写 pipeline 作业行，reason 含「超时」，按 attempt 退避。
+ * 能定位到正在跑的那张票就只写它；定位不到就把有活跃子票的父工单都记上。
+ */
+async function notePipelineTimeout({ jobs, gh, owner, repo, parents, active, error, now, jobPolicy, report }) {
+  if (!jobs) return
+  const targets = active?.parent
+    ? [{ parent: active.parent, ticket: active.ticket ?? null }]
+    : (parents || [])
+        .filter((parent) => (parent.subIssues || []).some((ticket) => stillSandcastle(ticket)))
+        .map((parent) => ({ parent: parent.number, ticket: null }))
+  const seen = new Set()
+  for (const target of targets) {
+    if (seen.has(target.parent)) continue
+    seen.add(target.parent)
+    try {
+      const row = await jobs.recordFailure({
+        owner,
+        repo,
+        parent: target.parent,
+        ticket: target.ticket,
+        action: 'pipeline',
+        reason: `管道超时：${error.message}`,
+        now,
+        policy: jobPolicy,
+      })
+      if (row?.stop) {
+        await ensureIssueLabel({ gh, owner, repo, number: target.parent, name: NEEDS_INFO_LABEL })
+      }
+    } catch (writeError) {
+      report.errors.push({ repo, parent: target.parent, jobs: true, message: writeError.message })
+    }
+  }
+}
+
 /** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
 async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
   if (!jobs) return
@@ -1770,7 +1849,8 @@ export async function runOnce({
   const jobs = config.jobs || null
   const jobPolicy = config.jobPolicy || {}
   const log = config.log || logLine
-  const step = (label, task) => runJobStep({ jobs, clock, config: { ...config, log }, label, task })
+  const step = (label, task, opts = {}) =>
+    runJobStep({ jobs, clock, config: { ...config, log }, label, task, ...opts })
 
   const report = {
     now: nowDate.toISOString(),
@@ -1849,17 +1929,37 @@ export async function runOnce({
       let pipeline = null
       if (typeof ticketPipeline === 'function') {
         try {
-          pipeline = await step(`跑 ${row.repo} 流水线`, () =>
-            ticketPipeline({
+          pipeline = await step(
+            `跑 ${row.repo} 流水线`,
+            ({ signal }) =>
+              ticketPipeline({
+                gh,
+                owner: row.owner,
+                repo: row.repo,
+                parents: snapshot.parents,
+                repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
+                jobs,
+                lockDir: config.lockDir || '',
+                signal,
+              }),
+            { timeoutMs: config.pipelineTimeoutMs ?? DEFAULT_PIPELINE_TIMEOUT_MS },
+          )
+        } catch (error) {
+          report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
+          if (error instanceof StepTimeoutError) {
+            await notePipelineTimeout({
+              jobs,
               gh,
               owner: row.owner,
               repo: row.repo,
               parents: snapshot.parents,
-              repoDir: config.repoRoot ? join(config.repoRoot, row.repo) : '',
-            }),
-          )
-        } catch (error) {
-          report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
+              active: error.cancelledResult?.active || null,
+              error,
+              now: nowDate,
+              jobPolicy,
+              report,
+            })
+          }
         }
       }
       await notePipelineStops({

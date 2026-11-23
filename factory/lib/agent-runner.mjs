@@ -32,6 +32,9 @@ export const REVIEW_TOOLS = 'Read,Bash(gh:*)'
 export const MERGER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
 export const FIXER_TOOLS = 'Read,Write,Edit,Bash(git:*)'
 
+export const DEFAULT_AGENT_TIMEOUT_MS = 45 * 60 * 1000
+export const DEFAULT_KILL_GRACE_MS = 5000
+
 function toolList(value) {
   const rows = Array.isArray(value) ? value : String(value || '').split(',')
   return rows.map((item) => String(item).trim()).filter(Boolean)
@@ -58,21 +61,68 @@ function authFailureMessage(stdout, stderr) {
   return ''
 }
 
-export function defaultExec(command, args, { cwd, env, onStart } = {}) {
+/**
+ * 起子进程。`detached: true` 让子进程成为进程组组长，取消时能一次带走孙进程；
+ * 普通 spawn 的负 pid 会报 ESRCH，什么都杀不掉。先 SIGTERM，宽限期后 SIGKILL。
+ */
+export function defaultExec(
+  command,
+  args,
+  { cwd, env, onStart, signal, killGraceMs = DEFAULT_KILL_GRACE_MS } = {},
+) {
+  if (signal?.aborted) {
+    return Promise.resolve({ code: 1, stdout: '', stderr: '', aborted: true })
+  }
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd,
       env: env ? { ...process.env, ...env } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
     })
     let started = false
     let stdout = ''
     let stderr = ''
+    let settled = false
+    let killTimer = null
+    let aborted = false
+
     const mark = () => {
       if (started) return
       started = true
       if (typeof onStart === 'function') onStart()
     }
+
+    const killGroup = (sig) => {
+      if (!child.pid) return
+      try {
+        process.kill(-child.pid, sig)
+      } catch (error) {
+        if (error.code === 'ESRCH') return
+        try {
+          child.kill(sig)
+        } catch {
+          // 进程已经没了。
+        }
+      }
+    }
+
+    const onAbort = () => {
+      aborted = true
+      killGroup('SIGTERM')
+      killTimer = setTimeout(() => killGroup('SIGKILL'), killGraceMs)
+      killTimer?.unref?.()
+    }
+
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      if (killTimer) clearTimeout(killTimer)
+      signal?.removeEventListener?.('abort', onAbort)
+      resolve(result)
+    }
+
+    signal?.addEventListener?.('abort', onAbort, { once: true })
     child.once('spawn', mark)
     child.stdout.on('data', (chunk) => {
       stdout += chunk
@@ -81,10 +131,10 @@ export function defaultExec(command, args, { cwd, env, onStart } = {}) {
       stderr += chunk
     })
     child.once('error', (error) => {
-      resolve({ code: 1, stdout, stderr: `${stderr}${error.message}` })
+      finish({ code: 1, stdout, stderr: `${stderr}${error.message}`, aborted })
     })
     child.once('close', (code) => {
-      resolve({ code: Number.isInteger(code) ? code : 1, stdout, stderr })
+      finish({ code: Number.isInteger(code) ? code : 1, stdout, stderr, aborted })
     })
   })
 }
@@ -92,18 +142,27 @@ export function defaultExec(command, args, { cwd, env, onStart } = {}) {
 /**
  * @param {object} [options]
  * @param {string} [options.command] 默认 `claude`
- * @param {Function} [options.exec] 测试替身 `(command, args, {cwd, env}) => {code, stdout, stderr}`
+ * @param {string} [options.model] 模型名，默认 AFK_AGENT_MODEL 或 ANTHROPIC_MODEL；缺了直接报错
+ * @param {Function} [options.exec] 测试替身 `(command, args, {cwd, env, signal}) => {code, stdout, stderr}`
  * @param {string} [options.briefDir] brief 文件放哪，默认新建临时目录
  * @param {string|string[]} [options.allowedTools] 默认工具白名单
  * @param {string|string[]} [options.tools] `--tools` 的可用工具集合，默认 Bash,Read,Write,Edit
+ * @param {number} [options.timeoutMs] 单次 agent 硬上限，默认 AFK_AGENT_TIMEOUT_MS 或 45 分钟
  */
 export function createAgentRunner({
   command = 'claude',
+  model = process.env.AFK_AGENT_MODEL || process.env.ANTHROPIC_MODEL || '',
   exec = defaultExec,
   briefDir,
   allowedTools = [],
   tools = AGENT_TOOLS,
+  timeoutMs = Number(process.env.AFK_AGENT_TIMEOUT_MS) || DEFAULT_AGENT_TIMEOUT_MS,
 } = {}) {
+  const modelName = String(model || '').trim()
+  if (!modelName) {
+    throw new Error('agent runner 缺模型：设 AFK_AGENT_MODEL 或 ANTHROPIC_MODEL')
+  }
+
   async function run({
     brief,
     cwd,
@@ -112,6 +171,7 @@ export function createAgentRunner({
     extraArgs = [],
     allowedTools: runTools,
     tools: runToolSet,
+    signal,
   } = {}) {
     const text = String(brief ?? '')
     if (!text.trim()) throw new Error('agent runner 缺 brief')
@@ -128,19 +188,57 @@ export function createAgentRunner({
       ...extraArgs,
       '-p',
       '--restricted',
+      '--model',
+      modelName,
       ...(toolSet.length ? ['--tools', toolSet.join(',')] : []),
       ...(allowed.length ? ['--allowedTools', allowed.join(',')] : []),
     ]
-    const result = await exec(command, args, { cwd, env })
+    if (signal?.aborted) {
+      return {
+        ok: false,
+        code: 1,
+        stdout: '',
+        stderr: '',
+        aborted: true,
+        reason: 'aborted',
+        briefPath,
+        command,
+        args,
+      }
+    }
+
+    const controller = new AbortController()
+    let timedOut = false
+    const onAbort = () => controller.abort(signal.reason)
+    signal?.addEventListener?.('abort', onAbort, { once: true })
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true
+            controller.abort(new Error('agent 超时'))
+          }, timeoutMs)
+        : null
+    timer?.unref?.()
+
+    let result
+    try {
+      result = await exec(command, args, { cwd, env, signal: controller.signal })
+    } finally {
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener?.('abort', onAbort)
+    }
     const code = Number.isInteger(result?.code) ? result.code : 1
     const stdout = String(result?.stdout || '')
     const stderr = String(result?.stderr || '')
     const authMessage = authFailureMessage(stdout, stderr)
+    const aborted = Boolean(result?.aborted || signal?.aborted || timedOut)
     return {
-      ok: code === 0,
+      ok: code === 0 && !timedOut,
       code,
       stdout,
       stderr,
+      ...(timedOut ? { timedOut: true, reason: 'agent-timeout' } : {}),
+      ...(aborted ? { aborted: true } : {}),
       ...(authMessage ? { authFailure: true, authMessage } : {}),
       briefPath,
       command,

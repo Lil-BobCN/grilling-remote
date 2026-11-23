@@ -1374,6 +1374,59 @@ test('runOnce：管线认证失败写 auth-failed stop', async (t) => {
   assert.match(row.reason, /401 未授权/)
 })
 
+test('runOnce：管道超时写 pipeline 作业行，reason 含超时', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const child = await createChild(gh, parent, { labels: ['状态:排队中', 'Sandcastle'] })
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: child.number,
+    body: '点火完成：分支 ticket/51',
+  })
+  const jobs = await loadStore(await jobFile(t))
+  const ticketPipeline = async ({ signal }) =>
+    new Promise((resolve) => {
+      signal.addEventListener(
+        'abort',
+        () =>
+          resolve({
+            runs: [{ ticket: child.number, ok: false, reason: 'aborted' }],
+            aborted: true,
+            active: { ticket: child.number, parent: parent.number },
+          }),
+        { once: true },
+      )
+    })
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+      pipelineTimeoutMs: 50,
+      cancelGraceMs: 1000,
+    },
+  })
+
+  assert.ok(report.errors.some((error) => error.pipeline && /超时/.test(error.message)))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'pipeline',
+    ticket: child.number,
+  })
+  assert.ok(row)
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /超时/)
+  assert.equal(row.running, false, '超时后运行标记清掉')
+})
+
 test('runOnce：一轮开始写心跳，结束记完成时间', async (t) => {
   const { gh } = await setupRepo(t)
   const parent = await createParent(gh)
@@ -1527,9 +1580,10 @@ test('runJobStep 在长步骤里按时写心跳', async () => {
   assert.equal(heartbeat, null, '步骤结束清掉心跳定时器')
 })
 
-test('runJobStep 到点抛 StepTimeoutError，并清掉定时器', async () => {
+test('runJobStep 到点先取消任务再抛 StepTimeoutError，并等任务收尾', async () => {
   let fire = null
   let cleared = 0
+  let sawAbort = false
   const timers = {
     setTimeout(fn) {
       fire = fn
@@ -1543,16 +1597,35 @@ test('runJobStep 到点抛 StepTimeoutError，并清掉定时器', async () => {
     },
     clearInterval() {},
   }
+  let signalSeen = null
   const running = runJobStep({
     config: { stepTimeoutMs: 50, jobHeartbeatMs: 0, timers },
     label: '读快照',
-    task: () => new Promise(() => {}),
+    task: ({ signal }) => {
+      signalSeen = signal
+      return new Promise((resolve) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            sawAbort = true
+            resolve({ stopped: true })
+          },
+          { once: true },
+        )
+      })
+    },
   })
   await Promise.resolve()
   assert.equal(typeof fire, 'function')
   fire()
-  await assert.rejects(running, /读快照超时：50 毫秒没跑完/)
-  assert.equal(cleared, 1, '超时后清掉计时器')
+  await assert.rejects(running, (error) => {
+    assert.match(error.message, /读快照超时：50 毫秒没跑完/)
+    assert.deepEqual(error.cancelledResult, { stopped: true })
+    return true
+  })
+  assert.equal(signalSeen.aborted, true, '超时前先 abort')
+  assert.equal(sawAbort, true, '任务收到取消信号并收尾')
+  assert.ok(cleared >= 1, '超时后清掉计时器')
 })
 
 test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {

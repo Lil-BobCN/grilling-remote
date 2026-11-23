@@ -351,10 +351,18 @@ export async function ensureEvidenceBeforeMerge({
   const problems = []
   let authProblem = null
   let authStage = ''
+  let aborted = false
+  let abortedStage = ''
   const stopOnAuth = (audit, stage) => {
     if (!audit?.authFailure) return false
     authProblem = authProblems(audit)
     authStage = stage
+    return true
+  }
+  const stopOnAbort = (audit, stage) => {
+    if (!audit?.aborted) return false
+    aborted = true
+    abortedStage = stage
     return true
   }
   let interrogateFailed = false
@@ -414,6 +422,7 @@ export async function ensureEvidenceBeforeMerge({
         now,
       })
       if (stopOnAuth(audit, 'review')) return []
+      if (stopOnAbort(audit, 'review')) return []
       if (!audit.ok) roundProblems.push(...(audit.problems.length ? audit.problems : ['评审没过']))
     }
     if (wantsInterrogate) {
@@ -427,6 +436,7 @@ export async function ensureEvidenceBeforeMerge({
         now,
       })
       if (stopOnAuth(audit, 'review')) return []
+      if (stopOnAbort(audit, 'review')) return []
       interrogateFailed = !audit.ok
       if (!audit.ok) {
         roundProblems.push(...(audit.problems.length ? audit.problems : [INTERROGATE_MISSING]))
@@ -443,6 +453,7 @@ export async function ensureEvidenceBeforeMerge({
     if (!plan) {
       const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
       if (stopOnAuth(audit, 'verify')) return []
+      if (stopOnAbort(audit, 'verify')) return []
       return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
     }
     const trail = await readTrail({ repoDir, ticket: ticketNumber })
@@ -460,6 +471,7 @@ export async function ensureEvidenceBeforeMerge({
         now,
       })
       if (stopOnAuth(audit, 'verify')) break
+      if (stopOnAbort(audit, 'verify')) break
       if (!audit.ok) {
         found.push(...(audit.problems.length ? audit.problems : ['验证没过']))
         break
@@ -493,6 +505,7 @@ export async function ensureEvidenceBeforeMerge({
           now,
         })
         if (stopOnAuth(audit, 'verify')) break
+        if (stopOnAbort(audit, 'verify')) break
         if (!audit.ok) {
           failed.push(...(audit.problems.length ? audit.problems : ['验证没过']))
           failedStage = 'verify'
@@ -508,7 +521,7 @@ export async function ensureEvidenceBeforeMerge({
       }
     }
     let round = 1
-    if (!authProblem) {
+    if (!authProblem && !aborted) {
       await reportReviewRound({
         onReviewRound,
         round,
@@ -517,12 +530,13 @@ export async function ensureEvidenceBeforeMerge({
         stage: failedStage,
       })
     }
-    if (!authProblem && failed.length && typeof fixer === 'function') {
+    if (!authProblem && !aborted && failed.length && typeof fixer === 'function') {
       let used = await fixerRoundsUsed({ repoDir, ticket: ticketNumber, branch })
       while (failed.length && used < maxFixRounds) {
         used += 1
         const fixed = await fixer({ repoDir, branch, findings: failed, round: used })
         if (stopOnAuth(fixed, 'review')) break
+        if (stopOnAbort(fixed, 'review')) break
         if (!fixed?.ok) break
         round += 1
         failed = await reverifyAfterFix()
@@ -551,12 +565,18 @@ export async function ensureEvidenceBeforeMerge({
         })
       }
     }
-    if (!authProblem && failed.length) problems.push(...failed)
+    if (!authProblem && !aborted && failed.length) problems.push(...failed)
   } catch (error) {
     problems.push(errorText(error))
   }
 
   rows = await readTrail({ repoDir, ticket: ticketNumber })
+  if (aborted) {
+    if (started?.ok) {
+      await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})
+    }
+    return { ok: false, reason: 'aborted', stage: abortedStage, missing: [], problems: [] }
+  }
   if (authProblem) {
     if (started?.ok) {
       await preview.stop({ address: started.address, ticket, repoDir }).catch(() => {})
