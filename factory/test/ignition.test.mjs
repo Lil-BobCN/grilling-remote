@@ -297,6 +297,9 @@ test('两分钟没回执：写点火超时评论、打标签、发通知，摘 S
   assert.ok(incident, '没有发出事通知')
   assert.match(incident.data.reason, /点火失败/)
   assert.match(incident.data.reason, /两分钟没收到回执/)
+  assert.equal(incident.data.owner, OWNER)
+  assert.equal(incident.data.repo, REPO)
+  assert.equal(incident.data.ticket, parent.number)
 
   const comments = commentsOf(fake, ticket.number)
   assert.equal(comments.length, 1)
@@ -765,6 +768,9 @@ test('没有提交且票分支也没有时，不 push、不开 PR，写「没有
   assert.ok(incident, '没有发出事通知')
   assert.match(incident.data.reason, /点火失败/)
   assert.match(incident.data.reason, /没有产生提交/)
+  assert.equal(incident.data.owner, OWNER)
+  assert.equal(incident.data.repo, REPO)
+  assert.equal(incident.data.ticket, parent.number)
 
   const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
   assert.equal(progress.length, 1)
@@ -871,6 +877,9 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
   assert.ok(incident, '没有发出事通知')
   assert.match(incident.data.reason, /点火失败/)
   assert.match(incident.data.reason, /容器起不来/)
+  assert.equal(incident.data.owner, OWNER)
+  assert.equal(incident.data.repo, REPO)
+  assert.equal(incident.data.ticket, parent.number)
 
   const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
   const failureLine = progress.at(-1)

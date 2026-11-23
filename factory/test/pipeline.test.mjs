@@ -895,6 +895,9 @@ test('评审认证失败：管线返回 auth_failed，父工单打 needs-info �
   const incidents = notifier.calls.filter((event) => event.event === '出事')
   assert.equal(incidents.length, 1, '认证失败要发一次出事通知')
   assert.equal(incidents[0].data.reason, '认证失败')
+  assert.equal(incidents[0].data.owner, OWNER)
+  assert.equal(incidents[0].data.repo, REPO)
+  assert.equal(incidents[0].data.ticket, parent.number)
   assert.equal(runner.calls.filter((call) => call.name.startsWith('fix-')).length, 0, '不调用 fixer')
   assert.equal(
     (await readTrail({ repoDir, ticket: ticket.number })).filter((row) => row.phase === 'review').length,

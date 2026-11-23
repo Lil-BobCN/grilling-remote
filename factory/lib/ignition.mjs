@@ -577,6 +577,9 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
             reason: oneLine(`点火失败：${stage}：${message}`),
             tried: oneLine(`${stage}阶段报错：${message}`),
             attempt,
+            owner,
+            repo,
+            ticket: parent?.number,
           },
         })
       }

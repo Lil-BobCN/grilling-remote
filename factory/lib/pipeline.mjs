@@ -231,6 +231,9 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
         reason: '认证失败',
         tried: note,
         round: ticket.round,
+        owner,
+        repo,
+        ticket: parent.number,
       },
     })
   } catch {

@@ -172,6 +172,34 @@ class TestProposalRouting(FakeOrca):
         self.assertEqual(second["--chat"], "c43")
         self.assertEqual(second["--subject"], "补缺口 acme/other#43")
 
+    def test_same_parent_uses_separate_gap_and_split_chats(self):
+        self.chats([
+            {"id": "c-gap", "title": "补缺口 acme/demo#42", "closed": False},
+            {"id": "c-split", "title": "拆票 acme/demo#42", "closed": False},
+        ])
+        orca_bot.send(self.config(), "标题", "正文", None, proposal_event("补缺口提案", 42))
+        orca_bot.send(self.config(), "标题", "正文", None, proposal_event("拆票提案", 42))
+
+        gap, split = self.send_args(0), self.send_args(1)
+        self.assertEqual(gap["--chat"], "c-gap")
+        self.assertEqual(gap["--subject"], "补缺口 acme/demo#42")
+        self.assertEqual(split["--chat"], "c-split")
+        self.assertEqual(split["--subject"], "拆票 acme/demo#42")
+
+    def test_same_prefix_different_parents_do_not_mix(self):
+        self.chats([
+            {"id": "c-42", "title": "补缺口 acme/demo#42", "closed": False},
+            {"id": "c-43", "title": "补缺口 acme/demo#43", "closed": False},
+        ])
+        orca_bot.send(self.config(), "标题", "正文 42", None, proposal_event("补缺口提案", 42))
+        orca_bot.send(self.config(), "标题", "正文 43", None, proposal_event("补缺口提案", 43))
+
+        first, second = self.send_args(0), self.send_args(1)
+        self.assertEqual(first["--chat"], "c-42")
+        self.assertEqual(first["--subject"], "补缺口 acme/demo#42")
+        self.assertEqual(second["--chat"], "c-43")
+        self.assertEqual(second["--subject"], "补缺口 acme/demo#43")
+
     def test_closed_chat_counts_as_missing(self):
         self.chats([{"id": "c-old", "title": "拆票 acme/demo#42", "closed": True}])
         orca_bot.send(self.config(), "标题", "正文", None, proposal_event("拆票提案"))
