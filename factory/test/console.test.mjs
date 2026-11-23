@@ -110,6 +110,27 @@ test('openWaiting 通过 Orca 打开终端并跑 show', async () => {
   assert.equal(terminal[1][terminal[1].indexOf('--command') + 1], result.command)
 })
 
+test('openWaiting 认 Orca 1.4 的 result.app.running 和旧的 result.running', async () => {
+  const cases = [
+    { name: '1.4', status: { ok: true, result: { app: { running: true, pid: 45278 } } } },
+    { name: '旧结构', status: { result: { running: true } } },
+  ]
+  for (const item of cases) {
+    const run = async (command, args) => {
+      if (command === 'orca' && args[0] === 'status') return JSON.stringify(item.status)
+      if (command === 'orca' && args[0] === 'terminal') return 'terminal-1'
+      return ''
+    }
+    const result = await openWaiting({
+      entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 },
+      run,
+      consolePath: '/repo/factory/bin/console.mjs',
+      worktree: 'id:wt1',
+    })
+    assert.equal(result.selector, 'id:wt1', item.name)
+  }
+})
+
 test('openWaiting 在 Orca 没开时给明确错误', async () => {
   const run = async (command, args) => {
     if (command === 'orca' && args[0] === 'status') return JSON.stringify({ running: false })
