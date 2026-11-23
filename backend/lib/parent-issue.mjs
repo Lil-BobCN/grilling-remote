@@ -46,6 +46,20 @@ function stripBullet(line) {
   return line.replace(/^[-*]\s+/, '').trim()
 }
 
+/**
+ * 验收场景可能是客户工具箱常用的编号列表（`1.`、`1)`），也可能还是减号或星号。
+ * 这里单独认，不动 `bulletLines`：地图的 Decisions 和 Out of scope 只该认项目符号。
+ */
+const ACCEPTANCE_MARKER = /^(?:[-*]|\d+[.)])\s+/
+
+function acceptanceLines(markdown) {
+  if (!markdown) return []
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => ACCEPTANCE_MARKER.test(line))
+}
+
 function stripTrailingRevision(text) {
   return text.replace(/\s*[（(]?\s*按第\s*\d+\s*张改\s*[）)]?\s*$/, '').trim()
 }
@@ -96,8 +110,8 @@ function listItems(body) {
 }
 
 function acceptanceItems(markdown) {
-  const items = bulletLines(markdown)
-    .map((line) => stripBullet(line).replace(/^\[[ xX]\]\s*/, ''))
+  const items = acceptanceLines(markdown)
+    .map((line) => line.replace(ACCEPTANCE_MARKER, '').replace(/^\[[ xX]\]\s*/, ''))
     .map((line) => stripTrailingRevision(line))
     .filter(Boolean)
   if (!items.length) return ['- 无']
