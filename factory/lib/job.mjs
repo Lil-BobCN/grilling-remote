@@ -237,7 +237,7 @@ export function createJobStore({
       return row
     },
 
-    /** 管道开始：写 running 标记，屏幕和 status 能看到这张票正在跑。 */
+    /** 管道开始：在作业表里写 running 标记和开始时间。 */
     async markRunning({ owner, repo, parent, ticket = null, action, reason = '', now: at } = {}) {
       const key = jobKey({ owner, repo, parent, ticket, action })
       const previous = table.jobs[key] || {}

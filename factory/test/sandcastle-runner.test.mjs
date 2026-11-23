@@ -236,3 +236,38 @@ test('取消后清理这次新起的 sandcastle 容器，不动已有容器', as
     .map((call) => call.args.at(-1))
   assert.deepEqual(removed, ['new1', 'new2'])
 })
+
+test('取消时 docker ps 失败就不清理，避免误删别的容器', async (t) => {
+  const fixture = await makeFixture(t)
+  const calls = []
+  const exec = async (command, args) => {
+    calls.push({ command, args })
+    if (command === 'docker' && args[0] === 'ps') {
+      return { code: 1, stdout: '', stderr: 'daemon unavailable' }
+    }
+    return { code: 1, stdout: '', stderr: 'killed' }
+  }
+  const controller = new AbortController()
+  controller.abort()
+  const runner = createSandcastleRunner({
+    home: join(fixture.root, 'sandcastle'),
+    exec,
+    env: {},
+  })
+
+  await assert.rejects(
+    () =>
+      runner.run({
+        repoDir: fixture.repoDir,
+        ticketBranch: 'ticket/51',
+        prepared: { scriptPath: join(fixture.root, 'sandcastle', 'run-51.mts') },
+        signal: controller.signal,
+      }),
+    (error) => {
+      assert.equal(error.aborted, true)
+      assert.equal(error.cleanedContainers, undefined)
+      return true
+    },
+  )
+  assert.equal(calls.some((call) => call.command === 'docker' && call.args[0] === 'rm'), false)
+})

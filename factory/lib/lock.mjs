@@ -120,7 +120,7 @@ export async function acquireTicketLease({
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await writeFile(path, content, { flag: 'wx', mode: 0o600 })
-      return { acquired: true, path, takeover: false }
+      return { acquired: true, path, takeover: false, token: content }
     } catch (error) {
       if (error.code !== 'EEXIST') throw error
       let previous = null
@@ -143,7 +143,7 @@ export async function acquireTicketLease({
       await unlink(path).catch(() => {})
       try {
         await writeFile(path, content, { flag: 'wx', mode: 0o600 })
-        return { acquired: true, path, takeover: true, previous: previous || {}, mtimeMs }
+        return { acquired: true, path, takeover: true, previous: previous || {}, mtimeMs, token: content }
       } catch (retry) {
         if (retry.code !== 'EEXIST') throw retry
       }
@@ -152,12 +152,24 @@ export async function acquireTicketLease({
   return { acquired: false, reason: 'busy', path }
 }
 
-/** 心跳：把租约 mtime 和内容里的时间改成现在。文件没了就报错，交给调用方停管道。 */
-export async function touchTicketLease(path, { now = () => new Date() } = {}) {
+/**
+ * 心跳：把租约 mtime 改成现在。带 token 时先确认文件还是自己写的；
+ * 被接管后旧持有者不能再改、也不能删新租约。
+ */
+export async function touchTicketLease(path, { now = () => new Date(), token } = {}) {
+  if (token !== undefined) {
+    const current = await readFile(path, 'utf8').catch(() => null)
+    if (current !== token) throw new Error('票租约已被接管，停止管道')
+  }
   const at = new Date(leaseStamp(now))
   await utimes(path, at, at)
 }
 
-export async function releaseTicketLease(path) {
+export async function releaseTicketLease(path, { token } = {}) {
+  if (token !== undefined) {
+    const current = await readFile(path, 'utf8').catch(() => null)
+    if (current !== token) return false
+  }
   await unlink(path).catch(() => {})
+  return true
 }

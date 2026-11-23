@@ -7,6 +7,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { eventKey } from '../../backend/lib/protocol.mjs'
+import { DEFAULT_AGENT_TIMEOUT_MS } from './agent-runner.mjs'
 import { readTrail } from './evidence.mjs'
 import { git } from './git.mjs'
 import { latestGate } from './gate.mjs'
@@ -976,7 +977,7 @@ async function removeSandcastleLabel({ gh, owner, repo, ticketNumber }) {
   return { type: 'removeSandcastle', changed: true }
 }
 
-async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock }) {
+async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock, signal }) {
   const ticketNumber = action.ticketNumber ?? action.ticket?.number
   const fresh = await gh.getIssue({ owner, repo, number: ticketNumber })
   if (labelNames(fresh).includes(SANDBOX_LABEL)) {
@@ -1024,6 +1025,7 @@ async function executeIgnite({ gh, owner, repo, parent, action, ignite, config, 
     jobPolicy: config.jobPolicy || {},
     now,
     clock,
+    signal,
   })
   config.pendingIgnitions.add(task)
   const forget = () => config.pendingIgnitions.delete(task)
@@ -1046,6 +1048,7 @@ async function runIgnitionInBackground({
   jobPolicy,
   now,
   clock,
+  signal,
 }) {
   // 点火可能跑很久，作业行的 lastBeat 要用失败那一刻的时间，不能拿轮次开始时间。
   const currentTime = () => {
@@ -1089,6 +1092,7 @@ async function runIgnitionInBackground({
       parent: { number: parent.number, title: parent.title, body: parent.body },
       ticket,
       attempt,
+      signal,
     })
     if (result?.skipped) {
       // busy/blocked：这次没真正跑，不写作业表，不涨 attempt，不进退避。
@@ -1200,6 +1204,7 @@ async function executeActions({
   config,
   now,
   clock,
+  signal,
 }) {
   const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish })
   if (missing) return { skipped: missing, results: [] }
@@ -1257,7 +1262,7 @@ async function executeActions({
         )
       }
     } else if (action.type === 'ignite') {
-      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock })
+      const result = await executeIgnite({ gh, owner, repo, parent, action, ignite, config, now, clock, signal })
       results.push(result)
       // 抢不到仓锁：这一轮整张票都不动，状态留给下一轮，避免没点火就先改开发中。
       if (result.skipped === 'locked') return { skipped: 'locked', results }
@@ -1376,7 +1381,6 @@ function localDateOffset(date, days) {
 const DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_ROUND_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_HEARTBEAT_MS = 60 * 1000
-export const DEFAULT_AGENT_TIMEOUT_MS = 45 * 60 * 1000
 export const DEFAULT_PIPELINE_TIMEOUT_MS = 2 * 60 * 60 * 1000
 export const DEFAULT_CANCEL_GRACE_MS = 10 * 1000
 
@@ -1990,7 +1994,7 @@ export async function runOnce({
         let executed = { skipped: null, results: [] }
         if (actions.length) {
           try {
-            executed = await step(`执行父工单 #${parent.number} 的动作`, () =>
+            executed = await step(`执行父工单 #${parent.number} 的动作`, ({ signal }) =>
               executeActions({
                 gh,
                 owner: row.owner,
@@ -2006,6 +2010,7 @@ export async function runOnce({
                 config,
                 now: nowDate,
                 clock,
+                signal,
               }),
             )
           } catch (error) {
@@ -2051,7 +2056,7 @@ export async function runOnce({
       for (const { map, actions } of routed.maps) {
         let executed = { skipped: null, results: [] }
         try {
-          executed = await step(`执行地图 #${map.number} 的动作`, () =>
+          executed = await step(`执行地图 #${map.number} 的动作`, ({ signal }) =>
             executeActions({
               gh,
               owner: row.owner,
@@ -2066,6 +2071,7 @@ export async function runOnce({
               config,
               now: nowDate,
               clock,
+              signal,
             }),
           )
         } catch (error) {

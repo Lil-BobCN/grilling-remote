@@ -728,6 +728,10 @@ export function createTicketPipeline({
           }
           state.active = { ticket: ticket.number, parent: parent.number }
           state.lastActive = state.active
+          const leaseController = new AbortController()
+          const runSignal = signal
+            ? AbortSignal.any([signal, leaseController.signal])
+            : leaseController.signal
           try {
             await jobs?.markRunning({
               owner,
@@ -743,7 +747,7 @@ export function createTicketPipeline({
           }
           const beat = setInterval(() => {
             Promise.resolve()
-              .then(() => touchLease(lease.path, { now: clock }))
+              .then(() => touchLease(lease.path, { now: clock, token: lease.token }))
               .then(() =>
                 jobs?.beatJob({
                   owner,
@@ -755,9 +759,10 @@ export function createTicketPipeline({
                 }),
               )
               .catch((error) => {
+                leaseController.abort(error)
                 log({
-                  level: 'warning',
-                  msg: '票租约心跳失败',
+                  level: 'error',
+                  msg: '票租约心跳失败，停止管道',
                   owner,
                   repo,
                   ticket: ticket.number,
@@ -768,9 +773,9 @@ export function createTicketPipeline({
           beat?.unref?.()
 
           try {
-            const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir, signal })
+            const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir, signal: runSignal })
             if (outcome) runs.push(outcome)
-            if (outcome?.reason === 'aborted' || signal?.aborted) {
+            if (outcome?.reason === 'aborted' || runSignal.aborted) {
               return { runs, aborted: true, active: state.lastActive }
             }
           } finally {
@@ -790,7 +795,7 @@ export function createTicketPipeline({
             state.active = null
           }
         } finally {
-          if (lease?.acquired) await releaseLease(lease.path)
+          if (lease?.acquired) await releaseLease(lease.path, { token: lease.token })
           inFlight.delete(key)
         }
       }
