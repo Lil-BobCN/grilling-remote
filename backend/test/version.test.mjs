@@ -19,22 +19,33 @@ test('有 release.json 时健康检查的版本跟发布走', async (t) => {
     'release.json': JSON.stringify({ version: '1.3.0-rc.6', commit: 'abc' }),
     'package.json': JSON.stringify({ version: '1.2.0' }),
   })
-  assert.equal(readVersion({ dir }), '1.3.0-rc.6')
+  assert.equal(readVersion(dir), '1.3.0-rc.6')
 })
 
 test('旧发布包没有 release.json 时回退到 package.json', async (t) => {
   const dir = await fixture(t, {
     'package.json': JSON.stringify({ version: '1.2.0' }),
   })
-  assert.equal(readVersion({ dir }), '1.2.0')
+  assert.equal(readVersion(dir), '1.2.0')
 })
 
-test('release.json 坏了或没有 version 时回退到 package.json', async (t) => {
-  for (const release of ['{坏 JSON', JSON.stringify({ commit: 'abc' })]) {
-    const dir = await fixture(t, {
-      'release.json': release,
-      'package.json': JSON.stringify({ version: '1.2.0' }),
-    })
-    assert.equal(readVersion({ dir }), '1.2.0', release)
-  }
+test('release.json 坏了时回退到 package.json', async (t) => {
+  const dir = await fixture(t, {
+    'release.json': '{坏 JSON',
+    'package.json': JSON.stringify({ version: '1.2.0' }),
+  })
+  assert.equal(readVersion(dir), '1.2.0')
+})
+
+test('release.json 没有字符串 version 时回退到 package.json', async (t) => {
+  const dir = await fixture(t, {
+    'release.json': JSON.stringify({ commit: 'abc', version: {} }),
+    'package.json': JSON.stringify({ version: '1.2.0' }),
+  })
+  assert.equal(readVersion(dir), '1.2.0')
+})
+
+test('package.json 也读不到时抛错，不假装健康', async (t) => {
+  const dir = await fixture(t, {})
+  assert.throws(() => readVersion(dir), /package\.json/)
 })

@@ -8,7 +8,7 @@ import { cleanupExpired } from './lib/uploads.mjs'
 import { readVersion } from './lib/version.mjs'
 
 const config = loadConfig()
-config.version = readVersion({ dir: fileURLToPath(new URL('.', import.meta.url)) })
+config.version = readVersion(fileURLToPath(new URL('.', import.meta.url)))
 
 if (!config.sessionSecret) {
   config.sessionSecret = randomBytes(32).toString('base64url')
