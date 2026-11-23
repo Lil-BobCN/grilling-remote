@@ -218,6 +218,7 @@ export async function runFinish(options, deps = {}) {
     repo,
     parent: parentNumber,
     repoDir,
+    reqBranch,
   })
 
   const checks = {
