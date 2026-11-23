@@ -9,11 +9,10 @@ import json
 import re
 import subprocess
 
+from ..chat_titles import CHAT_GAP, CHAT_SPLIT, chat_title
 from ..config import OrcaBotConfig
 from . import ChannelError
 
-CHAT_GAP = "补缺口"
-CHAT_SPLIT = "拆票"
 PROPOSAL_CHATS = {
     "补缺口提案": CHAT_GAP,
     "拆票提案": CHAT_SPLIT,
@@ -67,10 +66,6 @@ def _parent_identity(event: dict):
     return None
 
 
-def _chat_title(prefix: str, owner: str, repo: str, ticket: int) -> str:
-    return f"{prefix} {owner}/{repo}#{ticket}"
-
-
 def _open_chats(config: OrcaBotConfig) -> list[dict]:
     payload = _run(config, ["bot", "chats", "--bot", config.bot, "--json"])
     result = payload.get("result")
@@ -101,13 +96,13 @@ def send(config: OrcaBotConfig, title: str, body: str, secret=None, event=None):
         chats = _open_chats(config)
         proposal = PROPOSAL_CHATS.get(event.get("event"))
         if proposal is not None:
-            subject = _chat_title(proposal, owner, repo, ticket)
+            subject = chat_title(proposal, owner, repo, ticket)
             chat = _find_chat(chats, subject)
             chat_args = ["--chat", chat] if chat else ["--chat", "new"]
         else:
             chat_args = []
             for prefix in (CHAT_SPLIT, CHAT_GAP):
-                candidate = _chat_title(prefix, owner, repo, ticket)
+                candidate = chat_title(prefix, owner, repo, ticket)
                 chat = _find_chat(chats, candidate)
                 if chat:
                     subject = candidate

@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .chat_titles import CHAT_GAP, CHAT_SPLIT, chat_title
+
 EMAIL = "email"
 PUSH = "push"
 ORCA_BOT = "orca_bot"
@@ -21,11 +23,11 @@ def _proposal_links(data, link):
 
 
 def _gap_chat_title(data):
-    return f"补缺口 {data['owner']}/{data['repo']}#{data['ticket']}"
+    return chat_title(CHAT_GAP, data['owner'], data['repo'], data['ticket'])
 
 
 def _split_chat_title(data):
-    return f"拆票 {data['owner']}/{data['repo']}#{data['ticket']}"
+    return chat_title(CHAT_SPLIT, data['owner'], data['repo'], data['ticket'])
 
 
 class EventError(Exception):
