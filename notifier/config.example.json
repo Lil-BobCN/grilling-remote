@@ -11,6 +11,12 @@
     "push": {
       "enabled": true,
       "timeout_seconds": 15
+    },
+    "orca_bot": {
+      "enabled": false,
+      "bot": "莹宝（AFK）",
+      "timeout_seconds": 30,
+      "command": "orca"
     }
   },
   "log": {

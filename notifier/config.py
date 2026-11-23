@@ -18,6 +18,7 @@ KEYCHAIN_WECOM_WEBHOOK = "afkfactory-notifier.wecom-webhook"
 LOG_LEVELS = ("info", "error")
 RETRY_DEFAULT_ATTEMPTS = 3
 RETRY_DEFAULT_INTERVAL_SECONDS = 30.0
+ORCA_DEFAULT_COMMAND = "orca"
 
 
 class ConfigError(Exception):
@@ -41,6 +42,14 @@ class PushConfig:
 
 
 @dataclass(frozen=True)
+class OrcaBotConfig:
+    enabled: bool
+    bot: str
+    timeout: float
+    command: str
+
+
+@dataclass(frozen=True)
 class RetryConfig:
     attempts: int
     interval_seconds: float
@@ -53,6 +62,7 @@ class Config:
     log_level: str
     email: EmailConfig
     push: PushConfig
+    orca_bot: OrcaBotConfig
     retry: RetryConfig
 
 
@@ -95,6 +105,34 @@ def _require_port(mapping, where):
     return value
 
 
+def _orca_bot_config(raw) -> OrcaBotConfig:
+    """orca_bot 可以整段不写，等于关闭；开着才要求 bot 和超时。"""
+    if raw is None:
+        return OrcaBotConfig(
+            enabled=False, bot="", timeout=0.0, command=ORCA_DEFAULT_COMMAND)
+    mapping = _require_mapping(raw, "channels.orca_bot")
+    enabled = _require_bool(mapping, "enabled", "channels.orca_bot")
+    command = mapping.get("command", ORCA_DEFAULT_COMMAND)
+    if not isinstance(command, str) or not command.strip():
+        raise ConfigError("channels.orca_bot.command 必须是非空字符串")
+    if not enabled:
+        bot = mapping.get("bot", "")
+        timeout = mapping.get("timeout_seconds", 0)
+        return OrcaBotConfig(
+            enabled=False,
+            bot=bot if isinstance(bot, str) else "",
+            timeout=float(timeout) if isinstance(timeout, (int, float))
+            and not isinstance(timeout, bool) and timeout > 0 else 0.0,
+            command=command,
+        )
+    return OrcaBotConfig(
+        enabled=True,
+        bot=_require_str(mapping, "bot", "channels.orca_bot"),
+        timeout=_require_number(mapping, "timeout_seconds", "channels.orca_bot"),
+        command=command,
+    )
+
+
 def load_config(home=None) -> Config:
     home_path = notifier_home(home)
     path = home_path / "config.json"
@@ -113,6 +151,7 @@ def load_config(home=None) -> Config:
     channels = _require_mapping(root.get("channels"), "channels")
     email = _require_mapping(channels.get("email"), "channels.email")
     push = _require_mapping(channels.get("push"), "channels.push")
+    orca_bot = _orca_bot_config(channels.get("orca_bot"))
     log = _require_mapping(root.get("log", {}), "log")
     log_level = log.get("level", "info")
     if log_level not in LOG_LEVELS:
@@ -142,6 +181,7 @@ def load_config(home=None) -> Config:
             enabled=_require_bool(push, "enabled", "channels.push"),
             timeout=_require_number(push, "timeout_seconds", "channels.push"),
         ),
+        orca_bot=orca_bot,
         retry=RetryConfig(
             attempts=attempts,
             interval_seconds=float(interval),

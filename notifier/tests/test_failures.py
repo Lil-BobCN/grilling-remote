@@ -84,7 +84,7 @@ class Sender:
             self.outcomes.append(True)
         return not self.outcomes.pop(0)
 
-    def __call__(self, config, title, body, secret):
+    def __call__(self, config, title, body, secret, event=None):
         self.calls.append({"title": title, "body": body})
         if self.should_fail():
             raise ChannelError("HTTP 502")

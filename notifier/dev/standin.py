@@ -30,7 +30,7 @@ def _parse_args(argv):
     parser.add_argument("--ticket", type=int, help="读一次这张工单")
     parser.add_argument("--repo-dir", help="gate 命令里的客户仓路径")
     parser.add_argument("--event")
-    parser.add_argument("--channel", choices=("email", "push"), help="只发一路")
+    parser.add_argument("--channel", choices=("email", "push", "orca_bot"), help="只发一路")
     parser.add_argument("--customer", help="工单上没有客户简称时补")
     parser.add_argument("--requirement", help="工单上没有需求名时补")
     parser.add_argument("--link", help="默认用工单链接")

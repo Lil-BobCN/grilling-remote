@@ -10,7 +10,8 @@ from ..config import EmailConfig
 from . import ChannelError
 
 
-def send(config: EmailConfig, title: str, body: str, secret: str) -> None:
+def send(config: EmailConfig, title: str, body: str, secret: str,
+         event=None) -> None:
     message = EmailMessage()
     message["From"] = config.sender
     message["To"] = config.recipient

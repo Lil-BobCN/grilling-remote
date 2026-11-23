@@ -41,7 +41,7 @@ class FakeChannel:
         self.calls = []
         self.bodies = []
 
-    def __call__(self, config, title, body, secret):
+    def __call__(self, config, title, body, secret, event=None):
         self.calls.append(title)
         self.bodies.append(body)
         action = self.script.pop(0) if self.script else "none"

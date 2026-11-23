@@ -62,7 +62,7 @@ class Base(unittest.TestCase):
         return path
 
     def fake_sender(self, name, fail=False):
-        def send(config, title, body, secret):
+        def send(config, title, body, secret, event=None):
             self.sent.append((name, title, body, secret))
             if fail:
                 raise ChannelError("boom")
@@ -293,6 +293,134 @@ class TestInputErrors(Base):
         code, _, err = self.run_cli(home=empty_home)
         self.assertEqual(code, 2)
         self.assertIn("找不到配置文件", err)
+        self.assertEqual(self.sent, [])
+
+
+def orca_config():
+    config = copy.deepcopy(BASE_CONFIG)
+    config["channels"]["orca_bot"] = {
+        "enabled": True,
+        "bot": "莹宝（AFK）",
+        "timeout_seconds": 5,
+    }
+    return config
+
+
+def proposal_event():
+    return {
+        "v": 1,
+        "key": "k-orca-proposal",
+        "event": "补缺口提案",
+        "occurred_at": "2026-11-24T12:00:00+08:00",
+        "link": "https://github.com/acme/demo/issues/42",
+        "data": {
+            "customer": "B 店",
+            "requirement": "预约送货",
+            "question_count": 2,
+            "owner": "acme",
+            "repo": "demo",
+            "ticket": 42,
+            "kind": "gap",
+            "comment_url": "https://github.com/acme/demo/issues/42#issuecomment-9",
+        },
+    }
+
+
+def deployed_event():
+    return {
+        "v": 1,
+        "key": "k-deploy",
+        "event": "部署完成",
+        "occurred_at": "2026-11-24T12:00:00+08:00",
+        "link": "https://github.com/acme/demo/issues/42",
+        "data": {
+            "customer": "B 店",
+            "requirement": "预约送货",
+            "address": "https://b-shop.example.test",
+        },
+    }
+
+
+class TestOrcaBotChannel(Base):
+    def setUp(self):
+        super().setUp()
+        self.write_config(orca_config())
+
+    def all_senders(self, orca_fails=False):
+        return {
+            "email": self.fake_sender("email"),
+            "push": self.fake_sender("push"),
+            "orca_bot": self.fake_sender("orca_bot", fail=orca_fails),
+        }
+
+    def channels_sent(self):
+        return [row[0] for row in self.sent]
+
+    def test_proposal_goes_to_all_three_channels(self):
+        code, out, _ = self.run_cli(
+            event=proposal_event(), senders=self.all_senders())
+        self.assertEqual(code, 0)
+        self.assertEqual(self.channels_sent(), ["push", "email", "orca_bot"])
+        result = json.loads(out)
+        self.assertEqual(
+            [row["channel"] for row in result["results"]],
+            ["push", "email", "orca_bot"],
+        )
+
+    def test_deployed_has_no_email(self):
+        code, _, _ = self.run_cli(
+            event=deployed_event(), senders=self.all_senders())
+        self.assertEqual(code, 0)
+        self.assertEqual(self.channels_sent(), ["push", "orca_bot"])
+
+    def test_orca_bot_failure_keeps_other_channels_and_exit_1(self):
+        code, out, _ = self.run_cli(
+            event=proposal_event(), senders=self.all_senders(orca_fails=True))
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            self.channels_sent(), ["push", "email", "orca_bot", "orca_bot", "orca_bot"])
+        result = json.loads(out)
+        failed = [row for row in result["results"] if not row["ok"]]
+        self.assertEqual([row["channel"] for row in failed], ["orca_bot"])
+        records = [
+            row for row in self.log_records()
+            if row.get("channel") == "orca_bot" and row.get("ok") is False
+        ]
+        self.assertEqual(len(records), 3)
+        self.assertEqual(records[-1]["attempts"], 3)
+
+    def test_channel_flag_sends_only_orca_bot(self):
+        code, _, _ = self.run_cli(
+            "--channel", "orca_bot", event=proposal_event(),
+            senders=self.all_senders())
+        self.assertEqual(code, 0)
+        self.assertEqual(self.channels_sent(), ["orca_bot"])
+
+    def test_orca_bot_does_not_read_keychain(self):
+        def secret_reader(service):
+            raise AssertionError(f"orca_bot 不该读钥匙串：{service}")
+
+        code, _, err = self.run_cli(
+            "--channel", "orca_bot", event=proposal_event(),
+            senders=self.all_senders(), secret_reader=secret_reader)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.channels_sent(), ["orca_bot"])
+
+    def test_disabled_orca_bot_keeps_original_channels(self):
+        self.write_config(BASE_CONFIG)
+        code, _, _ = self.run_cli(
+            event=proposal_event(), senders=self.all_senders())
+        self.assertEqual(code, 0)
+        self.assertEqual(self.channels_sent(), ["push", "email"])
+
+    def test_enabled_config_without_bot_is_bad_input(self):
+        config = orca_config()
+        del config["channels"]["orca_bot"]["bot"]
+        self.write_config(config)
+        code, _, err = self.run_cli(
+            event=proposal_event(), senders=self.all_senders())
+        self.assertEqual(code, 2)
+        self.assertIn("bot", err)
         self.assertEqual(self.sent, [])
 
 

@@ -609,7 +609,7 @@ test('24 小时待办：提案：补缺口，带已等天数和新 key', () => {
   })
   assert.equal(reminder.event, '补缺口提案')
   assert.equal(reminder.days_waited, 2)
-  assert.match(reminder.key, /#42:补缺口提案:2/)
+  assert.match(reminder.key, /#42:补缺口提案:1:2$/)
 })
 
 test('24 小时待办：点头：补缺口但仓库没 spec，该跑 to-spec', () => {
@@ -936,6 +936,7 @@ test('collectSnapshot 分出地图、决定票、父工单和 spec，读评论�
   assert.equal(row.number, parent.number)
   assert.equal(row.spec.number, spec.number)
   assert.equal(row.comments[0].body, '点头：拆票')
+  assert.match(row.comments[0].html_url, /#issuecomment-\d+$/)
   assert.deepEqual(row.subIssues.map((child) => child.number).sort((a, b) => a - b), [first.number, second.number].sort((a, b) => a - b))
   assert.deepEqual(row.subIssues.find((child) => child.number === first.number).blockedBy, [blocked.number])
   assert.deepEqual(row.closedNumbers, [blocked.number])
@@ -2693,7 +2694,7 @@ test('读到提案：补缺口先推一条，带题数和已等天数；同一�
   assert.equal(event.data.repo, REPO)
   assert.equal(event.data.ticket, parent.number)
   assert.equal(event.data.kind, 'gap')
-  assert.match(event.key, /补缺口提案:0/)
+  assert.match(event.key, /补缺口提案:\d+:0$/)
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal([...notifier.delivered.values()].filter((row) => row.event === '补缺口提案').length, 1)
