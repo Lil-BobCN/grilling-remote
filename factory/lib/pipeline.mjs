@@ -705,7 +705,13 @@ export function createTicketPipeline({
     const runs = []
     const state = { active: null, lastActive: null }
     if (!repoDir) return { runs, skipped: 'no-repo' }
-    const excludeBefore = await readExclude({ gitImpl, repoDir })
+    const excludeBefore = await readExclude({ gitImpl, repoDir }).catch((error) => ({
+      path: '',
+      hash: '',
+      mtimeMs: 0,
+      lines: [],
+      error: errorText(error),
+    }))
     log({
       level: 'info',
       msg: '管道开始，记录 info/exclude 快照',
@@ -852,7 +858,13 @@ export function createTicketPipeline({
       }
     }
     } finally {
-      const excludeAfter = await readExclude({ gitImpl, repoDir })
+      const excludeAfter = await readExclude({ gitImpl, repoDir }).catch((error) => ({
+        path: '',
+        hash: '',
+        mtimeMs: 0,
+        lines: [],
+        error: errorText(error),
+      }))
       const added = newExcludeLines(excludeBefore, excludeAfter)
       const changed = excludeBefore.hash !== excludeAfter.hash
       log({
