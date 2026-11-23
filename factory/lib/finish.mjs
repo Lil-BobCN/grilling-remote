@@ -148,9 +148,17 @@ function ticketEvidence(ticket, rows) {
  * 读父工单、子票和每条子票的 trail。
  *
  * `repoDir` 是读 `.audit/<票号>.tsv` 的地方；契约里没列，但 trail 在本地仓库里，
- * 调用方要传。`unmerged` 是还开着或 trail 里没有 `phase=merge result=pass` 的子票号。
+ * 调用方要传。`reqBranch` 用来查票分支是否已合进需求分支（手工合并、trail 丢失时兜底）。
+ * `unmerged` 是还开着、trail 没有 merge pass 行、票分支也不是需求分支祖先的子票号。
  */
-export async function collectRequirementState({ gh, owner, repo, parent, repoDir = '' }) {
+export async function collectRequirementState({
+  gh,
+  owner,
+  repo,
+  parent,
+  repoDir = '',
+  reqBranch = '',
+}) {
   if (!gh || !owner || !repo) throw new Error('collectRequirementState 缺 gh、owner 或 repo')
   const number = typeof parent === 'object' && parent?.number ? parent.number : Number(parent)
   if (!Number.isInteger(number) || number <= 0) throw new Error('collectRequirementState 缺父工单号')
@@ -167,7 +175,11 @@ export async function collectRequirementState({ gh, owner, repo, parent, repoDir
   for (const child of children) {
     const trail = repoDir ? await readTrail({ repoDir, ticket: child.number }) : []
     const mergeRow = trail.find((row) => row.phase === 'merge' && row.result === 'pass')
-    const merged = child.state === 'closed' && Boolean(mergeRow)
+    const branchMerged =
+      Boolean(repoDir) &&
+      Boolean(reqBranch) &&
+      (await isAncestor(repoDir, `ticket/${child.number}`, reqBranch))
+    const merged = child.state === 'closed' && (Boolean(mergeRow) || branchMerged)
     const item = { ...child, trail, merged }
     subIssues.push(item)
     evidence.push(ticketEvidence(item, trail))

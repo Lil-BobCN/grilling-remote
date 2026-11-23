@@ -185,6 +185,74 @@ test('collectRequirementState 全部闭票且有合并行时 allClosed 为 true�
   }
 })
 
+test('collectRequirementState 闭合子票没有合并行但票分支已合进需求分支时不算未合', async () => {
+  const { fake, gh, parent, children } = await setupGithub({
+    children: [{ title: '手工合并的票', state: 'closed' }],
+  })
+  const dir = await makeRepo()
+  try {
+    const branch = `ticket/${children[0].number}`
+    await git(dir, ['checkout', '-b', 'req/order-1'])
+    await git(dir, ['checkout', '-b', branch, 'main'])
+    await writeFile(join(dir, 'feature.txt'), 'feature\n')
+    await commitAll(dir, 'feature')
+    await git(dir, ['checkout', 'req/order-1'])
+    await git(dir, ['merge', '--no-ff', branch, '-m', `merge ${branch}`])
+    await writeTicketTrail(dir, children[0].number, trailRows({ merge: false }))
+    await git(dir, ['add', '-A'])
+    await git(dir, ['commit', '-m', 'trail'])
+
+    const state = await collectRequirementState({
+      gh,
+      owner: OWNER,
+      repo: REPO,
+      parent: parent.number,
+      repoDir: dir,
+      reqBranch: 'req/order-1',
+    })
+
+    assert.deepEqual(state.unmerged, [])
+    assert.equal(state.subIssues[0].merged, true)
+    assert.equal(state.evidence[0].merge.length, 0, '没有 merge 行，靠祖先关系判')
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('collectRequirementState 闭合子票没有合并行且票分支不是祖先时仍算未合', async () => {
+  const { fake, gh, parent, children } = await setupGithub({
+    children: [{ title: '没合进来的票', state: 'closed' }],
+  })
+  const dir = await makeRepo()
+  try {
+    const branch = `ticket/${children[0].number}`
+    await git(dir, ['checkout', '-b', 'req/order-1'])
+    await git(dir, ['checkout', '-b', branch])
+    await writeFile(join(dir, 'feature.txt'), 'feature\n')
+    await commitAll(dir, 'feature')
+    await git(dir, ['checkout', 'req/order-1'])
+    await writeTicketTrail(dir, children[0].number, trailRows({ merge: false }))
+    await git(dir, ['add', '-A'])
+    await git(dir, ['commit', '-m', 'trail'])
+
+    const state = await collectRequirementState({
+      gh,
+      owner: OWNER,
+      repo: REPO,
+      parent: parent.number,
+      repoDir: dir,
+      reqBranch: 'req/order-1',
+    })
+
+    assert.deepEqual(state.unmerged, [children[0].number])
+    assert.equal(state.subIssues[0].merged, false)
+  } finally {
+    await fake.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('mergeRisk 方向由规则判定，只能往危险方向改', () => {
   const normal = mergeRisk({
     files: ['src/a.mjs'],
