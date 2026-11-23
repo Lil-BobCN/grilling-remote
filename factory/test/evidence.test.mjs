@@ -258,6 +258,32 @@ test('evidenceReady 旧 head 的干净检查 pass 不能替新提交作证', asy
   }
 })
 
+test('evidenceReady 干净检查跑在 audit-only 的父提交上时通过', async () => {
+  const { dir, trail, codeSha, headSha } = await readyFixture()
+  try {
+    await writeFile(join(dir, '.audit', 'extra.txt'), 'extra\n')
+    const auditHead = await commitAll(dir, 'audit extra')
+    const rows = trail.map((item) =>
+      item.phase === 'test'
+        ? row({
+            phase: 'test',
+            decision: 'npm test',
+            why: `干净检出 head ${headSha}`,
+            evidence: 'pass',
+          })
+        : item,
+    )
+    const result = await evidenceReady({ trail: rows, headSha: auditHead, repoDir: dir })
+    assert.equal(result.ready, true, JSON.stringify(result))
+    assert.deepEqual(result.missing, [])
+    assert.deepEqual(result.stale, [])
+    assert.notEqual(auditHead, headSha, 'head 是新的 audit-only 提交')
+    assert.notEqual(headSha, codeSha, '父提交也是 audit-only')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('riskLevel 碰迁移、删除、凭证、大版本依赖和大 diff 判高风险', () => {
   assert.equal(
     riskLevel({ files: ['db/migrations/001_init.sql'], diffStat: { additions: 2, deletions: 0 } }),
