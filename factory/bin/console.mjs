@@ -129,7 +129,7 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
     } else if (entry.kind === 'gate') {
       out(`写回：node factory/bin/console.mjs answer --kind gate --owner ${owner} --repo ${repo} --ticket ${entry.ticket} --repo-dir <客户仓> --question '${entry.question}' --answer '<答案>'`)
     } else if (entry.kind === 'spec') {
-      out('处理：工厂会自动跑 to-spec，正在跑或失败后按退避重试；一直失败会在父工单留下原因。')
+      out('处理：工厂会自动跑 to-spec，失败会挂 needs-info；摘掉标签后在这里重试，或等退避重试。')
     }
     return entry
   }
