@@ -8,6 +8,7 @@
 
 | 文件 | 干什么 |
 | --- | --- |
+| `package.sh` | 从仓库根打自包含的 helper 包。打包时解引用软链，解包后在解包目录跑 `install.sh` |
 | `install.sh` | 一次性安装，root 跑，可重复跑。装 Docker、建目录、起 Postgres、加 Caddy include、装 helper、共享库和 timer、写 sudoers |
 | `afk-product` | 服务器上的 helper。成品：`product-init`、`product-load`、`product-deploy`、`product-rollback`、`product-backup`、`product-status`；预览：`preview-start`、`preview-stop`、`preview-status`、`preview-sweep` |
 | `compose.template.yml` | 一个成品或一套预览一套 Compose 的模板，`product-init`、`preview-start` 复制成 `compose.yml` |
@@ -31,7 +32,7 @@
 bash deploy/test/deploy-selftest.sh
 ```
 
-它检查共享健康判据（000、502 判失败）、`product-status --check`、env 契约和发布指纹。
+它检查共享健康判据（000、502 判失败）、`product-status --check`、env 契约、发布指纹和 helper 打包。
 
 成品集成测试要起 Docker，然后：
 
@@ -67,15 +68,25 @@ bash deploy/products/test/preview-test.sh
 - `preview-status --check`：容器在、库在、路由在才通过；容器停了不通过。
 - 镜像不存在时 `preview-start` 失败，不留目录、路由和库，成品地址照常。
 
-## 服务器上装（运营者，要 sudo）
+## 打包和装到服务器（运营者）
 
-在服务器仓库根目录：
+在 Mac 的仓库根打包：
 
 ```bash
+bash deploy/products/package.sh /tmp/afk-products-helper.tgz
+```
+
+包从仓库根打，保留 `deploy/` 和 `backend/` 相对布局。`app.env.example` 是软链，打包时解引用成普通文件。传到服务器后解包到空目录，在解包目录跑：
+
+```bash
+mkdir -p /tmp/afk-helper
+tar -xzf /tmp/afk-products-helper.tgz -C /tmp/afk-helper
+cd /tmp/afk-helper
+bash deploy/products/install.sh --check-files
 sudo bash deploy/products/install.sh
 ```
 
-脚本可重复跑。已有的 Postgres 密钥、目录、Caddy include、sudoers 都不覆盖。
+`--check-files` 只检查文件齐不齐，不需要 root。`install.sh` 要 sudo，可重复跑。已有的 Postgres 密钥、目录、Caddy include、sudoers 都不覆盖。
 
 装完复核：
 
