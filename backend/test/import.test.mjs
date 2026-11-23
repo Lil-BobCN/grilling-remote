@@ -43,7 +43,7 @@ async function makeOrder(config, customer, { requirement, product = requirement,
   return order
 }
 
-async function makeScratch(dir, { name, decisions = '- [01 怎么取](issues/01.md)：到店取', quote = '想要预约取货。' }) {
+async function makeScratch(dir, { name, decisions = '- [01 怎么取](issues/01.md)：到店取', quote = '想要预约取货。', acceptance = '- [ ] 能预约。' }) {
   const requirement = name
   const target = join(dir, requirement)
   await mkdir(target, { recursive: true })
@@ -79,7 +79,7 @@ ${decisions}
   )
   await writeFile(
     join(target, '验收场景.md'),
-    '# 验收场景\n\n客户确认：2026-11-15\n\n- [ ] 能预约。\n',
+    `# 验收场景\n\n客户确认：2026-11-15\n\n${acceptance}\n`,
     'utf8',
   )
   return target
@@ -235,6 +235,42 @@ test('建单成功但订单没回写时，重跑复用带标记的父工单并�
 
   const fixed = JSON.parse(await readFile(orderPath, 'utf8'))
   assert.equal(fixed.issue, after[0].html_url)
+})
+
+test('编号列表的验收场景重跑导入时补齐已有父工单，不重复建单', async (t) => {
+  const { config, customer, gh, bare } = await setup(t)
+  const order = await makeOrder(config, customer, { requirement: 'numlist', product: 'numlist' })
+  const { dir } = await makeUpload(config, {
+    id: 'upload-numlist',
+    orders: [order],
+    requirements: [{ name: 'numlist', acceptance: '1. 能预约。\n2. 能取消。' }],
+  })
+
+  await importOnce({ config, gh, remoteUrlFor: () => bare })
+  const issues = await gh.listIssues({ owner: 'acme', repo: 'acme-numlist', state: 'all' })
+  assert.equal(issues.length, 1)
+  assert.match(issues[0].body, /## 验收条件\n\n- \[ \] 能预约。\n- \[ \] 能取消。/)
+
+  // 模拟旧父工单：验收条件曾经解析成「- 无」。
+  await gh.updateIssue({
+    owner: 'acme',
+    repo: 'acme-numlist',
+    number: issues[0].number,
+    body: issues[0].body.replace(
+      /## 验收条件\n\n[\s\S]*?\n\n## 不做清单/,
+      '## 验收条件\n\n- 无\n\n## 不做清单',
+    ),
+  })
+  const orderPath = join(config.dataDir, 'orders', `${order.id}.json`)
+  const savedOrder = JSON.parse(await readFile(orderPath, 'utf8'))
+  await writeJsonAtomic(orderPath, { ...savedOrder, issue: null })
+  const meta = JSON.parse(await readFile(join(dir, 'meta.json'), 'utf8'))
+  await writeJsonAtomic(join(dir, 'meta.json'), { ...meta, status: 'ready' })
+
+  await importOnce({ config, gh, remoteUrlFor: () => bare })
+  const after = await gh.listIssues({ owner: 'acme', repo: 'acme-numlist', state: 'all' })
+  assert.equal(after.length, 1)
+  assert.match(after[0].body, /## 验收条件\n\n- \[ \] 能预约。\n- \[ \] 能取消。/)
 })
 
 test('同一上传重跑不重复建单，订单已有工单就跳过', async (t) => {
