@@ -52,7 +52,7 @@ function stripBullet(line) {
  */
 const ACCEPTANCE_MARKER = /^(?:[-*]|\d+[.)])\s+/
 
-function acceptanceLines(markdown) {
+function acceptanceSourceLines(markdown) {
   if (!markdown) return []
   return markdown
     .split(/\r?\n/)
@@ -110,7 +110,7 @@ function listItems(body) {
 }
 
 function acceptanceItems(markdown) {
-  const items = acceptanceLines(markdown)
+  const items = acceptanceSourceLines(markdown)
     .map((line) => line.replace(ACCEPTANCE_MARKER, '').replace(/^\[[ xX]\]\s*/, ''))
     .map((line) => stripTrailingRevision(line))
     .filter(Boolean)

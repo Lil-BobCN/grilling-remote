@@ -198,6 +198,39 @@ async function uploadSmall(env, quote) {
   return body.orders[0].id
 }
 
+async function makeNumberedV2(scratch) {
+  await editText(
+    join(scratch, '问答记录.md'),
+    `> 「${V1_QUOTE}」`,
+    `> 「${V2_QUOTE}」`,
+  )
+  await writeFile(
+    join(scratch, '验收场景.md'),
+    '# 验收场景\n\n客户确认：2026-11-15\n\n1. 顾客扫码看水果。\n2. 门口也贴一张二维码。\n',
+    'utf8',
+  )
+}
+
+test('重传的验收场景是编号列表时，已有父工单补上条目且不建第二张', async (t) => {
+  const env = await setup(t)
+  const orderId = await uploadWorkspace(env)
+  await runImport(env)
+  const before = await parentOf(env, orderId)
+  assert.equal(before.length, 1)
+
+  await uploadWorkspace(env, makeNumberedV2)
+  const second = await runImport(env)
+  assert.equal(second.uploads[0].status, 'imported')
+
+  const after = await parentOf(env, orderId)
+  assert.deepEqual(after, before)
+  const parent = await env.gh.getIssue({ owner: OWNER, repo: REPO, number: before[0] })
+  assert.match(
+    parent.body,
+    /## 验收条件\n\n- \[ \] 顾客扫码看水果。\n- \[ \] 门口也贴一张二维码。/,
+  )
+})
+
 test('to-spec 前整包重传：沿用父工单，五段、快照、标签和分支换成新包', async (t) => {
   const env = await setup(t)
   const orderId = await uploadWorkspace(env)
