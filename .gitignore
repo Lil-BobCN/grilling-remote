@@ -6,16 +6,21 @@
 .env.*
 *.env
 *.env.*
-!.env.example
+!*.env.example
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
 id_ed25519*
+id_ecdsa*
 id_rsa*
 
 # 系统文件
 .DS_Store
 
 # 构建输出
+node_modules/
 output/
 site/node_modules/
 site/dist/
@@ -32,6 +37,16 @@ customers.json
 # 本地工具与 Cloudflare 登录态，含 OAuth 令牌，不进仓库
 .tools/
 .cloudflare/
+.wrangler/
+
+# 本地日志、数据库与运行态
+*.log
+*.sqlite
+*.sqlite3
+*.db
+.pytest_cache/
+.venv/
+venv/
 
 # Python
 __pycache__/
