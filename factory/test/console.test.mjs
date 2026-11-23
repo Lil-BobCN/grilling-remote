@@ -110,15 +110,49 @@ test('openWaiting 通过 Orca 打开终端并跑 show', async () => {
   assert.equal(terminal[1][terminal[1].indexOf('--command') + 1], result.command)
 })
 
-test('openWaiting 在 Orca 没开时给明确错误', async () => {
-  const run = async (command, args) => {
-    if (command === 'orca' && args[0] === 'status') return JSON.stringify({ running: false })
-    return ''
+test('openWaiting 认 Orca 1.4 的 result.app.running 和旧的 result.running', async () => {
+  const cases = [
+    { name: '1.4 结构', status: { ok: true, result: { app: { running: true, pid: 45278 } } } },
+    { name: '旧 result.running 结构', status: { result: { running: true } } },
+  ]
+  for (const item of cases) {
+    const calls = []
+    const run = async (command, args) => {
+      calls.push([command, args])
+      if (command === 'orca' && args[0] === 'status') return JSON.stringify(item.status)
+      if (command === 'orca' && args[0] === 'terminal') return 'terminal-1'
+      return ''
+    }
+    await openWaiting({
+      entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 },
+      run,
+      consolePath: '/repo/factory/bin/console.mjs',
+      worktree: 'id:wt1',
+    })
+    assert.ok(
+      calls.some(([command, args]) => command === 'orca' && args[0] === 'terminal'),
+      `${item.name} 应该调用 terminal create`,
+    )
   }
-  await assert.rejects(
-    () => openWaiting({ entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 }, run }),
-    /orca open/,
-  )
+})
+
+test('openWaiting 在 Orca 没开时给明确错误', async () => {
+  const cases = [
+    { running: false },
+    { result: { running: false } },
+    { ok: true, result: { app: { running: false } } },
+  ]
+  for (const status of cases) {
+    const run = async (command, args) => {
+      if (command === 'orca' && args[0] === 'status') return JSON.stringify(status)
+      return ''
+    }
+    await assert.rejects(
+      () => openWaiting({ entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 }, run }),
+      /orca open/,
+      JSON.stringify(status),
+    )
+  }
 })
 
 test('answerWaiting 调 gap CLI 写回答案', async () => {

@@ -188,7 +188,8 @@ export async function openWaiting({
   } catch {
     throw new Error(`orca status 不是 JSON：${statusText}`)
   }
-  const running = status.running ?? status?.result?.running
+  // Orca 1.4 返回 result.app.running，优先用它；旧的两种返回结构继续兼容。
+  const running = status?.result?.app?.running ?? status?.result?.running ?? status.running
   if (!running) throw new Error('Orca 没在运行。先跑：orca open')
 
   const selector = worktree || await findWorktree({ entry, run })
