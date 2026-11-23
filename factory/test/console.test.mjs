@@ -112,34 +112,47 @@ test('openWaiting 通过 Orca 打开终端并跑 show', async () => {
 
 test('openWaiting 认 Orca 1.4 的 result.app.running 和旧的 result.running', async () => {
   const cases = [
-    { name: '1.4', status: { ok: true, result: { app: { running: true, pid: 45278 } } } },
-    { name: '旧结构', status: { result: { running: true } } },
+    { name: '1.4 结构', status: { ok: true, result: { app: { running: true, pid: 45278 } } } },
+    { name: '旧 result.running 结构', status: { result: { running: true } } },
   ]
   for (const item of cases) {
+    const calls = []
     const run = async (command, args) => {
+      calls.push([command, args])
       if (command === 'orca' && args[0] === 'status') return JSON.stringify(item.status)
       if (command === 'orca' && args[0] === 'terminal') return 'terminal-1'
       return ''
     }
-    const result = await openWaiting({
+    await openWaiting({
       entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 },
       run,
       consolePath: '/repo/factory/bin/console.mjs',
       worktree: 'id:wt1',
     })
-    assert.equal(result.selector, 'id:wt1', item.name)
+    assert.ok(
+      calls.some(([command, args]) => command === 'orca' && args[0] === 'terminal'),
+      `${item.name} 应该调用 terminal create`,
+    )
   }
 })
 
 test('openWaiting 在 Orca 没开时给明确错误', async () => {
-  const run = async (command, args) => {
-    if (command === 'orca' && args[0] === 'status') return JSON.stringify({ running: false })
-    return ''
+  const cases = [
+    { running: false },
+    { result: { running: false } },
+    { ok: true, result: { app: { running: false } } },
+  ]
+  for (const status of cases) {
+    const run = async (command, args) => {
+      if (command === 'orca' && args[0] === 'status') return JSON.stringify(status)
+      return ''
+    }
+    await assert.rejects(
+      () => openWaiting({ entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 }, run }),
+      /orca open/,
+      JSON.stringify(status),
+    )
   }
-  await assert.rejects(
-    () => openWaiting({ entry: { kind: 'gap', owner: 'o', repo: 'r', ticket: 1 }, run }),
-    /orca open/,
-  )
 })
 
 test('answerWaiting 调 gap CLI 写回答案', async () => {
