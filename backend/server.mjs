@@ -1,14 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { fileURLToPath } from 'node:url'
 import { loadConfig } from './lib/config.mjs'
 import { createHandler } from './lib/app.mjs'
 import { logLine } from './lib/log.mjs'
 import { cleanupExpired } from './lib/uploads.mjs'
+import { readVersion } from './lib/version.mjs'
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 const config = loadConfig()
-config.version = pkg.version
+config.version = readVersion(fileURLToPath(new URL('.', import.meta.url)))
 
 if (!config.sessionSecret) {
   config.sessionSecret = randomBytes(32).toString('base64url')
