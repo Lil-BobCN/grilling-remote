@@ -299,11 +299,18 @@ test('同一需求目录已锁单，重传 422 并提示新建需求目录', asy
     const bytes = await readZip(workspace.zipPath)
     assert.equal((await upload(server.base, cookie, bytes)).status, 200)
 
-    config.specLock = async ({ requirement }) => requirement === 'demo'
+    const lockCalls = []
+    config.specLock = async ({ requirement, parentIssue, uploadedAt }) => {
+      lockCalls.push({ requirement, parentIssue, uploadedAt })
+      return requirement === 'demo'
+    }
     const response = await upload(server.base, cookie, bytes)
     assert.equal(response.status, 422)
     const body = await response.json()
-    assert.match(body.message, /新建需求目录/)
+    assert.match(body.message, /补缺口已点头/)
+    assert.equal(lockCalls.length, 1)
+    assert.equal(lockCalls[0].parentIssue, '')
+    assert.ok(lockCalls[0].uploadedAt)
 
     const stored = await orderFile(config, 'o-0001')
     assert.equal(stored.uploads.length, 1)

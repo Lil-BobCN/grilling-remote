@@ -180,7 +180,8 @@ async function isSmallRequirement(uploadDir, requirement) {
 }
 
 /**
- * to-spec 窗口的两条规则：当前单没交付时不收新的需求目录；已锁单的目录不能重传。
+ * 上传窗口的两条规则：当前单没交付时不收新的需求目录；已锁单的目录不能重传。
+ * 锁单点是补缺口点头，判锁见 `spec-lock.mjs`。
  * 小需求建单即锁，没有重传窗口。
  * 返回 null 表示放行，否则返回拒绝结果。
  */
@@ -201,7 +202,7 @@ async function checkUploadWindow({ config, account, products, uploadDir, now }) 
         account,
         now,
         reason: 'new_requirement_while_open',
-        message: `软件「${product}」还有没交付的单，这次上传里又出现了新的需求目录（${fresh.join('、')}）。当前单在 to-spec 前可以把改好的内容整包重传，但不能加新的需求目录；等这单交付后再传。`,
+        message: `软件「${product}」还有没交付的单，这次上传里又出现了新的需求目录（${fresh.join('、')}）。当前单在点头前可以把改好的内容整包重传，但不能加新的需求目录；等这单交付后再传。`,
         extra: { product, requirements: fresh },
       })
     }
@@ -232,6 +233,8 @@ async function checkUploadWindow({ config, account, products, uploadDir, now }) 
         owner: config.githubOwner || '',
         repo: repoName,
         requirement: item.requirement,
+        parentIssue: existing.issue || '',
+        uploadedAt: now,
       })
     } catch (error) {
       logLine({
@@ -249,7 +252,7 @@ async function checkUploadWindow({ config, account, products, uploadDir, now }) 
         account,
         now,
         reason: 'requirement_locked',
-        message: `需求目录「${item.requirement}」已经锁单（spec 已发布），这一版不能再改。请新建需求目录再上传。`,
+        message: `需求目录「${item.requirement}」已经锁单（补缺口已点头），这一版不能再改。请新建需求目录再上传。`,
         extra: { product: item.product, requirement: item.requirement },
       })
     }

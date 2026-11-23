@@ -210,7 +210,7 @@ async function gitExitCode(cwd, args) {
 }
 
 /**
- * 重传前查需求分支：to-spec 前分支上不该有实现提交。
+ * 重传前查需求分支：点头前分支上不该有实现提交；解锁重传时同样不允许。
  * 分支不是 main 的祖先，说明有 ticket 合入的痕迹，不覆盖，报运营者。
  */
 export async function inspectRequirementBranch({ workDir, branch }) {
@@ -536,7 +536,7 @@ async function backfillRepos(config, account, orders) {
   }
 }
 
-async function isLockedReupload({ specLock, account, order, owner }) {
+async function isLockedReupload({ specLock, account, order, owner, uploadedAt }) {
   if (!specLock) return false
   const repos =
     account.repos && typeof account.repos === 'object' && !Array.isArray(account.repos)
@@ -545,7 +545,15 @@ async function isLockedReupload({ specLock, account, order, owner }) {
   const product = order.product || order.requirement
   const repo = repos[product] || repoFromIssue(order.issue) || `${account.short_name}-${product}`
   try {
-    return Boolean(await specLock({ owner, repo, requirement: order.requirement }))
+    return Boolean(
+      await specLock({
+        owner,
+        repo,
+        requirement: order.requirement,
+        parentIssue: order.issue || '',
+        uploadedAt,
+      }),
+    )
   } catch (error) {
     logLine({
       ts: new Date().toISOString(),
@@ -641,12 +649,21 @@ async function importUpload({
   ]
   for (const { order, reupload } of attempts) {
     try {
-      if (reupload && (await isLockedReupload({ specLock, account, order, owner }))) {
+      if (
+        reupload &&
+        (await isLockedReupload({
+          specLock,
+          account,
+          order,
+          owner,
+          uploadedAt: meta.at || stamp,
+        }))
+      ) {
         // 上传端已拦；这里兜底：锁单后同目录不能再改，不覆盖父工单和快照。
         await recordFailure(order, {
           status: IMPORT_NEEDS_OPERATOR,
           reason: 'requirement_locked',
-          message: `需求「${order.requirement}」已经锁单（spec 已发布），这次重传没有覆盖父工单和快照。请新建需求目录再上传。`,
+          message: `需求「${order.requirement}」已经锁单（补缺口已点头），这次重传没有覆盖父工单和快照。请新建需求目录再上传。`,
         })
         continue
       }
