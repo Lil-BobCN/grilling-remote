@@ -63,6 +63,10 @@ function newExcludeLines(before, after) {
   return after.lines.filter((line) => line.trim() && !known.has(line))
 }
 
+function emptyExclude(error) {
+  return { path: '', hash: '', mtimeMs: 0, lines: [], error: errorText(error) }
+}
+
 function firstLine(body) {
   return String(body || '')
     .replace(/^﻿/, '')
@@ -278,13 +282,14 @@ export function createTicketPipeline({
       'status',
       '--ignored',
       '--porcelain',
+      '-z',
       '--',
       '.audit',
     ]).catch(() => '')
     const ignoredPaths = String(ignored)
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith('!! '))
-      .map((line) => line.slice(3).trim())
+      .split('\0')
+      .filter((entry) => entry.startsWith('!! '))
+      .map((entry) => entry.slice(3))
       .filter(Boolean)
     if (ignoredPaths.length) {
       await gitImpl(worktree, ['add', '-f', '--', ...ignoredPaths]).catch(() => {})
@@ -501,6 +506,7 @@ export function createTicketPipeline({
     try {
       let ensured
       let keptWorktree = ''
+      let auditCommitFailed = false
       try {
         ensured = await ensureEvidence({
           repoDir: worktree,
@@ -521,7 +527,7 @@ export function createTicketPipeline({
       } finally {
         // 证据先落到票分支，再释放工作树；主仓合并时才切得动票分支。
         try {
-          // 取消时不再提交半截证据，但工作树照常释放，下一轮重新跑。
+          // 取消时这里不提交；release 会统一把 .audit 提交到票分支，工作树删除也不丢证据。
           if (!signal?.aborted) {
             const auditHead = await commitAuditFiles({ worktree, ticket: ticket.number })
             if (auditHead) {
@@ -551,6 +557,7 @@ export function createTicketPipeline({
               files: released.archived.map((row) => row.to),
             })
           }
+          if (released.worktreeDirty) auditCommitFailed = true
           if (released.kept) keptWorktree = released.path
         } catch (error) {
           log({
@@ -566,6 +573,16 @@ export function createTicketPipeline({
         }
       }
 
+      if (auditCommitFailed) {
+        return {
+          ticket: ticket.number,
+          ok: false,
+          reason: 'worktree_dirty',
+          worktree: keptWorktree,
+          problems: ['.audit 提交失败，工作树保留'],
+          archived: archived.map((row) => row.to),
+        }
+      }
       if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
 
       if (!ensured.ok) {
@@ -705,13 +722,7 @@ export function createTicketPipeline({
     const runs = []
     const state = { active: null, lastActive: null }
     if (!repoDir) return { runs, skipped: 'no-repo' }
-    const excludeBefore = await readExclude({ gitImpl, repoDir }).catch((error) => ({
-      path: '',
-      hash: '',
-      mtimeMs: 0,
-      lines: [],
-      error: errorText(error),
-    }))
+    const excludeBefore = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
     log({
       level: 'info',
       msg: '管道开始，记录 info/exclude 快照',
@@ -858,15 +869,12 @@ export function createTicketPipeline({
       }
     }
     } finally {
-      const excludeAfter = await readExclude({ gitImpl, repoDir }).catch((error) => ({
-        path: '',
-        hash: '',
-        mtimeMs: 0,
-        lines: [],
-        error: errorText(error),
-      }))
-      const added = newExcludeLines(excludeBefore, excludeAfter)
-      const changed = excludeBefore.hash !== excludeAfter.hash
+      const excludeAfter = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
+      const added = excludeBefore.error || excludeAfter.error ? [] : newExcludeLines(excludeBefore, excludeAfter)
+      const changed =
+        !excludeBefore.error &&
+        !excludeAfter.error &&
+        excludeBefore.hash !== excludeAfter.hash
       log({
         level: changed || added.length ? 'warning' : 'info',
         msg: changed || added.length ? 'evidence_ignored' : '管道结束，记录 info/exclude 快照',
@@ -876,6 +884,8 @@ export function createTicketPipeline({
         before: { hash: excludeBefore.hash, mtimeMs: excludeBefore.mtimeMs },
         after: { hash: excludeAfter.hash, mtimeMs: excludeAfter.mtimeMs },
         added,
+        ...(excludeBefore.error ? { beforeError: excludeBefore.error } : {}),
+        ...(excludeAfter.error ? { afterError: excludeAfter.error } : {}),
       })
     }
     return { runs, active: state.lastActive }

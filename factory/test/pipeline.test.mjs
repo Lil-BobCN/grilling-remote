@@ -1507,8 +1507,12 @@ test('exclude 在管道里被改：被忽略的证据仍进分支，日志有 ev
     async run(args) {
       calls += 1
       if (calls === 1) {
-        await appendFile(excludePath, '.audit/ignored.txt\n')
-        await writeFile(join(args.cwd, '.audit', 'ignored.txt'), 'ignored-evidence')
+        await appendFile(excludePath, `.audit/evidence/${ticket.number}/\n`)
+        await mkdir(join(args.cwd, '.audit', 'evidence', String(ticket.number)), { recursive: true })
+        await writeFile(
+          join(args.cwd, '.audit', 'evidence', String(ticket.number), 'ignored.png'),
+          'ignored-evidence',
+        )
       }
       return {
         ok: true,
@@ -1535,10 +1539,13 @@ test('exclude 在管道里被改：被忽略的证据仍进分支，日志有 ev
   })
   assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
 
-  const committed = await git(repoDir, ['show', `${REQ_BRANCH}:.audit/ignored.txt`]).catch(() => '')
+  const committed = await git(repoDir, [
+    'show',
+    `${REQ_BRANCH}:.audit/evidence/${ticket.number}/ignored.png`,
+  ]).catch(() => '')
   assert.equal(committed, 'ignored-evidence', '被忽略的证据也要提交到票分支')
 
   const hit = logs.find((row) => row.msg === 'evidence_ignored')
   assert.ok(hit, 'exclude 变了要写 evidence_ignored 日志')
-  assert.ok(hit.added.includes('.audit/ignored.txt'))
+  assert.ok(hit.added.includes(`.audit/evidence/${ticket.number}/`))
 })

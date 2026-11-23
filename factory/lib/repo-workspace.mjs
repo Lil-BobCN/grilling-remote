@@ -206,7 +206,11 @@ export function createRepoWorkspace({
       }
     }
     if (archived.length) {
-      const record = join(repoDir, '.audit', 'archive', batch, 'record.json')
+      let recordName = 'record.json'
+      for (let index = 2; archived.some((row) => row.from === recordName); index += 1) {
+        recordName = `record-${index}.json`
+      }
+      const record = join(repoDir, '.audit', 'archive', batch, recordName)
       try {
         await writeFile(
           record,
