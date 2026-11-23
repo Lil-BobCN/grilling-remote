@@ -1421,6 +1421,12 @@ export async function runJobStep({ jobs, clock = () => new Date(), config = {}, 
   }
 }
 
+/** GitHub 401/403 归为认证失败；其它错误（网络、5xx）不归。 */
+function authStatusOf(error) {
+  const status = Number(error?.status || 0)
+  return status === 401 || status === 403 ? status : 0
+}
+
 function failureText(result) {
   const problem =
     (result?.problems || result?.findings || [])[0] ||
@@ -1663,6 +1669,60 @@ async function notePipelineStops({ jobs, gh, owner, repo, parents, pipeline, now
   }
 }
 
+/**
+ * 运行中 GitHub 401/403：能定位到父工单的写 stop、挂 needs-info、发一次「出事」；
+ * 拿不到父工单（比如读快照就失败）时至少发一条稳定 key 的通知，让运营者看到停线。
+ */
+async function noteAuthFailures({ report, jobs, gh, notifier, config, now }) {
+  const failures = (report.errors || []).filter((row) => row.auth)
+  if (!failures.length) return
+  const seen = new Set()
+  for (const row of failures) {
+    const identity = `${row.owner || ''}/${row.repo || ''}#${row.parent ?? 'repo'}`
+    if (seen.has(identity)) continue
+    seen.add(identity)
+    const reason = `GitHub 认证失败（${row.auth}）`
+    if (row.parent && jobs) {
+      try {
+        await jobs.stop({
+          owner: row.owner,
+          repo: row.repo,
+          parent: row.parent,
+          action: 'auth',
+          stop: 'auth-failed',
+          reason,
+          now,
+        })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, parent: row.parent, jobs: true, message: error.message })
+      }
+      try {
+        await ensureIssueLabel({ gh, owner: row.owner, repo: row.repo, number: row.parent, name: NEEDS_INFO_LABEL })
+      } catch (error) {
+        report.errors.push({ repo: row.repo, parent: row.parent, labels: true, message: error.message })
+      }
+    }
+    const subject = row.parent ? `#${row.parent}` : '仓库'
+    const event = {
+      event: '出事',
+      key: eventKey({ owner: row.owner, repo: row.repo, subject, event: '认证失败' }),
+      data: { reason, status: row.auth },
+    }
+    try {
+      const result = await deliverEvent({ notifier, event, config, now })
+      report.notifications.push({
+        repo: row.repo,
+        parent: row.parent ?? null,
+        event: event.event,
+        key: event.key,
+        ...result,
+      })
+    } catch (error) {
+      report.errors.push({ repo: row.repo, parent: row.parent, event: event.event, message: error.message })
+    }
+  }
+}
+
 /** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
 async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
   if (!jobs) return
@@ -1801,7 +1861,13 @@ export async function runOnce({
           ),
         })
       } catch (error) {
-        report.errors.push({ repo: row.repo, snapshot: true, message: error.message })
+        report.errors.push({
+          repo: row.repo,
+          owner: row.owner,
+          snapshot: true,
+          auth: authStatusOf(error),
+          message: error.message,
+        })
       }
     }
 
@@ -1816,7 +1882,13 @@ export async function runOnce({
           })
           report.cleanup.push({ repo: row.repo, ticket: action.ticketNumber, ...result })
         } catch (error) {
-          report.errors.push({ repo: row.repo, cleanup: action.ticketNumber, message: error.message })
+          report.errors.push({
+            repo: row.repo,
+            owner: row.owner,
+            cleanup: action.ticketNumber,
+            auth: authStatusOf(error),
+            message: error.message,
+          })
         }
       }
     }
@@ -1859,7 +1931,13 @@ export async function runOnce({
             }),
           )
         } catch (error) {
-          report.errors.push({ repo: row.repo, pipeline: true, message: error.message })
+          report.errors.push({
+            repo: row.repo,
+            owner: row.owner,
+            pipeline: true,
+            auth: authStatusOf(error),
+            message: error.message,
+          })
         }
       }
       await notePipelineStops({
@@ -1909,7 +1987,13 @@ export async function runOnce({
               }),
             )
           } catch (error) {
-            report.errors.push({ repo: row.repo, parent: parent.number, message: error.message })
+            report.errors.push({
+              repo: row.repo,
+              owner: row.owner,
+              parent: parent.number,
+              auth: authStatusOf(error),
+              message: error.message,
+            })
             executed = { skipped: null, results: [], error: error.message }
             await noteJobCrash({
               gh,
@@ -1969,7 +2053,13 @@ export async function runOnce({
             }),
           )
         } catch (error) {
-          report.errors.push({ repo: row.repo, map: map.number, message: error.message })
+          report.errors.push({
+            repo: row.repo,
+            owner: row.owner,
+            map: map.number,
+            auth: authStatusOf(error),
+            message: error.message,
+          })
           executed = { skipped: null, results: [], error: error.message }
         }
         maps.push({
@@ -2019,8 +2109,10 @@ export async function runOnce({
         } catch (error) {
           report.errors.push({
             repo: row.repo,
+            owner: row.owner,
             parent: parent.number,
             needsAnswer: true,
+            auth: authStatusOf(error),
             message: error.message,
           })
         }
@@ -2059,6 +2151,8 @@ export async function runOnce({
         }
       }
     }
+
+    await noteAuthFailures({ report, jobs, gh, notifier, config, now: nowDate })
 
     if (typeof config.previewSweep === 'function' && dueDigest({ now: nowDate, lastSentDate: config.lastPreviewSweepDate })) {
       try {

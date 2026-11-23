@@ -1374,6 +1374,57 @@ test('runOnce：管线认证失败写 auth-failed stop', async (t) => {
   assert.match(row.reason, /401 未授权/)
 })
 
+test('runOnce：运行中 GitHub 401 写 auth stop、挂 needs-info，同一故障只通知一次', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const failing = {
+    ...gh,
+    addLabels: async (args) => {
+      if ((args.labels || []).includes('状态:排队中')) {
+        throw Object.assign(new Error('Bad credentials'), { status: 401 })
+      }
+      return gh.addLabels(args)
+    },
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+    jobs,
+  }
+
+  const report = await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.ok(report.errors.some((error) => error.auth === 401 && error.parent === parent.number))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(row.stop, 'auth-failed')
+  assert.match(row.reason, /401/)
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+  assert.equal(notifier.calls.length, 1)
+  assert.match([...notifier.delivered.keys()][0], /认证失败/)
+
+  await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => new Date(NOW.getTime() + 60_000),
+    config,
+  })
+  assert.equal(notifier.calls.length, 1, '同一故障不重复通知')
+})
+
 test('runOnce：一轮开始写心跳，结束记完成时间', async (t) => {
   const { gh } = await setupRepo(t)
   const parent = await createParent(gh)
