@@ -154,8 +154,8 @@ class TestTemplates(unittest.TestCase):
             (
                 "该跑 to-spec",
                 "B 店 · 预约送货 · 工厂开始跑 to-spec",
-                "补缺口已点头，状态改成排队中。工厂会自动跑 to-spec，写完直接拆票，不用你动手；"
-                "一直失败时看父工单的 needs-info。https://example.test/1",
+                "补缺口已点头，状态改成排队中。工厂会自动跑 to-spec，写完等你点头拆票，"
+                "不用你手动跑；一直失败时看父工单的 needs-info。https://example.test/1",
             ),
             (
                 "拆票提案",
