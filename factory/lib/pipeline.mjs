@@ -4,9 +4,10 @@
  * 证据已经齐了也要继续走合并：合并没成，下一轮接着试，并按 verifyPlan
  * 补足验证者。失败不在这里修，只返回原因，下一轮继续看同一事实。
  */
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
 import { MERGER_TOOLS } from './agent-runner.mjs'
@@ -37,6 +38,33 @@ export const PENDING_LABEL = '状态:待验收'
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** 读 common dir 的 info/exclude：哈希、mtime 和原始行，给管道前后对比。 */
+async function readExclude({ gitImpl, repoDir }) {
+  const commonRaw = String(await gitImpl(repoDir, ['rev-parse', '--git-common-dir'])).trim()
+  const common = isAbsolute(commonRaw) ? commonRaw : resolve(repoDir, commonRaw)
+  const path = join(common, 'info', 'exclude')
+  try {
+    const [text, info] = await Promise.all([readFile(path, 'utf8'), stat(path)])
+    return {
+      path,
+      hash: createHash('sha256').update(text).digest('hex'),
+      mtimeMs: info.mtimeMs,
+      lines: text.split(/\r?\n/),
+    }
+  } catch {
+    return { path, hash: '', mtimeMs: 0, lines: [] }
+  }
+}
+
+function newExcludeLines(before, after) {
+  const known = new Set(before.lines)
+  return after.lines.filter((line) => line.trim() && !known.has(line))
+}
+
+function emptyExclude(error) {
+  return { path: '', hash: '', mtimeMs: 0, lines: [], error: errorText(error) }
 }
 
 function firstLine(body) {
@@ -249,6 +277,23 @@ export function createTicketPipeline({
    */
   async function commitAuditFiles({ worktree, ticket }) {
     // `.git/info/exclude` 之类的忽略规则会挡住普通 git add，证据必须进分支，强制加入。
+    // 先把被忽略的 `.audit` 文件逐个点名，再整体 force-add，避免漏掉已经存在的证据。
+    const ignored = await gitImpl(worktree, [
+      'status',
+      '--ignored',
+      '--porcelain',
+      '-z',
+      '--',
+      '.audit',
+    ]).catch(() => '')
+    const ignoredPaths = String(ignored)
+      .split('\0')
+      .filter((entry) => entry.startsWith('!! '))
+      .map((entry) => entry.slice(3))
+      .filter(Boolean)
+    if (ignoredPaths.length) {
+      await gitImpl(worktree, ['add', '-f', '--', ...ignoredPaths]).catch(() => {})
+    }
     await gitImpl(worktree, ['add', '-f', '-A', '--', '.audit']).catch(() => {})
     const staged = await gitImpl(worktree, ['diff', '--cached', '--name-only', '--', '.audit']).catch(
       () => '',
@@ -461,6 +506,7 @@ export function createTicketPipeline({
     try {
       let ensured
       let keptWorktree = ''
+      let auditCommitFailed = false
       try {
         ensured = await ensureEvidence({
           repoDir: worktree,
@@ -481,7 +527,7 @@ export function createTicketPipeline({
       } finally {
         // 证据先落到票分支，再释放工作树；主仓合并时才切得动票分支。
         try {
-          // 取消时不再提交半截证据，但工作树照常释放，下一轮重新跑。
+          // 取消时这里不提交；release 会统一把 .audit 提交到票分支，工作树删除也不丢证据。
           if (!signal?.aborted) {
             const auditHead = await commitAuditFiles({ worktree, ticket: ticket.number })
             if (auditHead) {
@@ -511,6 +557,7 @@ export function createTicketPipeline({
               files: released.archived.map((row) => row.to),
             })
           }
+          if (released.worktreeDirty) auditCommitFailed = true
           if (released.kept) keptWorktree = released.path
         } catch (error) {
           log({
@@ -526,6 +573,16 @@ export function createTicketPipeline({
         }
       }
 
+      if (auditCommitFailed) {
+        return {
+          ticket: ticket.number,
+          ok: false,
+          reason: 'worktree_dirty',
+          worktree: keptWorktree,
+          problems: ['.audit 提交失败，工作树保留'],
+          archived: archived.map((row) => row.to),
+        }
+      }
       if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
 
       if (!ensured.ok) {
@@ -665,6 +722,17 @@ export function createTicketPipeline({
     const runs = []
     const state = { active: null, lastActive: null }
     if (!repoDir) return { runs, skipped: 'no-repo' }
+    const excludeBefore = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
+    log({
+      level: 'info',
+      msg: '管道开始，记录 info/exclude 快照',
+      owner,
+      repo,
+      file: excludeBefore.path,
+      hash: excludeBefore.hash,
+      mtimeMs: excludeBefore.mtimeMs,
+    })
+    try {
     for (const parent of parents || []) {
       for (const ticket of parent.subIssues || []) {
         if (signal?.aborted) return { runs, aborted: true, active: state.active }
@@ -799,6 +867,26 @@ export function createTicketPipeline({
           inFlight.delete(key)
         }
       }
+    }
+    } finally {
+      const excludeAfter = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
+      const added = excludeBefore.error || excludeAfter.error ? [] : newExcludeLines(excludeBefore, excludeAfter)
+      const changed =
+        !excludeBefore.error &&
+        !excludeAfter.error &&
+        excludeBefore.hash !== excludeAfter.hash
+      log({
+        level: changed || added.length ? 'warning' : 'info',
+        msg: changed || added.length ? 'evidence_ignored' : '管道结束，记录 info/exclude 快照',
+        owner,
+        repo,
+        file: excludeAfter.path,
+        before: { hash: excludeBefore.hash, mtimeMs: excludeBefore.mtimeMs },
+        after: { hash: excludeAfter.hash, mtimeMs: excludeAfter.mtimeMs },
+        added,
+        ...(excludeBefore.error ? { beforeError: excludeBefore.error } : {}),
+        ...(excludeAfter.error ? { afterError: excludeAfter.error } : {}),
+      })
     }
     return { runs, active: state.lastActive }
   }

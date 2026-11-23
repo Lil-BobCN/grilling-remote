@@ -196,6 +196,49 @@ test('只有未跟踪文件的工作树先归档再删除', async (t) => {
   assert.ok(!(await worktrees(repoDir)).some((row) => row.branch === 'ticket/11'))
 })
 
+test('release 把 .audit 证据提交到票分支，只归档非证据文件', async (t) => {
+  const root = await tempRoot(t)
+  const { reqBranch } = await seedCustomer(root)
+  const ws = workspaceFor(root)
+  const { repoDir } = await ws.ensure({ owner: 'acme', repo: 'demo', reqBranch })
+  const prepared = await ws.prepareTicket({ repoDir, base: reqBranch, ticketBranch: 'ticket/11' })
+
+  // 模拟 ignore 写入口：证据被 exclude 挡住，仍要强制进分支。
+  const common = (await git(prepared.worktree, ['rev-parse', '--git-common-dir'])).trim()
+  const exclude = join(
+    common.startsWith('/') ? common : join(prepared.worktree, common),
+    'info',
+    'exclude',
+  )
+  await mkdir(join(prepared.worktree, '.audit', 'evidence', '11'), { recursive: true })
+  await writeFile(join(prepared.worktree, '.audit', 'evidence', '11', 'after.png'), 'png')
+  await writeFile(exclude, '.audit/evidence/11/\n', { flag: 'a' })
+  await mkdir(join(prepared.worktree, 'shots'), { recursive: true })
+  await writeFile(join(prepared.worktree, 'shots', '临时.txt'), 'tmp')
+
+  const released = await ws.release(prepared)
+  assert.equal(released.removed, true)
+  assert.equal(released.archived.length, 1)
+  assert.equal(released.archived[0].from, 'shots/临时.txt')
+  assert.ok(released.auditHead)
+
+  const head = (await git(repoDir, ['rev-parse', 'ticket/11'])).trim()
+  assert.equal(released.auditHead.trim(), head)
+  assert.equal(
+    await git(repoDir, ['show', 'ticket/11:.audit/evidence/11/after.png']),
+    'png',
+  )
+
+  const batch = released.archived[0].to.split('/')[2]
+  const record = JSON.parse(
+    await readFile(join(repoDir, '.audit', 'archive', batch, 'record.json'), 'utf8'),
+  )
+  assert.equal(record.branch, 'ticket/11')
+  assert.match(record.worktree, /ticket-11/)
+  assert.match(record.at, /^\d{4}-\d{2}-\d{2}T/)
+  assert.deepEqual(record.files, ['shots/临时.txt'])
+})
+
 test('abort 归档未跟踪文件并删掉脏工作树', async (t) => {
   const root = await tempRoot(t)
   const { reqBranch } = await seedCustomer(root)
