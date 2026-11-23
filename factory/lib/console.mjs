@@ -257,7 +257,14 @@ export async function answerWaiting({
     return run(node, args)
   }
   if (entry.kind === 'spec') {
-    throw new Error('to-spec 是手动步骤，没有写回命令；在仓库里手动跑 to-spec。')
+    // 不在这里同步跑 agent：重置作业退避，调度器下一轮重新跑 to-spec。
+    return run(node, [
+      bin('job-reset.mjs'),
+      '--owner', entry.owner,
+      '--repo', entry.repo,
+      '--parent', String(entry.ticket),
+      '--action', 'to-spec',
+    ])
   }
   throw new Error(`不认识的待办类型：${entry.kind}`)
 }

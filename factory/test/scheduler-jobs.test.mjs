@@ -14,6 +14,7 @@ import {
   createGapProposal,
   createListMergedYesterday,
   createNeedsAnswer,
+  createToSpec,
   parseGateRows,
   ticketFromBranch,
 } from '../lib/scheduler-jobs.mjs'
@@ -740,4 +741,102 @@ test('createGapProposal 失败接上调度器：写 needs-info stop，下一轮�
 
   await runOnce(options)
   assert.equal(runs, 1, '停了线就不重跑补缺口')
+})
+
+function toSpecGh(issues = []) {
+  const rows = [...issues]
+  return {
+    rows,
+    async listIssues() {
+      return rows
+    },
+    async getIssue({ number }) {
+      return rows.find((row) => row.number === number) || { number, title: '', body: '' }
+    },
+  }
+}
+
+const TO_SPEC_PARENT = {
+  number: 42,
+  title: '要个预约取货',
+  body: ['## 需求全文', '', '- 客户简称：acme', '- 需求名：yuyue'].join('\n'),
+}
+
+test('createToSpec 已有 spec 时跳过，不调用 runner', async () => {
+  const calls = []
+  const gh = toSpecGh([
+    { number: 60, title: 'spec：yuyue', body: '## Problem Statement', labels: labels('ready-for-agent') },
+  ])
+  const result = await createToSpec({
+    gh,
+    agentsDir: AGENTS_DIR,
+    runner: {
+      async run(options) {
+        calls.push(options)
+        return { ok: true, code: 0 }
+      },
+    },
+  })({ owner: 'acme', repo: 'demo', parent: TO_SPEC_PARENT })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.skipped, 'spec-exists')
+  assert.equal(result.number, 60)
+  assert.equal(calls.length, 0)
+})
+
+test('createToSpec 跑完校验 spec 的标题、标签和需求名', async () => {
+  const calls = []
+  const gh = toSpecGh()
+  const runner = {
+    async run(options) {
+      calls.push(options)
+      gh.rows.push({
+        number: 70,
+        title: 'spec：yuyue',
+        body: '## Problem Statement\n\n预约取货。',
+        labels: labels('ready-for-agent'),
+      })
+      return { ok: true, code: 0, stdout: '', stderr: '' }
+    },
+  }
+  const result = await createToSpec({ gh, agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.number, 70)
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].brief, /读什么/)
+  assert.match(calls[0].brief, /用户故事/)
+  assert.match(calls[0].brief, /不得修改|不要.*文件路径|正文不写文件路径/)
+  assert.match(calls[0].brief, /--repo acme\/demo/)
+})
+
+test('createToSpec agent 失败时返回退出码和输出', async () => {
+  const runner = {
+    async run() {
+      return { ok: false, code: 2, stdout: '', stderr: '模型不可用' }
+    },
+  }
+  const result = await createToSpec({ gh: toSpecGh(), agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /退出码 2/)
+  assert.match(result.reason, /模型不可用/)
+})
+
+test('createToSpec agent 没产出 spec 时判失败', async () => {
+  const runner = { async run() { return { ok: true, code: 0 } } }
+  const result = await createToSpec({ gh: toSpecGh(), agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /没有产出/)
 })

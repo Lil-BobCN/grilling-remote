@@ -40,6 +40,7 @@ import {
   createListMergedYesterday,
   createNeedsAnswer,
   createPreviewSweep,
+  createToSpec,
 } from '../lib/scheduler-jobs.mjs'
 import {
   collectBranchFacts,
@@ -103,6 +104,7 @@ function previewDecision(actions) {
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
   if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
+  if (actions.some((action) => action.type === 'runToSpec')) return 'to-spec'
   if (actions.some((action) => action.type === 'runDecompose')) return 'decompose'
   if (actions.some((action) => action.type === 'addLabel' && action.name === 'needs-info')) {
     return 'needs-info'
@@ -172,6 +174,7 @@ export async function run(
     notifier,
     ignite,
     decompose,
+    toSpec,
     gapProposal,
     ticketPipeline,
     createFixTicket,
@@ -286,6 +289,13 @@ export async function run(
     })
   const createFixTicketFn =
     createFixTicket || createFixTicketJob({ gh: client })
+  const toSpecFn =
+    toSpec ||
+    createToSpec({
+      repoRoot,
+      gh: client,
+      command: process.env.AFK_AGENT_COMMAND || 'claude',
+    })
   const gapProposalFn =
     gapProposal ||
     createGapProposal({
@@ -359,6 +369,7 @@ export async function run(
     notifier: notify,
     ignite: igniteFn,
     decompose: decomposeFn,
+    toSpec: toSpecFn,
     gapProposal: gapProposalFn,
     ticketPipeline: ticketPipelineFn,
     createFixTicket: createFixTicketFn,

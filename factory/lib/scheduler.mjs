@@ -437,6 +437,11 @@ export function routeParent({
       if (jobBlocked(decomposeJob, { now, policy: jobPolicy })) return []
       return [{ type: 'runDecompose' }]
     }
+    if (!spec && signal?.kind === '点头：补缺口') {
+      const toSpecJob = findJob(jobs, { action: 'to-spec' })
+      if (jobBlocked(toSpecJob, { now, policy: jobPolicy })) return []
+      return [{ type: 'runToSpec' }]
+    }
     if (signal?.kind === '点头：拆票') {
       const ticket = selectTicket({
         subIssues: igniteEligible({ subIssues, jobs, now, jobPolicy }),
@@ -925,11 +930,12 @@ export function routeRepo({ snapshot, now, maxActive = 5, activeCount = 0, owner
 
 // ---- 执行动作 ----
 
-function missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish }) {
+function missingImplementation(actions, { ignite, decompose, toSpec, gapProposal, createFixTicket, finish }) {
   for (const action of actions) {
     if (action.type === 'finish' && typeof finish !== 'function') return 'finish'
     if (action.type === 'ignite' && typeof ignite !== 'function') return 'ignite'
     if (action.type === 'runDecompose' && typeof decompose !== 'function') return 'decompose'
+    if (action.type === 'runToSpec' && typeof toSpec !== 'function') return 'toSpec'
     if (action.type === 'runGapProposal' && typeof gapProposal !== 'function') {
       return 'gapProposal'
     }
@@ -1179,6 +1185,7 @@ async function deliverEvent({ notifier, event, config, now }) {
 const EXECUTION_ORDER = [
   'finish',
   'runGapProposal',
+  'runToSpec',
   'runDecompose',
   'ignite',
   'createFixTicket',
@@ -1197,6 +1204,7 @@ async function executeActions({
   actions,
   ignite,
   decompose,
+  toSpec,
   gapProposal,
   createFixTicket,
   finish,
@@ -1206,7 +1214,7 @@ async function executeActions({
   clock,
   signal,
 }) {
-  const missing = missingImplementation(actions, { ignite, decompose, gapProposal, createFixTicket, finish })
+  const missing = missingImplementation(actions, { ignite, decompose, toSpec, gapProposal, createFixTicket, finish })
   if (missing) return { skipped: missing, results: [] }
 
   const ordered = [...actions].sort(
@@ -1247,6 +1255,17 @@ async function executeActions({
     } else if (action.type === 'runDecompose') {
       const result = await decompose({ owner, repo, parent, spec: parent.spec || null })
       results.push({ type: 'runDecompose', result })
+    } else if (action.type === 'runToSpec') {
+      const result = await toSpec({ owner, repo, parent, spec: parent.spec || null })
+      results.push({ type: 'runToSpec', result })
+      if (result?.ok === false) {
+        await ensureCommentOnce(gh, {
+          owner,
+          repo,
+          number: parent.number,
+          body: `to-spec 失败：${failureText(result)}。按退避重试，到上限会挂 needs-info。`,
+        })
+      }
     } else if (action.type === 'runGapProposal') {
       const result = await gapProposal({ owner, repo, parent })
       results.push({ type: 'runGapProposal', result })
@@ -1279,6 +1298,7 @@ function decisionOf(actions) {
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
   if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
+  if (actions.some((action) => action.type === 'runToSpec')) return 'to-spec'
   if (actions.some((action) => action.type === 'runDecompose')) return 'decompose'
   if (actions.some((action) => action.type === 'addLabel' && action.name === NEEDS_INFO_LABEL)) {
     return 'needs-info'
@@ -1307,6 +1327,7 @@ function summarizeAction(action) {
   if (action.type === 'notify') return { type: 'notify', event: action.event, key: action.key }
   if (action.type === 'ignite') return { type: 'ignite', ticket: action.ticketNumber ?? action.ticket?.number }
   if (action.type === 'runDecompose') return { type: 'runDecompose' }
+  if (action.type === 'runToSpec') return { type: 'runToSpec' }
   if (action.type === 'runGapProposal') return { type: 'runGapProposal' }
   if (action.type === 'addLabel') return { type: 'addLabel', name: action.name }
   if (action.type === 'createFixTicket') return { type: 'createFixTicket' }
@@ -1633,11 +1654,21 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
       await recordRetry('decompose', decomposeResult)
     }
   }
+
+  const toSpecResult = results.find((row) => row.type === 'runToSpec')?.result
+  if (toSpecResult) {
+    if (toSpecResult.ok === true) {
+      await guard(jobs.recordSuccess({ owner, repo, parent: parent.number, action: 'to-spec', now }))
+    } else {
+      await recordRetry('to-spec', toSpecResult)
+    }
+  }
 }
 
 const RETRY_ACTIONS = {
   finish: 'finish',
   runGapProposal: 'gap-proposal',
+  runToSpec: 'to-spec',
   runDecompose: 'decompose',
   ignite: 'ignite',
 }
@@ -1911,6 +1942,7 @@ export async function runOnce({
   notifier,
   ignite,
   decompose,
+  toSpec,
   gapProposal,
   ticketPipeline,
   createFixTicket,
@@ -2109,6 +2141,7 @@ export async function runOnce({
                 actions,
                 ignite,
                 decompose,
+                toSpec,
                 gapProposal,
                 createFixTicket,
                 finish,
@@ -2177,6 +2210,7 @@ export async function runOnce({
               actions,
               ignite,
               decompose,
+              toSpec,
               gapProposal,
               createFixTicket,
               notifier,
