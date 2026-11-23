@@ -279,3 +279,22 @@ test('取消时杀整个进程组，父进程和孙进程都退出', async () =>
   assert.equal(alive(pids.child), false, '孙进程应退出')
   await rm(dir, { recursive: true, force: true })
 })
+
+test('agent 自身超时按失败返回，不标成管道取消', async () => {
+  const runner = createAgentRunner({
+    model: 'test-model',
+    timeoutMs: 30,
+    exec: (command, args, { signal }) =>
+      new Promise((resolve) => {
+        signal.addEventListener(
+          'abort',
+          () => resolve({ code: 1, stdout: '', stderr: '', aborted: true }),
+          { once: true },
+        )
+      }),
+  })
+  const result = await runner.run({ brief: '验证这张票' })
+  assert.equal(result.ok, false)
+  assert.equal(result.timedOut, true)
+  assert.equal(result.aborted, undefined, '超时不算管道取消，要写失败行')
+})
