@@ -29,20 +29,20 @@ test('旧发布包没有 release.json 时回退到 package.json', async (t) => {
   assert.equal(readVersion(dir), '1.2.0')
 })
 
-test('release.json 坏了时回退到 package.json', async (t) => {
+test('release.json 坏了时抛错，说明包不完整', async (t) => {
   const dir = await fixture(t, {
     'release.json': '{坏 JSON',
     'package.json': JSON.stringify({ version: '1.2.0' }),
   })
-  assert.equal(readVersion(dir), '1.2.0')
+  assert.throws(() => readVersion(dir), /release\.json/)
 })
 
-test('release.json 没有字符串 version 时回退到 package.json', async (t) => {
+test('release.json 没有字符串 version 时抛错，不回退旧版本', async (t) => {
   const dir = await fixture(t, {
     'release.json': JSON.stringify({ commit: 'abc', version: {} }),
     'package.json': JSON.stringify({ version: '1.2.0' }),
   })
-  assert.equal(readVersion(dir), '1.2.0')
+  assert.throws(() => readVersion(dir), /release\.json/)
 })
 
 test('package.json 也读不到时抛错，不假装健康', async (t) => {

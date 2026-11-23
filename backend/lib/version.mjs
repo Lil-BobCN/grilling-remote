@@ -2,21 +2,30 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * 健康检查的版本：发布包根有 release.json 就跟着发布走，旧包回退到 package.json。
- * release.json 缺失、不是合法 JSON 或没有字符串 version 时回退。
- * package.json 也读不到就抛，包不完整时别假装健康。
+ * 健康检查的版本：发布包根有 release.json 就跟着发布走，旧包（没有这个文件）回退到 package.json。
+ * release.json 存在但坏了或没有字符串 version，说明包不完整，直接抛错，不假装健康。
  */
 export function readVersion(dir) {
   if (!dir) throw new Error('readVersion 需要 dir')
-  let release = null
+  const releasePath = join(dir, 'release.json')
+  let text = null
   try {
-    release = JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8'))
+    text = readFileSync(releasePath, 'utf8')
   } catch (error) {
-    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
-      throw new Error(`release.json 读不了（${join(dir, 'release.json')}）：${error.message}`)
+    if (error.code !== 'ENOENT') {
+      throw new Error(`release.json 读不了（${releasePath}）：${error.message}`)
     }
   }
-  if (typeof release?.version === 'string' && release.version.trim()) {
+  if (text !== null) {
+    let release
+    try {
+      release = JSON.parse(text)
+    } catch (error) {
+      throw new Error(`release.json 不是合法 JSON（${releasePath}）：${error.message}`)
+    }
+    if (typeof release?.version !== 'string' || !release.version.trim()) {
+      throw new Error(`release.json 没有 version（${releasePath}）`)
+    }
     return release.version.trim()
   }
 
