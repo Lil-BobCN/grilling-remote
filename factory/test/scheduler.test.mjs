@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
+import { defaultExec } from '../lib/agent-runner.mjs'
 import { commitAll, git, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { createJobStore, findJob } from '../lib/job.mjs'
@@ -1626,6 +1627,39 @@ test('runJobStep 到点先取消任务再抛 StepTimeoutError，并等任务收�
   assert.equal(signalSeen.aborted, true, '超时前先 abort')
   assert.equal(sawAbort, true, '任务收到取消信号并收尾')
   assert.ok(cleared >= 1, '超时后清掉计时器')
+})
+
+test('runJobStep 超时取消：假 agent 进程 5 秒内消失', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-step-kill-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const pidFile = join(dir, 'pid')
+  const script = [
+    "require('node:fs').writeFileSync(process.argv[1], String(process.pid))",
+    'setInterval(() => {}, 1000)',
+  ].join('\n')
+
+  await assert.rejects(
+    runJobStep({
+      config: { stepTimeoutMs: 200, jobHeartbeatMs: 0, cancelGraceMs: 2000 },
+      label: '假 agent',
+      task: ({ signal }) => defaultExec(process.execPath, ['-e', script, pidFile], { signal }),
+    }),
+    /假 agent超时/,
+  )
+
+  const pid = Number(await readFile(pidFile, 'utf8'))
+  const alive = () => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return error.code !== 'ESRCH'
+    }
+  }
+  for (let i = 0; i < 100 && alive(); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(alive(), false, '超时后 agent 进程应消失')
 })
 
 test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
