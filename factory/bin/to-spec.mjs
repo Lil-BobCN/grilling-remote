@@ -39,7 +39,12 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
   if (!owner || !repo || !Number.isInteger(parentNumber)) {
     throw new Error('用法：to-spec.mjs --owner <o> --repo <r> --parent <父工单号>')
   }
-  const client = gh || createGithub({ token: await githubToken() })
+  let client = gh
+  if (!client) {
+    const token = await githubToken()
+    if (!token) throw new Error('缺 GITHUB_TOKEN：进程环境和 ~/.afkfactory/env 都没有')
+    client = createGithub({ token })
+  }
   const parent = await client.getIssue({ owner, repo, number: parentNumber })
   const toSpec = createToSpec({
     gh: client,
