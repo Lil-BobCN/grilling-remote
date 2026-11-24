@@ -71,7 +71,7 @@ def _reupload_map(data, link):
 def _gap_proposal(data, link):
     return (
         f"{data['customer']} · {data['requirement']} · 等你补缺口（{data['question_count']} 题）",
-        f"闸门题和推荐答案列好了。到 bot chat「{_gap_chat_title(data)}」里看题和答。\n"
+        f"闸门题和推荐答案列好了。到 bot chat「{_gap_chat_title(data)}」里看题、答题，和 bot 一起清完地图。\n"
         f"控制台兜底：\n{_console_command(data)}\n{_proposal_links(data, link)}",
     )
 

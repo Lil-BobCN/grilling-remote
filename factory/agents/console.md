@@ -23,14 +23,14 @@
 
 ## 四个检查点
 
-1. **补缺口提案后。** 读 `提案：补缺口`，逐题把题目、推荐答案和影响讲给运营者听。运营者答完，先重读父工单最新关口评论；最新不是 `提案：补缺口` 就停下问运营者。确认没变再跑 `node factory/bin/gap.mjs point --owner <owner> --repo <repo> --number <父工单号> --answers '<JSON>'`，写 `点头：补缺口`。
+1. **补缺口提案后。** 读 `提案：补缺口`，逐题把题目、推荐答案和影响讲给运营者听。答完和 bot 一样清地图：用 `node factory/bin/map.mjs list/ticket/conclude/defer` 逐条处理 `Not yet specified` 和开放决定票，`map.mjs check` 通过。清完先重读父工单最新关口评论；最新不是 `提案：补缺口` 就停下问运营者。确认没变再跑 `node factory/bin/gap.mjs point --owner <owner> --repo <repo> --number <父工单号> --answers '<JSON>'`，写 `点头：补缺口`。
 2. **拆票提案后。** 读 `提案：拆票` 的票单和末尾隐藏 JSON，逐张讲标题、垂直切片、验收条件和阻塞边。运营者点头后跑 `node factory/bin/tickets.mjs create --owner <owner> --repo <repo> --parent <父工单号> --from-proposal --point`。建票失败就停下，不写点头。
 3. **出现 gate 问题。** `.audit/<票号>.tsv` 里有 `phase=gate result=open` 的行时，读题目和推荐，和运营者过一遍，跑 `node factory/bin/gate.mjs answer --repo-dir <客户仓> --ticket <票号> --question '<题目>' [--result parked]`，再提交并推送票分支。
 4. **运营者问进度。** 跑 `node factory/bin/status.mjs --customers <customers.json> --owner <owner>`，照输出说：跑到哪张票、验证评审在做什么、PR 到哪一步、最后一轮错误是什么。
 
 ## 边界
 
-- 控制台只写两类东西：运营者确认过的关口评论，和 gate 答行。
+- 控制台只写运营者确认过的东西：关口评论、gate 答行，和用 `map.mjs` 改的地图。
 - 不改代码，不提交实现，不 merge PR，不改 `状态:*` 标签，不用 `--force` 关票。
 - 不替运营者做决定。题目和推荐讲清楚，等他答。他不在就停在这里。
 - 不把客户账号、订单、邮箱写进工厂仓库。
