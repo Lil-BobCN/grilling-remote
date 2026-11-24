@@ -64,7 +64,7 @@ check_release() {
   local commit scaffold recorded actual rel path expected
 
   if [[ ! -f $release_json ]]; then
-    warn "没有 $release_json（旧发布包），跳过发布指纹"
+    warn "没有 ${release_json}（旧发布包），跳过发布指纹"
   else
     commit=$(json_field "$release_json" commit)
     if [[ -n $commit ]]; then ok "发布来源提交 $commit"; else warn "发布包没记来源提交"; fi
@@ -118,7 +118,7 @@ check_release() {
     while IFS=$'\t' read -r rel path; do
       expected="$repo_dir/$rel"
       if [[ ! -f $path ]]; then
-        bad "服务器缺 $rel（$path）"
+        bad "服务器缺 ${rel}（${path}）"
       elif [[ ! -f $expected ]]; then
         bad "仓库缺 $rel"
       elif ! cmp -s "$path" "$expected"; then

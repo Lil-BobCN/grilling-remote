@@ -434,6 +434,14 @@ test_release_fingerprint() {
   status=$?
   if [[ $status -ne 0 ]]; then ok "仓库比服务器新时 check.sh 失败"; else bad "仓库比服务器新时 check.sh 还通过"; fi
   if printf '%s' "$out" | grep -q '和仓库不一致'; then ok "check.sh 报和仓库不一致"; else bad "check.sh 没报和仓库不一致：$out"; fi
+
+  out=$(AFK_RELEASE_DIR="$TMP/no-release" \
+    AFK_SHARE_DIR="$TMP/share" \
+    AFK_HELPER_PATH="$TMP/sbin/afk-product" \
+    bash "$REPO/deploy/backend/check.sh" --templates-only 2>&1)
+  status=$?
+  if [[ $status -eq 0 ]]; then ok "没有 release.json 时 check.sh 跳过发布指纹"; else bad "没有 release.json 时 check.sh 失败：$out"; fi
+  if printf '%s' "$out" | grep -q '跳过发布指纹'; then ok "check.sh 提示跳过发布指纹"; else bad "check.sh 没提示跳过发布指纹：$out"; fi
 }
 
 # ---------------------------------------------------------------- helper 打包
