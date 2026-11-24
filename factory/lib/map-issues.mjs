@@ -180,7 +180,7 @@ export async function readDecisionTickets(dir) {
 }
 
 const MAP_LABEL = { name: 'wayfinder:map', color: '5319e7', description: '客户地图，决定票挂在下面' }
-const TYPE_LABELS = {
+export const TYPE_LABELS = {
   grilling: { color: 'fbca04', description: '决定票：和客户聊' },
   research: { color: '1d76db', description: '决定票：查资料' },
   prototype: { color: 'd4c5f9', description: '决定票：看原型' },
@@ -196,7 +196,7 @@ async function readOptional(path) {
   }
 }
 
-function issueNumberFromUrl(url) {
+export function issueNumberFromUrl(url) {
   const match = /\/issues\/(\d+)(?:[#?].*)?\/?$/.exec(String(url || '').trim())
   return match ? Number(match[1]) : null
 }
@@ -241,6 +241,13 @@ export function appendMapLink(parentBody, mapIssueUrl) {
   const lines = section.replace(/\s+$/, '').split('\n')
   lines.push(`- 地图：${mapIssueUrl}`)
   return `${body.slice(0, start)}${lines.join('\n')}\n\n${body.slice(end)}`
+}
+
+/** 结论评论第一行必须是 `结论：`，清图协议的严格门禁按这行认结论。 */
+function conclusionComment(text) {
+  const body = String(text ?? '').trim()
+  const firstLine = body.split('\n')[0].trim()
+  return /^结论[：:]/.test(firstLine) ? body : `结论：${body}`
 }
 
 function nextTicketNumbers(map) {
@@ -379,7 +386,12 @@ export async function ensureMapIssues({
       await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: comment })
     }
     if (mode === 'replace' && ticket.status === 'resolved' && ticket.conclusion) {
-      await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: ticket.conclusion })
+      await ensureCommentOnce(gh, {
+        owner,
+        repo,
+        number: issue.number,
+        body: conclusionComment(ticket.conclusion),
+      })
     }
     await ensureSubIssue(gh, { owner, repo, parent: mapIssue.number, childId: issue.id })
     savedTickets.push({ number: ticket.number, title: ticket.title, issue, created })

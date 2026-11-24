@@ -153,7 +153,7 @@ class TestTemplates(unittest.TestCase):
                 "补缺口提案",
                 "B 店 · 预约送货 · 等你补缺口（3 题）",
                 "闸门题和推荐答案列好了。到 bot chat「补缺口 Lil-BobCN/acme-shop#42」"
-                "里看题和答。\n"
+                "里看题、答题，和 bot 一起清完地图。\n"
                 "控制台兜底：\n"
                 "node factory/bin/console.mjs open --owner Lil-BobCN "
                 "--repo acme-shop --ticket 42 --kind gap\n"

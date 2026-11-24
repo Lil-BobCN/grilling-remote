@@ -139,7 +139,7 @@
 ## to-spec 前后
 
 - 不设门禁技能。
-- 进 `to-spec` 前看中台四个信号：开放影响清单、覆盖缺口、吃旧决定、无源决定。`Not yet specified` 里的项，显式调 wayfinder，把它变成票或决定，清完再进。
+- 进 `to-spec` 前看中台四个信号：开放影响清单、覆盖缺口、吃旧决定、无源决定。`Not yet specified` 里的项，显式调 wayfinder，把它变成票或决定，清完再进。带 `清图协议：v1` 的地图先跑 `map.mjs check`，五条全过再进。
 - `to-spec` 默认只读工作区：探索仓库、读 `GLOSSARY.md`、读 `docs/adr/决策记录.md`。不主动读地图，不主动扫中台。只有记录里的某点起疑，或代码和记录对不上时，才按 `决定：D-xxxx` 和 `来源票：……` 去中台和 GitHub 交叉验证；没有疑问不查。
 - `to-spec` 后不做独立复查，靠 PR 评审和后续票。
 - 已知边界：结构信号盖不住「spec 凭空编」这一层。
@@ -179,6 +179,8 @@
 - 阻塞用 GitHub 原生 issue dependencies。中台的 `blocked_by` 是源，同步写镜像。
 - 不设 GitHub assignee。领取在 orca 建 worktree。
 - 一张票一个 PR，没合并之前的提交都推到它上面，不另开。PR 合并后这条分支不再用，要改就开新分支。
+- 决定票关闭前写一条第一行 `结论：<一句话>` 的评论。`map.mjs conclude` 写这条评论、关票，并更新地图的 `接下来` 和 `Decisions so far`。
+- 地图 `Notes` 段有 `- 清图协议：v1` 时启用严格门禁，`map.mjs init` 补这一行；没有标记的老地图只查 `Not yet specified` 为空和决定票全关。清雾三个去处和五条判据见 `docs/工单模型.md` 第五节的「清图协议」。
 
 ### PR 与旧台账
 

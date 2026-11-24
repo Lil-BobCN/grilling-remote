@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { latestGate } from './gate.mjs'
 import { ensureCommentOnce } from './issues.mjs'
+import { hasProtocol, strictGate } from './map-clearing.mjs'
 import { mapBelongsToParent } from './map-issues.mjs'
 
 export class GateNotReadyError extends Error {
@@ -28,7 +29,8 @@ export class GateConflictError extends Error {
 }
 
 const GATE_REMINDER =
-  '提醒：补缺口\n\n地图还没补完，暂不写点头。Not yet specified 要清空，开放的决定票要全关。'
+  '提醒：补缺口\n\n地图还没补完，暂不写点头。Not yet specified 要清空，开放的决定票要全关。' +
+  '带清图协议的地图还要看决定票结论、接下来和 Decisions so far。'
 
 const GATE_CHECKS = [
   ['技术栈', '用默认技术栈，照模板仓已有的写法。'],
@@ -178,10 +180,34 @@ export async function draftProposal({
   return { questions, body: parts.join('\n') }
 }
 
-/** 地图补完才放行：Not yet specified 为空，决定票全关。 */
-export async function gateReady({ gh, owner, repo, mapIssueNumber, mapBody }) {
-  const fog = sectionText(mapBody, 'Not yet specified')
+/**
+ * 地图补完才放行。
+ *
+ * 老地图（Notes 没有 `- 清图协议：v1`）只查原两条：Not yet specified 为空、
+ * 决定票全关。带协议标记的地图跑 `strictGate`，还要看结论、接下来和
+ * Decisions so far。`commentsByTicket` 用来注入测试数据，不传就现读。
+ */
+export async function gateReady({
+  gh,
+  owner,
+  repo,
+  mapIssueNumber,
+  mapBody,
+  commentsByTicket,
+}) {
   const children = await gh.listSubIssues({ owner, repo, number: mapIssueNumber })
+  if (hasProtocol(mapBody)) {
+    let comments = commentsByTicket
+    if (!comments) {
+      comments = {}
+      for (const row of children.filter((child) => child.state === 'closed')) {
+        comments[row.number] = await gh.listComments({ owner, repo, number: row.number })
+      }
+    }
+    return strictGate({ body: mapBody, subIssues: children, commentsByTicket: comments })
+  }
+
+  const fog = sectionText(mapBody, 'Not yet specified')
   const blockers = [
     ...(fog === null
       ? [{ kind: 'missing-section', text: '地图缺「Not yet specified」段' }]
