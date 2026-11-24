@@ -395,3 +395,146 @@ test('postProposal 用 ensureCommentOnce，重跑不重复发', async (t) => {
   const comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })
   assert.equal(comments.length, 1)
 })
+
+test('gateReady：带清图协议时按 kinds 拦缺结论和缺 Decisions 行', async (t) => {
+  const { gh, mapIssue } = await githubSetup(t)
+  let mapBody = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })).body
+  mapBody = mapBody.replace('## Notes\n\n- 父工单', '## Notes\n\n- 清图协议：v1\n- 父工单')
+  const children = await gh.listSubIssues({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })
+  for (const child of children) {
+    await gh.closeIssue({ owner: 'acme', repo: 'acme-shuiguo', number: child.number })
+  }
+
+  let gate = await gateReady({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    mapIssueNumber: mapIssue.number,
+    mapBody,
+  })
+  assert.equal(gate.ready, false)
+  assert.equal(gate.blockers.filter((row) => row.kind === 'missing-conclusion').length, 5)
+  assert.equal(gate.blockers.some((row) => row.kind === 'decisions-missing'), false)
+
+  const decisions = []
+  for (const child of children) {
+    const conclusion = `${child.title} 的结论`
+    await gh.createComment({
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: child.number,
+      body: `结论：${conclusion}`,
+    })
+    decisions.push(`- ${child.title}：${conclusion}`)
+  }
+  gate = await gateReady({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    mapIssueNumber: mapIssue.number,
+    mapBody,
+  })
+  assert.equal(gate.blockers.filter((row) => row.kind === 'decisions-missing').length, 5)
+
+  mapBody = mapBody.replace('## Decisions so far\n\n', `## Decisions so far\n\n${decisions.join('\n')}\n`)
+  gate = await gateReady({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    mapIssueNumber: mapIssue.number,
+    mapBody,
+  })
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+})
+
+async function protocolReadySetup(t) {
+  const { gh, mapIssue } = await githubSetup(t)
+  let body = (await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })).body
+  body = body.replace('## Notes\n\n- 父工单', '## Notes\n\n- 清图协议：v1\n- 父工单')
+  const children = await gh.listSubIssues({ owner: 'acme', repo: 'acme-shuiguo', number: mapIssue.number })
+  const decisions = []
+  for (const child of children) {
+    await gh.closeIssue({ owner: 'acme', repo: 'acme-shuiguo', number: child.number })
+    const conclusion = `${child.title} 的结论`
+    await gh.createComment({
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: child.number,
+      body: `结论：${conclusion}`,
+    })
+    decisions.push(`- ${child.title}：${conclusion}`)
+  }
+  body = body.replace('## Decisions so far\n\n', `## Decisions so far\n\n${decisions.join('\n')}\n`)
+  return { gh, mapIssue, body }
+}
+
+test('gateReady：带清图协议时「接下来」和「未定」也要清', async (t) => {
+  const { gh, mapIssue, body } = await protocolReadySetup(t)
+  const args = { gh, owner: 'acme', repo: 'acme-shuiguo', mapIssueNumber: mapIssue.number }
+
+  let gate = await gateReady({ ...args, mapBody: body })
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+
+  const withNext = body.replace(
+    '## 接下来\n\n## Decisions so far',
+    '## 接下来\n\n- 第 06 张：送货范围怎么定\n\n## Decisions so far',
+  )
+  gate = await gateReady({ ...args, mapBody: withNext })
+  assert.equal(gate.ready, false)
+  assert.deepEqual(gate.blockers.map((row) => row.kind), ['next-not-empty'])
+
+  gate = await gateReady({ ...args, mapBody: withNext.replace('- 第 06 张：送货范围怎么定', '- 无') })
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+
+  const unsettled = body.replace('## Notes\n\n', '## Notes\n\n- 未定：起送价\n')
+  gate = await gateReady({ ...args, mapBody: unsettled })
+  assert.equal(gate.ready, false)
+  assert.deepEqual(gate.blockers.map((row) => row.kind), ['unsettled-without-next'])
+
+  const settled = body.replace('## Notes\n\n', '## Notes\n\n- 未定：起送价（运营者，下周定）\n')
+  gate = await gateReady({ ...args, mapBody: settled })
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+})
+
+test('gateReady：带清图协议时 commentsByTicket 注入后不再读评论', async () => {
+  const mapBody = [
+    '## Destination',
+    '',
+    '卖水果',
+    '',
+    '## Notes',
+    '',
+    '- 清图协议：v1',
+    '- 父工单：https://github.com/acme/acme-shuiguo/issues/1',
+    '',
+    '## 接下来',
+    '',
+    '## Decisions so far',
+    '',
+    '- 01 先做哪一版：先做取货',
+    '',
+    '## Not yet specified',
+    '',
+    '## Out of scope',
+    '',
+  ].join('\n')
+  let readComments = false
+  const gate = await gateReady({
+    gh: {
+      async listSubIssues() {
+        return [{ number: 3, title: '01 先做哪一版', state: 'closed' }]
+      },
+      async listComments() {
+        readComments = true
+        return []
+      },
+    },
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    mapIssueNumber: 2,
+    mapBody,
+    commentsByTicket: { 3: [{ body: '结论：先做取货' }] },
+  })
+  assert.equal(readComments, false)
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+})
