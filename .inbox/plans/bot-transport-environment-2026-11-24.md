@@ -96,7 +96,7 @@ runner 断言 `actions.toSpecCalls.length === 0`。三张 spec 标题都带需�
 ## 五、notifier 隔离
 
 - 测试 notifier 读的是临时 home。runner 用真的 `notifier.config.load_config` 检查，输出 `loadedHome` 等于临时路径。
-- 临时 config：`channels.orca_bot.enabled=true`、`bot=afk`，邮件和推送都关。
+- 临时 config：`channels.orca_bot.enabled=true`、`bot=莹宝（AFK）`、`sender=bot:sim-notifier`，邮件和推送都关。`sender` 由 `writeSimNotifierConfig` 必填，缺了直接报错。
 - 主 config 没读内容，只记录 mtime 和 size：`mtimeMs 1794812304809`、`size 347`，跑前跑后一样。
 - 测试 `临时 notifier 给两张父工单各开 chat` 用假 `orca` 命令跑真 `python3 -m notifier send`，两张父工单的事件分别得到标题 `补缺口 Lil-BobCN/scratch-bot-sim#101` 和 `拆票 Lil-BobCN/scratch-bot-sim#102`，正文带父工单链接和提案评论链接。没有往真 bot 发消息。
 - 未验证：主 config 的 `orca_bot` 是否真的关着。按要求不读主 config，只能确认这次没写它。

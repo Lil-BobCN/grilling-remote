@@ -169,6 +169,76 @@ test('CLI point 在父工单出现改口：时拒绝，不写点头', async (t) 
   assert.equal(comments.filter((row) => row.body.startsWith('点头：补缺口')).length, 0)
 })
 
+test('CLI point 对着不含当前父工单链接的地图时报错，不写点头也不写提醒', async (t) => {
+  const fake = await startFakeGithub({
+    repos: [{ owner: 'acme', name: 'acme-shuiguo' }],
+    issues: [
+      {
+        owner: 'acme',
+        repo: 'acme-shuiguo',
+        title: '复制来的父工单',
+        body: `${PARENT_BODY}\n\n- 地图：https://github.com/acme/acme-shuiguo/issues/2`,
+      },
+      {
+        owner: 'acme',
+        repo: 'acme-shuiguo',
+        title: '别人的地图',
+        body: [
+          '## Destination',
+          '',
+          '卖水果',
+          '',
+          '## Notes',
+          '',
+          '- 父工单：https://github.com/acme/acme-shuiguo/issues/999',
+          '',
+          '## 接下来',
+          '',
+          '## Decisions so far',
+          '',
+          '## Not yet specified',
+          '',
+          '## Out of scope',
+          '',
+        ].join('\n'),
+        labels: ['wayfinder:map'],
+      },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const sink = { log() {} }
+  await gh.createComment({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: 1,
+    body: '提案：补缺口\n\n1. 题：用什么技术栈？\n   推荐：Next.js',
+  })
+
+  await assert.rejects(
+    run(
+      [
+        'point',
+        '--owner',
+        'acme',
+        '--repo',
+        'acme-shuiguo',
+        '--number',
+        '1',
+        '--answers',
+        JSON.stringify(['技术栈：Next.js + Postgres']),
+      ],
+      { gh, log: sink },
+    ),
+    /不含当前父工单链接/,
+  )
+
+  const comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: 1 })
+  assert.deepEqual(comments.map((row) => row.body), [
+    '提案：补缺口\n\n1. 题：用什么技术栈？\n   推荐：Next.js',
+  ])
+})
+
 test('CLI apply-map 小需求返回 skipped', async (t) => {
   const { gh, parent, sink } = await setup(t)
   const { mkdtemp, rm, writeFile } = await import('node:fs/promises')

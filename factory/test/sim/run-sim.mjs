@@ -368,7 +368,7 @@ async function main() {
   out({ step: 'seed-ready', waitMs: Date.now() - seedStarted })
 
   await writeSimCustomers(paths.customersPath, { owner, repo })
-  await writeSimNotifierConfig(paths.notifierHome)
+  await writeSimNotifierConfig(paths.notifierHome, { sender: 'bot:sim-notifier' })
   const customers = JSON.parse(await readFile(paths.customersPath, 'utf8'))
   const repos = collectRepos({ gh, customers, owner })
   if (repos.length !== 1 || repos[0].fullName !== `${owner}/${repo}`) {
