@@ -492,7 +492,7 @@ EOF
   if printf '%s' "$status_after_bad" | grep -qF "镜像 $APP_IMAGE"; then
     ok "product-status 的镜像还是上一版"
   else
-    bad "product-status 的镜像不是上一版（$status_after_bad）"
+    bad "product-status 的镜像不是上一版（${status_after_bad}）"
   fi
   docker rmi -f "$bad_image" >/dev/null 2>&1 || true
   rm -rf "$bad_dir"
