@@ -216,13 +216,15 @@ export async function openWaiting({
  */
 export async function answerWaiting({
   entry, answer = [], question = '', result = 'answered',
-  repoDir = '', commit = false, push = false,
+  repoDir = '', commit = false, push = false, env,
   run = runCommand, node = process.execPath, repoRoot = '.',
 }) {
   const bin = (name) => join(repoRoot, 'factory', 'bin', name)
+  // 子进程 CLI 只读 process.env.GITHUB_TOKEN；入口读到的 token 要随 env 传下去。
+  const runNode = (args) => (env ? run(node, args, { env }) : run(node, args))
   if (entry.kind === 'gap') {
     const payload = Array.isArray(answer) ? { answers: answer, impacts: [] } : answer
-    return run(node, [
+    return runNode([
       bin('gap.mjs'), 'point',
       '--owner', entry.owner,
       '--repo', entry.repo,
@@ -231,7 +233,7 @@ export async function answerWaiting({
     ])
   }
   if (entry.kind === 'split') {
-    return run(node, [
+    return runNode([
       bin('tickets.mjs'), 'create',
       '--owner', entry.owner,
       '--repo', entry.repo,
@@ -254,11 +256,11 @@ export async function answerWaiting({
     ]
     if (commit) args.push('--commit')
     if (push) args.push('--push')
-    return run(node, args)
+    return runNode(args)
   }
   if (entry.kind === 'spec') {
     // 不在这里同步跑 agent：重置作业退避，调度器下一轮重新跑 to-spec。
-    return run(node, [
+    return runNode([
       bin('job-reset.mjs'),
       '--owner', entry.owner,
       '--repo', entry.repo,
