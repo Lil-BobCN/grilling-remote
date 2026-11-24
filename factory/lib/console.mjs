@@ -188,7 +188,8 @@ export async function openWaiting({
   } catch {
     throw new Error(`orca status 不是 JSON：${statusText}`)
   }
-  const running = status.running ?? status?.result?.running
+  // Orca 1.4 返回 result.app.running，优先用它；旧的两种返回结构继续兼容。
+  const running = status?.result?.app?.running ?? status?.result?.running ?? status.running
   if (!running) throw new Error('Orca 没在运行。先跑：orca open')
 
   const selector = worktree || await findWorktree({ entry, run })
@@ -256,7 +257,14 @@ export async function answerWaiting({
     return run(node, args)
   }
   if (entry.kind === 'spec') {
-    throw new Error('to-spec 是手动步骤，没有写回命令；在仓库里手动跑 to-spec。')
+    // 不在这里同步跑 agent：重置作业退避，调度器下一轮重新跑 to-spec。
+    return run(node, [
+      bin('job-reset.mjs'),
+      '--owner', entry.owner,
+      '--repo', entry.repo,
+      '--parent', String(entry.ticket),
+      '--action', 'to-spec',
+    ])
   }
   throw new Error(`不认识的待办类型：${entry.kind}`)
 }

@@ -4,8 +4,10 @@
  * 证据已经齐了也要继续走合并：合并没成，下一轮接着试，并按 verifyPlan
  * 补足验证者。失败不在这里修，只返回原因，下一轮继续看同一事实。
  */
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureEvidenceBeforeMerge } from '../bin/evidence.mjs'
 import { MERGER_TOOLS } from './agent-runner.mjs'
@@ -19,6 +21,11 @@ import {
 import { git } from './git.mjs'
 import { parentCustomer, parentOrder, parentRequirement } from './ignition.mjs'
 import { ensureLabel } from './issues.mjs'
+import {
+  acquireTicketLease,
+  releaseTicketLease,
+  touchTicketLease,
+} from './lock.mjs'
 import { logLine } from './log.mjs'
 import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
@@ -31,6 +38,33 @@ export const PENDING_LABEL = '状态:待验收'
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** 读 common dir 的 info/exclude：哈希、mtime 和原始行，给管道前后对比。 */
+async function readExclude({ gitImpl, repoDir }) {
+  const commonRaw = String(await gitImpl(repoDir, ['rev-parse', '--git-common-dir'])).trim()
+  const common = isAbsolute(commonRaw) ? commonRaw : resolve(repoDir, commonRaw)
+  const path = join(common, 'info', 'exclude')
+  try {
+    const [text, info] = await Promise.all([readFile(path, 'utf8'), stat(path)])
+    return {
+      path,
+      hash: createHash('sha256').update(text).digest('hex'),
+      mtimeMs: info.mtimeMs,
+      lines: text.split(/\r?\n/),
+    }
+  } catch {
+    return { path, hash: '', mtimeMs: 0, lines: [] }
+  }
+}
+
+function newExcludeLines(before, after) {
+  const known = new Set(before.lines)
+  return after.lines.filter((line) => line.trim() && !known.has(line))
+}
+
+function emptyExclude(error) {
+  return { path: '', hash: '', mtimeMs: 0, lines: [], error: errorText(error) }
 }
 
 function firstLine(body) {
@@ -197,6 +231,9 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
         reason: '认证失败',
         tried: note,
         round: ticket.round,
+        owner,
+        repo,
+        ticket: parent.number,
       },
     })
   } catch {
@@ -227,14 +264,39 @@ export function createTicketPipeline({
   merge = mergeTicket,
   readTrailImpl = readTrail,
   gitImpl = git,
+  lockDir = process.env.AFK_LOCK_DIR || join(homedir(), '.grilling', 'factory', 'locks'),
+  leaseHeartbeatMs = 60 * 1000,
+  leaseStaleMs = 10 * 60 * 1000,
+  acquireLease = acquireTicketLease,
+  releaseLease = releaseTicketLease,
+  touchLease = touchTicketLease,
 } = {}) {
   const workspace = createRepoWorkspace()
+  // 同一进程里两轮重叠时，先靠内存集合挡住，再抢跨进程的租约。
+  const inFlight = new Set()
   /**
    * 证据写在票工作树里，先提交到票分支；主仓合并时从分支上读得到。
    * 只提交 `.audit`，agent 留下的其他未跟踪文件交给 release 归档。
    */
   async function commitAuditFiles({ worktree, ticket }) {
     // `.git/info/exclude` 之类的忽略规则会挡住普通 git add，证据必须进分支，强制加入。
+    // 先把被忽略的 `.audit` 文件逐个点名，再整体 force-add，避免漏掉已经存在的证据。
+    const ignored = await gitImpl(worktree, [
+      'status',
+      '--ignored',
+      '--porcelain',
+      '-z',
+      '--',
+      '.audit',
+    ]).catch(() => '')
+    const ignoredPaths = String(ignored)
+      .split('\0')
+      .filter((entry) => entry.startsWith('!! '))
+      .map((entry) => entry.slice(3))
+      .filter(Boolean)
+    if (ignoredPaths.length) {
+      await gitImpl(worktree, ['add', '-f', '--', ...ignoredPaths]).catch(() => {})
+    }
     await gitImpl(worktree, ['add', '-f', '-A', '--', '.audit']).catch(() => {})
     const staged = await gitImpl(worktree, ['diff', '--cached', '--name-only', '--', '.audit']).catch(
       () => '',
@@ -244,13 +306,13 @@ export function createTicketPipeline({
     return gitImpl(worktree, ['rev-parse', 'HEAD'])
   }
 
-  async function merger({ repoDir, files }) {
-    if (typeof runner?.run !== 'function') {
+  async function merger({ repoDir, files, runner: mergerRunner = runner }) {
+    if (typeof mergerRunner?.run !== 'function') {
       return { ok: false, problems: ['没有注入 runner，解不了冲突'] }
     }
     const dir = agentsDir || fileURLToPath(new URL('../agents/', import.meta.url))
     const instructions = await readFile(join(dir, 'merger.md'), 'utf8').catch(() => '')
-    const run = await runner.run({
+    const run = await mergerRunner.run({
       name: `merge-${Date.now()}`,
       cwd: repoDir,
       allowedTools: MERGER_TOOLS,
@@ -259,7 +321,8 @@ export function createTicketPipeline({
     return parseMergerVerdict(run)
   }
 
-  async function runOne({ gh, owner, repo, parent, ticket, repoDir }) {
+  async function runOne({ gh, owner, repo, parent, ticket, repoDir, signal }) {
+    if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
     if (ticket.state === 'closed') return null
     if (hasLabel(ticket, PENDING_LABEL)) return null
     if (!hasLabel(ticket, SANDBOX_LABEL)) return null
@@ -291,10 +354,29 @@ export function createTicketPipeline({
       htmlUrl: ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`,
     }
 
+    const activeRunner = !runner
+      ? runner
+      : signal
+        ? {
+            run(args = {}) {
+              if (signal.aborted) {
+                return {
+                  ok: false,
+                  aborted: true,
+                  reason: 'aborted',
+                  stdout: '',
+                  stderr: '',
+                }
+              }
+              return runner.run({ ...args, signal })
+            },
+          }
+        : runner
+
     const fixer =
       fixerOverride ||
       (({ repoDir: dir, branch, findings, round }) =>
-        runFixerAudit({ repoDir: dir, ticket: ticket.number, branch, findings, round, runner }))
+        runFixerAudit({ repoDir: dir, ticket: ticket.number, branch, findings, round, runner: activeRunner }))
 
     // 没过的那一轮在父工单留一行进度，轮次递增，三圈停滞检测读得到。
     const reviewProgress = async ({ round, ok, problems, stage = '' }) => {
@@ -423,9 +505,11 @@ export function createTicketPipeline({
     }
     const previewImpl = preview?.start && preview?.stop ? cachedPreview(preview) : preview
 
+    if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
     try {
       let ensured
       let keptWorktree = ''
+      let auditCommitFailed = false
       try {
         ensured = await ensureEvidence({
           repoDir: worktree,
@@ -435,7 +519,7 @@ export function createTicketPipeline({
           repo,
           branch: ticketBranch,
           baseBranch: reqBranch,
-          runner,
+          runner: activeRunner,
           preview: previewImpl,
           notifier,
           now: clock(),
@@ -446,16 +530,19 @@ export function createTicketPipeline({
       } finally {
         // 证据先落到票分支，再释放工作树；主仓合并时才切得动票分支。
         try {
-          const auditHead = await commitAuditFiles({ worktree, ticket: ticket.number })
-          if (auditHead) {
-            log({
-              level: 'info',
-              msg: '证据提交到票分支',
-              owner,
-              repo,
-              ticket: ticket.number,
-              head: auditHead,
-            })
+          // 取消时这里不提交；release 会统一把 .audit 提交到票分支，工作树删除也不丢证据。
+          if (!signal?.aborted) {
+            const auditHead = await commitAuditFiles({ worktree, ticket: ticket.number })
+            if (auditHead) {
+              log({
+                level: 'info',
+                msg: '证据提交到票分支',
+                owner,
+                repo,
+                ticket: ticket.number,
+                head: auditHead,
+              })
+            }
           }
           const released = await workspace.release({
             repoDir,
@@ -473,6 +560,7 @@ export function createTicketPipeline({
               files: released.archived.map((row) => row.to),
             })
           }
+          if (released.worktreeDirty) auditCommitFailed = true
           if (released.kept) keptWorktree = released.path
         } catch (error) {
           log({
@@ -487,6 +575,18 @@ export function createTicketPipeline({
           keptWorktree = worktree
         }
       }
+
+      if (auditCommitFailed) {
+        return {
+          ticket: ticket.number,
+          ok: false,
+          reason: 'worktree_dirty',
+          worktree: keptWorktree,
+          problems: ['.audit 提交失败，工作树保留'],
+          archived: archived.map((row) => row.to),
+        }
+      }
+      if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
 
       if (!ensured.ok) {
         const reason = ensured.reason || 'evidence_not_ready'
@@ -543,6 +643,8 @@ export function createTicketPipeline({
         }
       }
 
+      if (signal?.aborted) return { ticket: ticket.number, ok: false, reason: 'aborted' }
+
       const result = await merge({
         repoDir,
         ticketBranch,
@@ -554,7 +656,7 @@ export function createTicketPipeline({
             repoDir,
             ticket: ticket.number,
             branch: mergedHead,
-            runner,
+            runner: activeRunner,
             now: clock(),
           })
           return { ok: audit.ok, problems: audit.problems, evidence: audit.evidence.join(',') }
@@ -565,12 +667,12 @@ export function createTicketPipeline({
             ticket: ticket.number,
             branch: reviewHead,
             mode: mode || 'all',
-            runner,
+            runner: activeRunner,
             now: clock(),
           })
           return { ok: audit.ok, problems: audit.problems, decision: audit.decision }
         },
-        merger,
+        merger: (args) => merger({ ...args, runner: activeRunner }),
         preview: previewImpl,
         notifier,
         github: gh,
@@ -594,6 +696,10 @@ export function createTicketPipeline({
         archived: archived.map((row) => row.to),
       }
     } catch (error) {
+      if (signal?.aborted) {
+        log({ level: 'info', msg: '管道已取消', owner, repo, ticket: ticket.number })
+        return { ticket: ticket.number, ok: false, reason: 'aborted' }
+      }
       log({
         level: 'error',
         msg: '流水线出错',
@@ -606,15 +712,185 @@ export function createTicketPipeline({
     }
   }
 
-  return async function ticketPipeline({ gh, owner, repo, parents = [], repoDir = '' } = {}) {
+  return async function ticketPipeline({
+    gh,
+    owner,
+    repo,
+    parents = [],
+    repoDir = '',
+    jobs = null,
+    signal = null,
+    lockDir: runLockDir = '',
+  } = {}) {
     const runs = []
+    const state = { active: null, lastActive: null }
     if (!repoDir) return { runs, skipped: 'no-repo' }
+    const excludeBefore = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
+    log({
+      level: 'info',
+      msg: '管道开始，记录 info/exclude 快照',
+      owner,
+      repo,
+      file: excludeBefore.path,
+      hash: excludeBefore.hash,
+      mtimeMs: excludeBefore.mtimeMs,
+    })
+    try {
     for (const parent of parents || []) {
       for (const ticket of parent.subIssues || []) {
-        const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir })
-        if (outcome) runs.push(outcome)
+        if (signal?.aborted) return { runs, aborted: true, active: state.active }
+        const ready =
+          ticket.state !== 'closed' &&
+          !hasLabel(ticket, PENDING_LABEL) &&
+          hasLabel(ticket, SANDBOX_LABEL) &&
+          !hasLabel(parent, NEEDS_INFO_LABEL)
+        if (!ready) {
+          const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir, signal })
+          if (outcome) runs.push(outcome)
+          continue
+        }
+
+        const key = `${owner}/${repo}#${ticket.number}`
+        if (inFlight.has(key)) {
+          log({
+            level: 'info',
+            msg: `票 #${ticket.number} 已有管道在跑`,
+            owner,
+            repo,
+            ticket: ticket.number,
+            skipped: 'busy',
+          })
+          runs.push({ ticket: ticket.number, skipped: 'busy' })
+          continue
+        }
+        inFlight.add(key)
+        let lease = null
+        try {
+          lease = await acquireLease({
+            lockDir: runLockDir || lockDir,
+            owner,
+            repo,
+            ticket: ticket.number,
+            now: clock,
+            staleMs: leaseStaleMs,
+          })
+          if (!lease.acquired) {
+            log({
+              level: 'info',
+              msg: `票 #${ticket.number} 已有管道在跑`,
+              owner,
+              repo,
+              ticket: ticket.number,
+              skipped: 'busy',
+              holder: lease.holder || null,
+            })
+            runs.push({ ticket: ticket.number, skipped: 'busy' })
+            continue
+          }
+          if (lease.takeover) {
+            log({
+              level: 'warning',
+              msg: `接管票 #${ticket.number} 的旧租约`,
+              owner,
+              repo,
+              ticket: ticket.number,
+              previous: lease.previous || null,
+            })
+          }
+          state.active = { ticket: ticket.number, parent: parent.number }
+          state.lastActive = state.active
+          const leaseController = new AbortController()
+          const runSignal = signal
+            ? AbortSignal.any([signal, leaseController.signal])
+            : leaseController.signal
+          try {
+            await jobs?.markRunning({
+              owner,
+              repo,
+              parent: parent.number,
+              ticket: ticket.number,
+              action: 'pipeline',
+              reason: '管道运行中',
+              now: clock(),
+            })
+          } catch (error) {
+            log({ level: 'warning', msg: '写管道作业行失败', owner, repo, ticket: ticket.number, error: errorText(error) })
+          }
+          const beat = setInterval(() => {
+            Promise.resolve()
+              .then(() => touchLease(lease.path, { now: clock, token: lease.token }))
+              .then(() =>
+                jobs?.beatJob({
+                  owner,
+                  repo,
+                  parent: parent.number,
+                  ticket: ticket.number,
+                  action: 'pipeline',
+                  now: clock(),
+                }),
+              )
+              .catch((error) => {
+                leaseController.abort(error)
+                log({
+                  level: 'error',
+                  msg: '票租约心跳失败，停止管道',
+                  owner,
+                  repo,
+                  ticket: ticket.number,
+                  error: errorText(error),
+                })
+              })
+          }, leaseHeartbeatMs)
+          beat?.unref?.()
+
+          try {
+            const outcome = await runOne({ gh, owner, repo, parent, ticket, repoDir, signal: runSignal })
+            if (outcome) runs.push(outcome)
+            if (outcome?.reason === 'aborted' || runSignal.aborted) {
+              return { runs, aborted: true, active: state.active }
+            }
+          } finally {
+            clearInterval(beat)
+            try {
+              await jobs?.clearRunning({
+                owner,
+                repo,
+                parent: parent.number,
+                ticket: ticket.number,
+                action: 'pipeline',
+                now: clock(),
+              })
+            } catch (error) {
+              log({ level: 'warning', msg: '清管道作业行失败', owner, repo, ticket: ticket.number, error: errorText(error) })
+            }
+            state.active = null
+          }
+        } finally {
+          if (lease?.acquired) await releaseLease(lease.path, { token: lease.token })
+          inFlight.delete(key)
+        }
       }
     }
-    return { runs }
+    } finally {
+      const excludeAfter = await readExclude({ gitImpl, repoDir }).catch(emptyExclude)
+      const added = excludeBefore.error || excludeAfter.error ? [] : newExcludeLines(excludeBefore, excludeAfter)
+      const changed =
+        !excludeBefore.error &&
+        !excludeAfter.error &&
+        excludeBefore.hash !== excludeAfter.hash
+      log({
+        level: changed || added.length ? 'warning' : 'info',
+        msg: changed || added.length ? 'evidence_ignored' : '管道结束，记录 info/exclude 快照',
+        owner,
+        repo,
+        file: excludeAfter.path,
+        before: { hash: excludeBefore.hash, mtimeMs: excludeBefore.mtimeMs },
+        after: { hash: excludeAfter.hash, mtimeMs: excludeAfter.mtimeMs },
+        added,
+        ...(excludeBefore.error ? { beforeError: excludeBefore.error } : {}),
+        ...(excludeAfter.error ? { afterError: excludeAfter.error } : {}),
+      })
+    }
+    return { runs, active: state.lastActive }
   }
 }

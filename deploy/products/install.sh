@@ -18,7 +18,12 @@
 
 set -euo pipefail
 
-if [[ ${EUID} -ne 0 ]]; then
+CHECK_ONLY=0
+if [[ ${1:-} == --check-files ]]; then
+  CHECK_ONLY=1
+fi
+
+if [[ ${EUID} -ne 0 && $CHECK_ONLY -ne 1 ]]; then
   echo "要用 root 跑：sudo bash $0" >&2
   exit 1
 fi
@@ -45,13 +50,24 @@ log() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
 for file in compose.template.yml app.env.example afk-product backup.sh \
-  caddy/product.caddy caddy/preview.caddy caddy/not-found.caddy \
+  caddy/product.caddy caddy/preview.caddy caddy/not-found.caddy caddy/main-include.caddy \
   systemd/afk-product-backup.service systemd/afk-product-backup.timer; do
+  if [[ -L $HERE/$file && ! -e $HERE/$file ]]; then
+    if [[ $file == app.env.example ]]; then
+      die "app.env.example 是软链，目标不存在；用 deploy/products/package.sh 打包"
+    fi
+    die "软链目标不存在：$HERE/$file -> $(readlink "$HERE/$file")"
+  fi
   [[ -f $HERE/$file ]] || die "缺文件：$HERE/$file"
 done
 for file in health.sh fingerprint.sh; do
   [[ -f $HERE/../lib/$file ]] || die "缺文件：$HERE/../lib/$file"
 done
+
+if [[ $CHECK_ONLY -eq 1 ]]; then
+  log "文件预检通过：$HERE"
+  exit 0
+fi
 
 # ---------------------------------------------------------------- Docker
 

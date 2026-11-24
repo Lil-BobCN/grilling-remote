@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import unittest
 
-from notifier.templates import EMAIL, EVENTS, PUSH, EventError, render_event
+from notifier.templates import EMAIL, EVENTS, ORCA_BOT, PUSH, EventError, render_event
 
 
 def samples():
@@ -113,15 +113,21 @@ def samples():
 class TestTemplates(unittest.TestCase):
     def test_event_count_and_channels(self):
         self.assertEqual(len(EVENTS), 13)
-        self.assertEqual(EVENTS["出事"].channels, (PUSH, EMAIL))
+        self.assertEqual(EVENTS["出事"].channels, (PUSH, EMAIL, ORCA_BOT))
         self.assertEqual(EVENTS["点火超时"].channels, (EMAIL,))
         self.assertEqual(EVENTS["每日抽样"].channels, (PUSH,))
-        for event in ("补缺口提案", "该跑 to-spec", "拆票提案", "需要你答", "import_failed"):
+        for event in ("补缺口提案", "拆票提案", "需要你答"):
+            with self.subTest(event=event):
+                self.assertEqual(EVENTS[event].channels, (PUSH, EMAIL, ORCA_BOT))
+        for event in ("该跑 to-spec", "import_failed"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH, EMAIL))
-        for event in ("新单进队列", "重传地图已更新", "自己合并", "部署完成", "needs-info"):
+        for event in ("新单进队列", "重传地图已更新", "自己合并"):
             with self.subTest(event=event):
                 self.assertEqual(EVENTS[event].channels, (PUSH,))
+        for event in ("部署完成", "needs-info"):
+            with self.subTest(event=event):
+                self.assertEqual(EVENTS[event].channels, (PUSH, ORCA_BOT))
 
     def test_import_failed_renders_exact(self):
         title, body = render_event(
@@ -146,21 +152,25 @@ class TestTemplates(unittest.TestCase):
             (
                 "补缺口提案",
                 "B 店 · 预约送货 · 等你补缺口（3 题）",
-                "闸门题和推荐答案列好了。打开待办：\n"
+                "闸门题和推荐答案列好了。到 bot chat「补缺口 Lil-BobCN/acme-shop#42」"
+                "里看题和答。\n"
+                "控制台兜底：\n"
                 "node factory/bin/console.mjs open --owner Lil-BobCN "
                 "--repo acme-shop --ticket 42 --kind gap\n"
                 "https://example.test/1",
             ),
             (
                 "该跑 to-spec",
-                "B 店 · 预约送货 · 该跑 to-spec 了",
-                "补缺口已点头，状态改成排队中。手动跑 to-spec，写完再拆票。"
-                "https://example.test/1",
+                "B 店 · 预约送货 · 工厂开始跑 to-spec",
+                "补缺口已点头，状态改成排队中。工厂会自动跑 to-spec，写完等你点头拆票，"
+                "不用你手动跑；一直失败时看父工单的 needs-info。https://example.test/1",
             ),
             (
                 "拆票提案",
                 "B 店 · 预约送货 · 等你点头拆票（5 张）",
-                "接缝、票单、每票验收条件已备好。打开待办：\n"
+                "接缝、票单、每票验收条件已备好。"
+                "到 bot chat「拆票 Lil-BobCN/acme-shop#42」里看票和点头。\n"
+                "控制台兜底：\n"
                 "node factory/bin/console.mjs open --owner Lil-BobCN "
                 "--repo acme-shop --ticket 42 --kind split\n"
                 "https://example.test/1",
@@ -172,6 +182,27 @@ class TestTemplates(unittest.TestCase):
                 title, body = render_event(event, data, link)
                 self.assertEqual(title, expected_title)
                 self.assertEqual(body, expected_body)
+
+    def test_proposal_renders_comment_url(self):
+        for event in ("补缺口提案", "拆票提案"):
+            with self.subTest(event=event):
+                data, link = samples()[event]
+                data = copy.deepcopy(data)
+                data["comment_url"] = (
+                    "https://github.com/Lil-BobCN/acme-shop/issues/42#issuecomment-9")
+                _, body = render_event(event, data, link)
+                self.assertIn(
+                    "\n提案评论："
+                    "https://github.com/Lil-BobCN/acme-shop/issues/42#issuecomment-9",
+                    body,
+                )
+
+    def test_deployed_and_needs_info_mention_bot_chat(self):
+        _, body = render_event("部署完成", *samples()["部署完成"])
+        self.assertIn("bot chat", body)
+        self.assertIn("https://b-shop.example.test", body)
+        _, body = render_event("needs-info", *samples()["needs-info"])
+        self.assertIn("bot chat", body)
 
     def test_all_events_render(self):
         for event, (data, link) in samples().items():
@@ -196,7 +227,7 @@ class TestTemplates(unittest.TestCase):
         self.assertEqual(title, "B 店 · 预约送货 · 等你答：闸门第三题选哪个方案")
         self.assertEqual(
             body,
-            "闸门第三题选哪个方案。推荐：方案 A。打开待办：\n"
+            "闸门第三题选哪个方案。推荐：方案 A。到 bot chat 里答题；控制台兜底：\n"
             "node factory/bin/console.mjs open --owner Lil-BobCN "
             "--repo acme-shop --ticket 42 --kind gate "
             "--repo-dir /Users/Admin/.afkfactory/repos/acme-shop\n"
@@ -218,7 +249,7 @@ class TestTemplates(unittest.TestCase):
         self.assertEqual(title, "B 店 · 预约送货 · 卡住：同类两次")
         self.assertEqual(
             body,
-            "停在这条线上了。试过：重跑一次仍未过。来处理：继续、换法或停。"
+            "停在这条线上了。试过：重跑一次仍未过。到 bot chat 里说继续、换法或停。"
             "https://example.test/1",
         )
 

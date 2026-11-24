@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createGithub } from '../lib/github.mjs'
+import { defaultExec } from '../lib/agent-runner.mjs'
 import { commitAll, git, initRepo } from '../lib/git.mjs'
 import { ensureLabel } from '../lib/issues.mjs'
 import { createJobStore, findJob } from '../lib/job.mjs'
@@ -109,6 +110,27 @@ test('其余单已提交+点头：补缺口 → 排队中，写安排中进度�
   assert.equal(actions[2].data.requirement, 'yuyue-quhuo')
 })
 
+test('to-spec 失败退避中不重复叫', () => {
+  const actions = route({
+    stateLabel: '状态:排队中',
+    comments: [gate('点头：补缺口')],
+    jobs: [
+      {
+        owner: OWNER,
+        repo: REPO,
+        parent: 42,
+        ticket: null,
+        action: 'to-spec',
+        attempt: 1,
+        lastBeat: NOW.toISOString(),
+        stop: '',
+      },
+    ],
+    jobPolicy: { backoffBaseMs: 600_000 },
+  })
+  assert.deepEqual(types(actions), [])
+})
+
 test('其余单排队中+有 spec+没有子票 → 叫拆票', () => {
   const actions = route({
     stateLabel: '状态:排队中',
@@ -163,8 +185,10 @@ test('所有子票都被未关闭的票挡着就不点，等阻塞解除', () =>
   assert.deepEqual(actions, [])
 })
 
-test('其余单排队中+点头：补缺口+没 spec → 停，等手动跑 to-spec', () => {
-  assert.deepEqual(route({ stateLabel: '状态:排队中', comments: [gate('点头：补缺口')] }), [])
+test('其余单排队中+点头：补缺口+没 spec → 叫 to-spec', () => {
+  assert.deepEqual(types(route({ stateLabel: '状态:排队中', comments: [gate('点头：补缺口')] })), [
+    'runToSpec',
+  ])
 })
 
 test('其余单排队中+有子票但最新不是点头：拆票 → 停，等点头', () => {
@@ -185,8 +209,8 @@ test('已提交+没有关口评论 → 叫补缺口提案', () => {
   assert.deepEqual(types(route({ comments: [] })), ['runGapProposal'])
 })
 
-test('已提交+驳回：补缺口 → 停，等下一次点头', () => {
-  assert.deepEqual(route({ comments: [gate('驳回：补缺口')] }), [])
+test('已提交+驳回：补缺口 → 重跑补缺口提案', () => {
+  assert.deepEqual(types(route({ comments: [gate('驳回：补缺口')] })), ['runGapProposal'])
 })
 
 test('已提交+改口： → 停', () => {
@@ -585,7 +609,7 @@ test('24 小时待办：提案：补缺口，带已等天数和新 key', () => {
   })
   assert.equal(reminder.event, '补缺口提案')
   assert.equal(reminder.days_waited, 2)
-  assert.match(reminder.key, /#42:补缺口提案:2/)
+  assert.match(reminder.key, /#42:补缺口提案:1:2$/)
 })
 
 test('24 小时待办：点头：补缺口但仓库没 spec，该跑 to-spec', () => {
@@ -912,6 +936,7 @@ test('collectSnapshot 分出地图、决定票、父工单和 spec，读评论�
   assert.equal(row.number, parent.number)
   assert.equal(row.spec.number, spec.number)
   assert.equal(row.comments[0].body, '点头：拆票')
+  assert.match(row.comments[0].html_url, /#issuecomment-\d+$/)
   assert.deepEqual(row.subIssues.map((child) => child.number).sort((a, b) => a - b), [first.number, second.number].sort((a, b) => a - b))
   assert.deepEqual(row.subIssues.find((child) => child.number === first.number).blockedBy, [blocked.number])
   assert.deepEqual(row.closedNumbers, [blocked.number])
@@ -1374,6 +1399,243 @@ test('runOnce：管线认证失败写 auth-failed stop', async (t) => {
   assert.match(row.reason, /401 未授权/)
 })
 
+test('runOnce：运行中 GitHub 401 写 auth stop、挂 needs-info，同一故障只通知一次', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const failing = {
+    ...gh,
+    addLabels: async (args) => {
+      if ((args.labels || []).includes('状态:排队中')) {
+        throw Object.assign(new Error('Bad credentials'), { status: 401 })
+      }
+      return gh.addLabels(args)
+    },
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+    jobs,
+  }
+
+  const report = await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config,
+  })
+
+  assert.ok(report.errors.some((error) => error.auth === 401 && error.parent === parent.number))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(row.stop, 'auth-failed')
+  assert.match(row.reason, /401/)
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+  assert.equal(notifier.calls.length, 1)
+  assert.match([...notifier.delivered.keys()][0], /认证失败/)
+  const incident = notifier.calls[0]
+  assert.equal(incident.data.customer, 'acme')
+  assert.ok(incident.data.requirement)
+  assert.ok(incident.data.tried)
+  assert.equal(incident.data.status, 401)
+
+  await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => new Date(NOW.getTime() + 60_000),
+    config,
+  })
+  assert.equal(notifier.calls.length, 1, '同一故障不重复通知')
+
+  // 换回好 token 并摘掉 needs-info：下一轮清掉 auth stop，继续推进。
+  await gh.removeLabel({ owner: OWNER, repo: REPO, number: parent.number, name: 'needs-info' })
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier,
+    clock: () => new Date(NOW.getTime() + 120_000),
+    config,
+  })
+  const recovered = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(recovered.stop, '', '摘标签后清掉 auth stop')
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:排队中'))
+})
+
+test('runOnce：运行中 GitHub 403 同样停线并通知', async (t) => {
+  const { fake, gh } = await setupRepo(t)
+  const parent = await createParent(gh)
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const failing = {
+    ...gh,
+    addLabels: async (args) => {
+      if ((args.labels || []).includes('状态:排队中')) {
+        throw Object.assign(new Error('Resource not accessible by integration'), { status: 403 })
+      }
+      return gh.addLabels(args)
+    },
+  }
+  const jobs = await loadStore(await jobFile(t))
+  const notifier = fakeNotifier()
+
+  const report = await runOnce({
+    gh: failing,
+    customers: customers(),
+    notifier,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+    },
+  })
+
+  assert.ok(report.errors.some((error) => error.auth === 403 && error.parent === parent.number))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'auth',
+  })
+  assert.equal(row.stop, 'auth-failed')
+  assert.match(row.reason, /403/)
+  assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
+  assert.equal(notifier.calls.length, 1)
+})
+
+test('runOnce：管道超时写 pipeline 作业行，reason 含超时', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '开发中' })
+  const child = await createChild(gh, parent, { labels: ['状态:排队中', 'Sandcastle'] })
+  await gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: child.number,
+    body: '点火完成：分支 ticket/51',
+  })
+  const jobs = await loadStore(await jobFile(t))
+  const ticketPipeline = async ({ signal }) =>
+    new Promise((resolve) => {
+      signal.addEventListener(
+        'abort',
+        () =>
+          resolve({
+            runs: [{ ticket: child.number, ok: false, reason: 'aborted' }],
+            aborted: true,
+            active: { ticket: child.number, parent: parent.number },
+          }),
+        { once: true },
+      )
+    })
+
+  const report = await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    ticketPipeline,
+    clock: () => NOW,
+    config: {
+      owner: OWNER,
+      lockDir: await lockDir(t),
+      maxActive: 5,
+      repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+      jobs,
+      pipelineTimeoutMs: 50,
+      cancelGraceMs: 1000,
+    },
+  })
+
+  assert.ok(report.errors.some((error) => error.pipeline && /超时/.test(error.message)))
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'pipeline',
+    ticket: child.number,
+  })
+  assert.ok(row)
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /超时/)
+  assert.equal(row.running, false, '超时后运行标记清掉')
+})
+
+test('runOnce：排队中+点头补缺口自动跑 to-spec，失败按 attempt 退避', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '排队中' })
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const jobs = await loadStore(await jobFile(t))
+  let calls = 0
+  const toSpec = async () => {
+    calls += 1
+    return { ok: calls > 1, reason: calls === 1 ? 'agent 没产出 spec' : '' }
+  }
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+    jobs,
+    jobPolicy: { maxAttempts: 3, backoffBaseMs: 60_000 },
+  }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    toSpec,
+    clock: () => NOW,
+    config,
+  })
+  assert.equal(calls, 1)
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'to-spec',
+  })
+  assert.equal(row.attempt, 1)
+  assert.match(row.reason, /没产出/)
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    toSpec,
+    clock: () => new Date(NOW.getTime() + 30_000),
+    config,
+  })
+  assert.equal(calls, 1, '退避期间不再跑')
+})
+
+test('runOnce：to-spec 成功记作业成功，下一轮叫拆票', async (t) => {
+  const { gh } = await setupRepo(t)
+  const parent = await createParent(gh, { state: '排队中' })
+  await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：补缺口' })
+  const jobs = await loadStore(await jobFile(t))
+  const config = {
+    owner: OWNER,
+    lockDir: await lockDir(t),
+    maxActive: 5,
+    repoRoot: join(tmpdir(), 'afk-no-such-repos'),
+    jobs,
+  }
+
+  await runOnce({
+    gh,
+    customers: customers(),
+    notifier: fakeNotifier(),
+    toSpec: async () => ({ ok: true, number: 70 }),
+    clock: () => NOW,
+    config,
+  })
+  const row = findJob(jobs.rowsFor({ owner: OWNER, repo: REPO, parent: parent.number }), {
+    action: 'to-spec',
+  })
+  assert.equal(row.attempt, 0)
+  assert.equal(row.stop, '')
+})
+
 test('runOnce：一轮开始写心跳，结束记完成时间', async (t) => {
   const { gh } = await setupRepo(t)
   const parent = await createParent(gh)
@@ -1527,9 +1789,10 @@ test('runJobStep 在长步骤里按时写心跳', async () => {
   assert.equal(heartbeat, null, '步骤结束清掉心跳定时器')
 })
 
-test('runJobStep 到点抛 StepTimeoutError，并清掉定时器', async () => {
+test('runJobStep 到点先取消任务再抛 StepTimeoutError，并等任务收尾', async () => {
   let fire = null
   let cleared = 0
+  let sawAbort = false
   const timers = {
     setTimeout(fn) {
       fire = fn
@@ -1543,16 +1806,68 @@ test('runJobStep 到点抛 StepTimeoutError，并清掉定时器', async () => {
     },
     clearInterval() {},
   }
+  let signalSeen = null
   const running = runJobStep({
     config: { stepTimeoutMs: 50, jobHeartbeatMs: 0, timers },
     label: '读快照',
-    task: () => new Promise(() => {}),
+    task: ({ signal }) => {
+      signalSeen = signal
+      return new Promise((resolve) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            sawAbort = true
+            resolve({ stopped: true })
+          },
+          { once: true },
+        )
+      })
+    },
   })
   await Promise.resolve()
   assert.equal(typeof fire, 'function')
   fire()
-  await assert.rejects(running, /读快照超时：50 毫秒没跑完/)
-  assert.equal(cleared, 1, '超时后清掉计时器')
+  await assert.rejects(running, (error) => {
+    assert.match(error.message, /读快照超时：50 毫秒没跑完/)
+    assert.deepEqual(error.cancelledResult, { stopped: true })
+    return true
+  })
+  assert.equal(signalSeen.aborted, true, '超时前先 abort')
+  assert.equal(sawAbort, true, '任务收到取消信号并收尾')
+  assert.ok(cleared >= 1, '超时后清掉计时器')
+})
+
+test('runJobStep 超时取消：假 agent 进程 5 秒内消失', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-step-kill-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const pidFile = join(dir, 'pid')
+  const script = [
+    "require('node:fs').writeFileSync(process.argv[1], String(process.pid))",
+    'setInterval(() => {}, 1000)',
+  ].join('\n')
+
+  await assert.rejects(
+    runJobStep({
+      config: { stepTimeoutMs: 200, jobHeartbeatMs: 0, cancelGraceMs: 2000 },
+      label: '假 agent',
+      task: ({ signal }) => defaultExec(process.execPath, ['-e', script, pidFile], { signal }),
+    }),
+    /假 agent超时/,
+  )
+
+  const pid = Number(await readFile(pidFile, 'utf8'))
+  const alive = () => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return error.code !== 'ESRCH'
+    }
+  }
+  for (let i = 0; i < 100 && alive(); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(alive(), false, '超时后 agent 进程应消失')
 })
 
 test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
@@ -2379,7 +2694,7 @@ test('读到提案：补缺口先推一条，带题数和已等天数；同一�
   assert.equal(event.data.repo, REPO)
   assert.equal(event.data.ticket, parent.number)
   assert.equal(event.data.kind, 'gap')
-  assert.match(event.key, /补缺口提案:0/)
+  assert.match(event.key, /补缺口提案:\d+:0$/)
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal([...notifier.delivered.values()].filter((row) => row.event === '补缺口提案').length, 1)

@@ -290,3 +290,46 @@ test('findJob 按 action 和 ticket 找记录，parent 级记录不串到票级'
   assert.equal(findJob(rows, { action: 'ignite', ticket: 52 }), null)
   assert.equal(findJob(rows, { action: 'finish' }), null)
 })
+
+test('管道运行标记：开始可见，心跳更新 lastBeat，结束清掉 running', async (t) => {
+  const dir = await tempDir(t)
+  const clock = clockFrom('2026-11-20T10:00:00+08:00')
+  const store = createJobStore({ filePath: join(dir, 'jobs.json'), now: clock })
+  await store.load()
+
+  const row = await store.markRunning({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    ticket: 51,
+    action: 'pipeline',
+    reason: '管道运行中',
+    now: clock(),
+  })
+  assert.equal(row.running, true)
+  assert.equal(row.reason, '管道运行中')
+
+  clock.advance(60_000)
+  const beat = await store.beatJob({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    ticket: 51,
+    action: 'pipeline',
+    now: clock(),
+  })
+  assert.equal(beat.lastBeat, clock().toISOString())
+  assert.equal(beat.running, true)
+
+  const cleared = await store.clearRunning({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    ticket: 51,
+    action: 'pipeline',
+    now: clock(),
+  })
+  assert.equal(cleared.running, false)
+  assert.equal(cleared.reason, '管道运行中')
+  assert.equal(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }).length, 1)
+})

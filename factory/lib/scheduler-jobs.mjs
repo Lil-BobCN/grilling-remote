@@ -1,5 +1,5 @@
 /**
- * 调度器的四个默认实现：叫拆票、建修复子票、读 PR head 的待答问题、
+ * 调度器的默认实现：叫 to-spec、叫拆票、建修复子票、读 PR head 的待答问题、
  * 读前一天合进主干的 PR。外部命令全部可注入，测试不跑真模型、不碰真 GitHub。
  *
  * 判断只看可检查的事实：父工单评论里的关口词、trail 的六列、PR 的
@@ -13,6 +13,7 @@ import { createAgentRunner, DECOMPOSE_TOOLS, GAP_TOOLS } from './agent-runner.mj
 import { parseTrail } from './evidence.mjs'
 import { latestGate } from './gate.mjs'
 import { runGh, runHelper } from './helper.mjs'
+import { parentRequirement } from './ignition.mjs'
 import { ensureLabel, ensureSubIssue } from './issues.mjs'
 import { logLine } from './log.mjs'
 import { parseParentAcceptance } from './tickets.mjs'
@@ -29,6 +30,25 @@ const TICKET_BRANCH_RE = /(?:^|\/)(?:ticket|issue)[-/](\d+)$/
 
 function errorText(error) {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** 最新一条 `驳回：` 评论全文；没有返回空串。 */
+function latestRejectionText(comments = []) {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const first = String(comments[index]?.body || '')
+      .replace(/^﻿/, '')
+      .trimStart()
+      .split(/\r?\n/)[0]
+      .trim()
+    if (first.startsWith('驳回：')) return String(comments[index].body || '')
+  }
+  return ''
+}
+
+/** 重跑时把驳回理由原样递给 agent；没有驳回就不加这一节。 */
+function rejectionSection(comments = []) {
+  const text = latestRejectionText(comments)
+  return text ? ['', '## 这次驳回的理由', '', text] : []
 }
 
 /** 子票关联要移出父工单才清得掉，只关闭不清关联；给运营者可复制的命令。 */
@@ -252,6 +272,7 @@ function decomposeBrief({ instructions, parent, spec, factoryDir }) {
     '',
     `父工单：#${parent.number} ${parent.title || ''}`.trim(),
     `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli} proposal --seams <接缝文件> --tickets <票文件>`,
+    ...rejectionSection(parent?.comments),
     '',
     '父工单正文：',
     '',
@@ -446,6 +467,7 @@ function gapBrief({ instructions, owner, repo, parent, factoryDir }) {
     `父工单：#${parent?.number || ''} ${parent?.title || ''}`.trim(),
     `仓库：${owner}/${repo}`,
     `工厂命令用绝对路径（客户仓里没有 factory/）：node ${cli}`,
+    ...rejectionSection(parent?.comments),
     '',
     '依次跑这两条，两条的 stdout/stderr 都会随这一跑写进调度器日志：',
     `1. node ${cli} apply-map --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --requirement <需求名> --parent <父工单链接>`,
@@ -495,6 +517,146 @@ export function createGapProposal({
       stderr: result.stderr,
     })
     return result
+  }
+}
+
+function issueHasLabel(issue, name) {
+  return (issue?.labels || []).some((label) => (typeof label === 'string' ? label : label?.name) === name)
+}
+
+function specIssueFor(issues, requirement) {
+  return (
+    (issues || []).find(
+      (issue) =>
+        issueHasLabel(issue, 'ready-for-agent') &&
+        requirement &&
+        (String(issue.title || '').includes(requirement) ||
+          String(issue.body || '').includes(requirement)),
+    ) || null
+  )
+}
+
+function toSpecBrief({ instructions, parent, owner, repo }) {
+  return [
+    String(instructions || '').trim(),
+    '',
+    '## 这次 to-spec',
+    '',
+    `父工单：#${parent?.number || ''} ${parent?.title || ''}`.trim(),
+    `客户仓：${owner}/${repo}`,
+    `用 gh 发 spec issue 时必须带 --repo ${owner}/${repo}。`,
+    '',
+    '父工单正文：',
+    '',
+    String(parent?.body || ''),
+  ].join('\n')
+}
+
+async function readParentGate({ gh, owner, repo, parent }) {
+  if (!gh || typeof gh.listComments !== 'function') {
+    return { ok: false, reason: 'to-spec job 的 GitHub 客户端不支持 listComments，读不到父工单评论' }
+  }
+  try {
+    const comments = await gh.listComments({ owner, repo, number: parent?.number })
+    return { ok: true, gate: latestGate(Array.isArray(comments) ? comments : []) }
+  } catch (error) {
+    return { ok: false, reason: `读父工单评论失败：${errorText(error)}` }
+  }
+}
+
+/** 发布后发现父工单已解锁：关闭 spec 并留一条作废评论。 */
+async function discardSpec({ gh, owner, repo, spec }) {
+  if (!gh || typeof gh.createComment !== 'function' || typeof gh.closeIssue !== 'function') {
+    return { ok: false, reason: 'GitHub 客户端不支持关闭 spec' }
+  }
+  try {
+    await gh.createComment({ owner, repo, number: spec.number, body: '作废：已解锁' })
+    await gh.closeIssue({ owner, repo, number: spec.number, stateReason: 'not_planned' })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: errorText(error) }
+  }
+}
+
+/**
+ * 调度器自动跑 to-spec：没有 spec 时叫 agent 生成并发布。
+ * 先查已有 spec，已有就跳过；跑完重读父工单最新关口，不是 `点头：补缺口`
+ * 就把新 spec 关掉并判失败；最后查标题、标签和需求名。
+ * 读不到 GitHub 或 agent 没产出都返回原因，调度器按 attempt 退避。
+ */
+export function createToSpec({
+  runner,
+  command = process.env.AFK_AGENT_COMMAND || 'claude',
+  agentsDir,
+  repoRoot = '',
+  gh = null,
+} = {}) {
+  const agentRunner = runner || createAgentRunner({ command })
+  const agents = agentsDir || DEFAULT_AGENTS_DIR
+  return async function toSpec({ owner, repo, parent, spec = null } = {}) {
+    if (spec) return { ok: true, skipped: 'spec-exists', number: spec.number }
+    if (!gh || typeof gh.listIssues !== 'function') {
+      return { ok: false, reason: 'to-spec job 没有 GitHub 客户端，读不到已有 spec' }
+    }
+    const requirement =
+      parentRequirement(parent?.body) || parent?.requirement || parent?.title || ''
+    let issues
+    try {
+      issues = await gh.listIssues({ owner, repo, state: 'open' })
+    } catch (error) {
+      return { ok: false, reason: `读 issue 列表失败：${errorText(error)}` }
+    }
+    const existing = specIssueFor(issues, requirement)
+    if (existing) return { ok: true, skipped: 'spec-exists', number: existing.number }
+
+    const instructions = await readFile(join(agents, 'to-spec.md'), 'utf8')
+    const preferred = repoRoot ? join(repoRoot, repo || '') : ''
+    const cwd = preferred && (await dirExists(preferred)) ? preferred : process.cwd()
+    const run = await agentRunner.run({
+      name: `to-spec-${parent?.number || 'parent'}`,
+      cwd,
+      allowedTools: GAP_TOOLS,
+      brief: toSpecBrief({ instructions, parent, owner, repo }),
+    })
+    if (!run?.ok) {
+      const detail = String(run?.stderr || run?.stdout || '').trim().slice(-500)
+      return {
+        ok: false,
+        code: run?.code,
+        reason: `to-spec agent 退出码 ${run?.code ?? 1}${detail ? `：${detail}` : ''}`,
+      }
+    }
+
+    try {
+      issues = await gh.listIssues({ owner, repo, state: 'open' })
+    } catch (error) {
+      return { ok: false, reason: `读 to-spec 结果失败：${errorText(error)}` }
+    }
+    const created = specIssueFor(issues, requirement)
+
+    const parentGate = await readParentGate({ gh, owner, repo, parent })
+    if (!parentGate.ok) {
+      return { ok: false, code: run?.code, reason: parentGate.reason }
+    }
+    if (parentGate.gate?.kind !== '点头：补缺口') {
+      const reason = '父工单已解锁，本次 spec 作废'
+      if (!created) return { ok: false, code: run?.code, reason }
+      const discarded = await discardSpec({ gh, owner, repo, spec: created })
+      if (!discarded.ok) {
+        return {
+          ok: false,
+          code: run?.code,
+          reason: `${reason}；关闭 spec #${created.number} 失败：${discarded.reason}`,
+          number: created.number,
+        }
+      }
+      return { ok: false, code: run?.code, reason, number: created.number }
+    }
+
+    if (!created) {
+      return { ok: false, reason: 'to-spec agent 没有产出挂 ready-for-agent 的 spec issue' }
+    }
+    return { ok: true, number: created.number, title: created.title }
   }
 }
 

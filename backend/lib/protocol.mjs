@@ -287,6 +287,48 @@ export function parseProgress(line) {
   }
 }
 
+// ---- 人工关口 ----
+
+/**
+ * 关口评论第一行固定词，见 `docs/工单模型.md` 的「人工关口的信号」。
+ * 工厂从 `factory/lib/gate.mjs` 复用这一份，后端判锁也从这里读。
+ */
+export const GATE_PREFIXES = [
+  '提案：补缺口',
+  '点头：补缺口',
+  '驳回：补缺口',
+  '提案：拆票',
+  '点头：拆票',
+  '驳回：拆票',
+  '改口：',
+]
+
+/** 取评论第一行的固定词；不是关口评论返回 null。 */
+export function gateKind(body) {
+  const first = textOf(body)
+    .trimStart()
+    .split(/\r?\n/)[0]
+    .trim()
+  for (const prefix of GATE_PREFIXES) {
+    if (first.startsWith(prefix)) return prefix
+  }
+  return null
+}
+
+/**
+ * 返回最新一条关口评论。
+ * @param {Array<{body?: string}>} comments GitHub 按时间升序返回的评论
+ */
+export function latestGate(comments = []) {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const kind = gateKind(comments[index]?.body)
+    if (kind) {
+      return { kind, body: String(comments[index].body), comment: comments[index], index }
+    }
+  }
+  return null
+}
+
 // ---- 通知 key ----
 
 /**

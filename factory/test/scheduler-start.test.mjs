@@ -74,6 +74,7 @@ test('start 读 env 文件，把 token、模型和 helper 交给调度器', asyn
     env: { HOME: files.dir, AFK_ENV_FILE: files.envFile },
     probeModel: async () => ({ ok: true }),
     gh: {},
+    checkToken: async () => {},
     notifier: { send: async () => ({ code: 0, stdout: '{}' }) },
     runOnceImpl: async () => ({ now: '2026-11-20T00:00:00.000Z', repos: [], errors: [] }),
     out: () => {},
@@ -81,6 +82,67 @@ test('start 读 env 文件，把 token、模型和 helper 交给调度器', asyn
 
   assert.equal(process.env.GITHUB_TOKEN, 'ghp_file')
   assert.equal(process.env.ANTHROPIC_MODEL, 'test-model')
+})
+
+function restoreEnvAfter(t) {
+  const saved = {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
+  }
+  t.after(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+}
+
+test('启动时 token 被 401 拒绝就退出，写清键名和 env 文件', async (t) => {
+  const files = await fixture(t, goodEnv())
+  restoreEnvAfter(t)
+  const gh = {
+    request: async () => {
+      throw Object.assign(new Error('Bad credentials'), { status: 401 })
+    },
+  }
+
+  await assert.rejects(
+    start(['--once', '--customers', files.customersPath, '--owner', 'acme'], {
+      env: { HOME: files.dir, AFK_ENV_FILE: files.envFile },
+      probeModel: async () => ({ ok: true }),
+      gh,
+    }),
+    (error) => {
+      assert.ok(error instanceof ConfigError)
+      assert.equal(error.key, 'GITHUB_TOKEN')
+      assert.match(error.message, /401/)
+      assert.match(error.message, new RegExp(files.envFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      return true
+    },
+  )
+})
+
+test('启动时 token 检查遇到网络错误只警告，不退出', async (t) => {
+  const files = await fixture(t, goodEnv())
+  restoreEnvAfter(t)
+  const warnings = []
+  const gh = {
+    request: async () => {
+      throw Object.assign(new Error('socket hang up'), { status: 0 })
+    },
+  }
+
+  await start(['--once', '--customers', files.customersPath, '--owner', 'acme'], {
+    env: { HOME: files.dir, AFK_ENV_FILE: files.envFile },
+    probeModel: async () => ({ ok: true }),
+    gh,
+    log: (line) => warnings.push(String(line)),
+    notifier: { send: async () => ({ code: 0, stdout: '{}' }) },
+    runOnceImpl: async () => ({ now: '2026-11-20T00:00:00.000Z', repos: [], errors: [] }),
+    out: () => {},
+  })
+
+  assert.match(warnings.join('\n'), /继续启动/)
 })
 
 test('缺 GITHUB_TOKEN 时 CLI 退出码非 0，错误写清键名', async (t) => {
@@ -162,6 +224,7 @@ test('customers 形状错时 start 直接报错，指出文件和行', async (t)
     start(['--once', '--customers', files.customersPath, '--owner', 'acme'], {
       env: { HOME: files.dir, AFK_ENV_FILE: files.envFile },
       probeModel: async () => ({ ok: true }),
+      checkToken: async () => {},
     }),
     (error) => {
       assert.ok(error instanceof ConfigError)

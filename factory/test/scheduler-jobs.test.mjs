@@ -14,6 +14,7 @@ import {
   createGapProposal,
   createListMergedYesterday,
   createNeedsAnswer,
+  createToSpec,
   parseGateRows,
   ticketFromBranch,
 } from '../lib/scheduler-jobs.mjs'
@@ -740,4 +741,201 @@ test('createGapProposal 失败接上调度器：写 needs-info stop，下一轮�
 
   await runOnce(options)
   assert.equal(runs, 1, '停了线就不重跑补缺口')
+})
+
+function toSpecGh(issues = [], { comments = [{ body: '点头：补缺口' }] } = {}) {
+  const rows = [...issues]
+  const commentRows = [...comments]
+  const closed = []
+  return {
+    rows,
+    comments: commentRows,
+    closed,
+    async listIssues() {
+      return rows
+    },
+    async getIssue({ number }) {
+      return rows.find((row) => row.number === number) || { number, title: '', body: '' }
+    },
+    async listComments() {
+      return commentRows
+    },
+    async createComment({ number, body }) {
+      commentRows.push({ number, body, created_at: new Date().toISOString() })
+      return { number, body }
+    },
+    async closeIssue({ number }) {
+      closed.push(number)
+      const row = rows.find((item) => item.number === number)
+      if (row) row.state = 'closed'
+      return { number, state: 'closed' }
+    },
+  }
+}
+
+const TO_SPEC_PARENT = {
+  number: 42,
+  title: '要个预约取货',
+  body: ['## 需求全文', '', '- 客户简称：acme', '- 需求名：yuyue'].join('\n'),
+}
+
+test('createToSpec 已有 spec 时跳过，不调用 runner', async () => {
+  const calls = []
+  const gh = toSpecGh([
+    { number: 60, title: 'spec：yuyue', body: '## Problem Statement', labels: labels('ready-for-agent') },
+  ])
+  const result = await createToSpec({
+    gh,
+    agentsDir: AGENTS_DIR,
+    runner: {
+      async run(options) {
+        calls.push(options)
+        return { ok: true, code: 0 }
+      },
+    },
+  })({ owner: 'acme', repo: 'demo', parent: TO_SPEC_PARENT })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.skipped, 'spec-exists')
+  assert.equal(result.number, 60)
+  assert.equal(calls.length, 0)
+})
+
+test('createToSpec 跑完校验 spec 的标题、标签和需求名', async () => {
+  const calls = []
+  const gh = toSpecGh()
+  const runner = {
+    async run(options) {
+      calls.push(options)
+      gh.rows.push({
+        number: 70,
+        title: 'spec：yuyue',
+        body: '## Problem Statement\n\n预约取货。',
+        labels: labels('ready-for-agent'),
+      })
+      return { ok: true, code: 0, stdout: '', stderr: '' }
+    },
+  }
+  const result = await createToSpec({ gh, agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.number, 70)
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].brief, /读什么/)
+  assert.match(calls[0].brief, /用户故事/)
+  assert.match(calls[0].brief, /不得修改|不要.*文件路径|正文不写文件路径/)
+  assert.match(calls[0].brief, /--repo acme\/demo/)
+  assert.match(calls[0].brief, /gh issue view/)
+})
+
+test('createToSpec agent 失败时返回退出码和输出', async () => {
+  const runner = {
+    async run() {
+      return { ok: false, code: 2, stdout: '', stderr: '模型不可用' }
+    },
+  }
+  const result = await createToSpec({ gh: toSpecGh(), agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /退出码 2/)
+  assert.match(result.reason, /模型不可用/)
+})
+
+test('createToSpec agent 没产出 spec 时判失败', async () => {
+  const runner = { async run() { return { ok: true, code: 0 } } }
+  const result = await createToSpec({ gh: toSpecGh(), agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /没有产出/)
+})
+
+test('createToSpec 发布后父工单已解锁：关闭 spec、留作废评论并判失败', async () => {
+  const gh = toSpecGh([], {
+    comments: [{ body: '改口：重传 2026-11-24T10:00:00.000Z，旧的提案和点头作废。' }],
+  })
+  const runner = {
+    async run() {
+      gh.rows.push({
+        number: 71,
+        title: 'spec：yuyue',
+        body: '## Problem Statement\n\n预约取货。',
+        labels: labels('ready-for-agent'),
+      })
+      return { ok: true, code: 0, stdout: '', stderr: '' }
+    },
+  }
+  const result = await createToSpec({ gh, agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /父工单已解锁/)
+  assert.equal(result.number, 71)
+  assert.deepEqual(gh.closed, [71])
+  assert.ok(gh.comments.some((row) => row.body === '作废：已解锁'))
+})
+
+test('createToSpec 发布后父工单换成了新提案：同样关闭 spec', async () => {
+  const gh = toSpecGh([], {
+    comments: [{ body: '提案：补缺口\n\n1. 题：技术栈？' }],
+  })
+  const runner = {
+    async run() {
+      gh.rows.push({
+        number: 72,
+        title: 'spec：yuyue',
+        body: '## Problem Statement',
+        labels: labels('ready-for-agent'),
+      })
+      return { ok: true, code: 0 }
+    },
+  }
+  const result = await createToSpec({ gh, agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /父工单已解锁/)
+  assert.deepEqual(gh.closed, [72])
+})
+
+test('createToSpec 读不到父工单评论时判失败，不关闭 spec', async () => {
+  const gh = toSpecGh()
+  gh.listComments = async () => {
+    throw new Error('评论接口坏了')
+  }
+  const runner = {
+    async run() {
+      gh.rows.push({
+        number: 73,
+        title: 'spec：yuyue',
+        body: '## Problem Statement',
+        labels: labels('ready-for-agent'),
+      })
+      return { ok: true, code: 0 }
+    },
+  }
+  const result = await createToSpec({ gh, agentsDir: AGENTS_DIR, runner })({
+    owner: 'acme',
+    repo: 'demo',
+    parent: TO_SPEC_PARENT,
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /读父工单评论失败/)
+  assert.deepEqual(gh.closed, [])
 })

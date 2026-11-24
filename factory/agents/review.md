@@ -69,3 +69,4 @@ AFK_VERDICT {"ok":true,"evidence":["https://github.com/<owner>/<repo>/pull/<n>#d
 - `problems` 写清哪些意见是「采纳」，一条一句。
 - `evidence` 写评论链接；没有链接时写成一句话摘要。
 - 不改代码，不提交，不推分支。正文按两轴分节，每条意见带文件路径和行号，四类各自成组。
+- 不得修改 `.git/info/exclude` 和 `.gitignore`；证据由工厂提交进票分支。发现问题写进结论，不要自己藏文件。

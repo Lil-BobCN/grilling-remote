@@ -7,6 +7,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { latestGate } from './gate.mjs'
 import { ensureCommentOnce } from './issues.mjs'
 
 export class GateNotReadyError extends Error {
@@ -14,6 +15,14 @@ export class GateNotReadyError extends Error {
     super('地图还没补完，不能写点头：补缺口')
     this.name = 'GateNotReadyError'
     this.blockers = blockers
+  }
+}
+
+export class GateConflictError extends Error {
+  constructor(kind, message) {
+    super(message)
+    this.name = 'GateConflictError'
+    this.kind = kind
   }
 }
 
@@ -204,9 +213,65 @@ export async function postProposal({ gh, owner, repo, number, body }) {
   return ensureCommentOnce(gh, { owner, repo, number, body })
 }
 
+function sameBody(left, right) {
+  return String(left || '').trim() === String(right || '').trim()
+}
+
+const SMALL_TICKET_LINE = /\n\n实现票：#[^\n]*\s*$/
+
 /**
- * 写 `点头：补缺口` 前先查地图。没补完就抛 GateNotReadyError，并在父工单留一条提醒；
- * 提醒用固定正文，重复跑不会刷屏。
+ * 写 `点头：补缺口` 前复查父工单最新关口。
+ *
+ * 最新是 `提案：补缺口` 才放行。最新是同一条点头时返回 `idempotent: true`，
+ * 调用方不重写；正文不同、遇到 `改口：`、拆票或没有提案都抛 GateConflictError。
+ * 小需求传 `ignoreTicketLine`：先拿不含末行 `实现票：#N` 的正文比对，
+ * 避免在旧包或旧提案上建票。
+ */
+export async function assertPointGate({
+  gh,
+  owner,
+  repo,
+  number,
+  body,
+  ignoreTicketLine = false,
+}) {
+  const comments = await gh.listComments({ owner, repo, number })
+  const gate = latestGate(Array.isArray(comments) ? comments : [])
+  if (!gate) {
+    throw new GateConflictError(null, '父工单还没有 `提案：补缺口`，不能写点头')
+  }
+  if (gate.kind === '点头：补缺口') {
+    const gateBody = ignoreTicketLine
+      ? String(gate.body).replace(SMALL_TICKET_LINE, '')
+      : String(gate.body)
+    if (sameBody(gateBody, body)) return { idempotent: true, gate }
+    throw new GateConflictError(
+      gate.kind,
+      '最新关口是另一条 `点头：补缺口`，答案变了；先写 `改口：重传`，等新的 `提案：补缺口` 再点头',
+    )
+  }
+  if (gate.kind.startsWith('改口：')) {
+    throw new GateConflictError(
+      gate.kind,
+      '最新关口是 `改口：`，等新的 `提案：补缺口` 再点头',
+    )
+  }
+  if (gate.kind === '提案：拆票' || gate.kind === '点头：拆票') {
+    throw new GateConflictError(
+      gate.kind,
+      '最新关口是拆票，已经过拆票阶段，不能再补缺口点头',
+    )
+  }
+  if (gate.kind === '提案：补缺口') return { idempotent: false, gate }
+  throw new GateConflictError(
+    gate.kind,
+    `最新关口是「${gate.kind}」，等新的 \`提案：补缺口\` 再点头`,
+  )
+}
+
+/**
+ * 写 `点头：补缺口` 前先查最新关口，再查地图。没补完就抛 GateNotReadyError，
+ * 并在父工单留一条提醒；提醒用固定正文，重复跑不会刷屏。
  */
 export async function postPoint({
   gh,
@@ -218,6 +283,10 @@ export async function postPoint({
   answers = [],
   impacts = [],
 }) {
+  const pointBody = renderPoint({ answers, impacts })
+  const check = await assertPointGate({ gh, owner, repo, number, body: pointBody })
+  if (check.idempotent) return false
+
   let body = mapBody
   if (!body) {
     if (!mapIssueNumber) throw new Error('缺地图编号，查不了地图是否补完')
@@ -228,5 +297,10 @@ export async function postPoint({
     await ensureCommentOnce(gh, { owner, repo, number, body: GATE_REMINDER })
     throw new GateNotReadyError(gate.blockers)
   }
-  return ensureCommentOnce(gh, { owner, repo, number, body: renderPoint({ answers, impacts }) })
+  return ensureCommentOnce(gh, {
+    owner,
+    repo,
+    number,
+    body: pointBody,
+  })
 }

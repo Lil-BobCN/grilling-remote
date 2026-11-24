@@ -200,6 +200,12 @@ function authFailureOf(run, label) {
   }
 }
 
+/** 管道被取消时，正在跑的 agent 不算失败，不写验证或评审的失败行。 */
+function abortedOf(run, extra = {}) {
+  if (!run?.aborted) return null
+  return { ok: false, aborted: true, reason: 'aborted', problems: [], evidence: [], rows: [], ...extra }
+}
+
 function testCommand(row) {
   if (typeof row === 'string') return row
   return String(row?.command || row?.cmd || '').trim()
@@ -273,6 +279,8 @@ export async function runVerifyAudit({
 
   const authFailure = authFailureOf(run, '验证')
   if (authFailure) return { ...authFailure, headSha, evidence: [], rows: [] }
+  const aborted = abortedOf(run, { headSha })
+  if (aborted) return aborted
 
   const verdict = run?.ok
     ? parseAuditVerdict(run.stdout)
@@ -388,6 +396,8 @@ export async function runReviewAudit({
   if (authFailure) {
     return { ...authFailure, headSha, evidence: [], decision: decisions.join('、'), rows: [] }
   }
+  const aborted = abortedOf(run, { headSha, decision: decisions.join('、') })
+  if (aborted) return aborted
 
   const verdict = run?.ok
     ? parseAuditVerdict(run.stdout)
@@ -478,6 +488,8 @@ export async function runFixerAudit({
 
   const authFailure = authFailureOf(run, '修复')
   if (authFailure) return { ...authFailure, changed: false, headSha }
+  const aborted = abortedOf(run, { changed: false, headSha })
+  if (aborted) return aborted
 
   const problems = []
   if (!run?.ok) {

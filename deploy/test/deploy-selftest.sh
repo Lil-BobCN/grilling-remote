@@ -366,6 +366,20 @@ test_release_fingerprint() {
     return
   fi
 
+  # 文档里的用法是在仓库根用相对源目录打包；脚本内部的第二次 tar -C 不能把它解析到元数据目录下。
+  local relative_pkg="$TMP/afkapp-relative.tgz"
+  if (cd "$root" && bash "$REPO/deploy/backend/package.sh" backend 1.0.1 "$relative_pkg") >"$TMP/package-relative.log" 2>&1; then
+    ok "package.sh 在仓库根用相对源目录打出发布包"
+  else
+    bad "package.sh 用相对源目录失败：$(cat "$TMP/package-relative.log")"
+  fi
+  if [[ -s $relative_pkg ]]; then ok "相对源目录的发布包非空"; else bad "相对源目录的发布包是空文件"; fi
+  local relative_release="$TMP/release-relative"
+  mkdir -p "$relative_release"
+  tar -xzf "$relative_pkg" -C "$relative_release"
+  assert_eq "1.0.1" "$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$relative_release/release.json" | head -1)" "相对源目录的发布包记下版本号"
+  assert_eq "$(git -C "$root" rev-parse HEAD)" "$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$relative_release/release.json" | head -1)" "相对源目录的发布包记下来源提交"
+
   mkdir -p "$TMP/release"
   tar -xzf "$pkg" -C "$TMP/release"
   if [[ -f $TMP/release/release.json ]]; then ok "发布包根有 release.json"; else bad "发布包根没有 release.json"; fi
@@ -422,12 +436,77 @@ test_release_fingerprint() {
   if printf '%s' "$out" | grep -q '和仓库不一致'; then ok "check.sh 报和仓库不一致"; else bad "check.sh 没报和仓库不一致：$out"; fi
 }
 
+# ---------------------------------------------------------------- helper 打包
+
+test_helper_package() {
+  printf '\n== helper 打包\n'
+  local pkg="$TMP/afk-products-helper.tgz"
+  if bash "$REPO/deploy/products/package.sh" "$pkg" >"$TMP/helper-package.log" 2>&1; then
+    ok "package.sh 打出 helper 包"
+  else
+    bad "helper 打包失败：$(cat "$TMP/helper-package.log")"
+    return
+  fi
+
+  local unpack="$TMP/helper-unpack"
+  mkdir -p "$unpack"
+  tar -xzf "$pkg" -C "$unpack"
+  local envfile="$unpack/deploy/products/app.env.example"
+  if [[ -f $envfile && ! -L $envfile && -s $envfile ]]; then
+    ok "解包后 app.env.example 是普通非空文件"
+  else
+    bad "解包后 app.env.example 不是普通非空文件"
+  fi
+  assert_file "$unpack/deploy/lib/health.sh" "helper 包带 deploy/lib/health.sh"
+  assert_file "$unpack/backend/scaffold/.env.example" "helper 包带 scaffold 的 .env.example"
+
+  local out status
+  out=$(bash "$unpack/deploy/products/install.sh" --check-files 2>&1)
+  status=$?
+  if [[ $status -eq 0 ]]; then ok "解包后 install.sh 文件预检通过"; else bad "解包后文件预检失败：$out"; fi
+
+  local broken="$TMP/helper-broken"
+  cp -R "$unpack" "$broken"
+  rm -f "$broken/deploy/products/app.env.example"
+  ln -s ../../backend/scaffold/missing.env.example "$broken/deploy/products/app.env.example"
+  out=$(bash "$broken/deploy/products/install.sh" --check-files 2>&1)
+  status=$?
+  if [[ $status -ne 0 ]] && printf '%s' "$out" | grep -q 'deploy/products/package.sh 打包'; then
+    ok "app.env.example 断链时 install.sh 给出打包命令"
+  else
+    bad "app.env.example 断链提示不对：$out"
+  fi
+
+  local missing="$TMP/helper-missing"
+  cp -R "$unpack" "$missing"
+  rm -f "$missing/deploy/products/caddy/main-include.caddy"
+  out=$(bash "$missing/deploy/products/install.sh" --check-files 2>&1)
+  status=$?
+  if [[ $status -ne 0 ]] && printf '%s' "$out" | grep -q 'main-include.caddy'; then
+    ok "缺 main-include.caddy 时文件预检失败并点名"
+  else
+    bad "缺 main-include.caddy 的预检不对：$out"
+  fi
+
+  local mini="$TMP/mini-repo"
+  mkdir -p "$mini/deploy/products" "$mini/deploy/lib" "$mini/backend/scaffold"
+  cp "$REPO/deploy/products/package.sh" "$mini/deploy/products/package.sh"
+  out=$(bash "$mini/deploy/products/package.sh" "$TMP/mini.tgz" 2>&1)
+  status=$?
+  if [[ $status -ne 0 ]] && printf '%s' "$out" | grep -q 'backend/scaffold/.env.example'; then
+    ok "缺 scaffold 的 .env.example 时打包报错并点名"
+  else
+    bad "缺目标文件的报错不对：$out"
+  fi
+}
+
 # ---------------------------------------------------------------- 入口
 
 test_health_lib
 test_product_status
 test_env_contract
 test_release_fingerprint
+test_helper_package
 
 printf '\n通过 %d 项，失败 %d 项\n' "$PASS" "$FAILED"
 [[ $FAILED -eq 0 ]]

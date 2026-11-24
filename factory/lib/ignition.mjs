@@ -577,6 +577,9 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
             reason: oneLine(`点火失败：${stage}：${message}`),
             tried: oneLine(`${stage}阶段报错：${message}`),
             attempt,
+            owner,
+            repo,
+            ticket: parent?.number,
           },
         })
       }
@@ -623,7 +626,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
     }
   }
 
-  async function ignite({ owner = config.owner, repo, parent, ticket, attempt = 1 }) {
+  async function ignite({ owner = config.owner, repo, parent, ticket, attempt = 1, signal }) {
     const order = parentOrder(parent?.body)
     const requirement =
       parentRequirement(parent?.body) || parent?.requirement || parent?.title || ''
@@ -811,7 +814,7 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
       stage = '运行'
       const timer = delay(timeoutMs)
       const runPromise = Promise.resolve().then(() =>
-        execute({ ...runnerArgs, started: gate.started, prepared }),
+        execute({ ...runnerArgs, started: gate.started, prepared, signal }),
       )
 
       let outcome

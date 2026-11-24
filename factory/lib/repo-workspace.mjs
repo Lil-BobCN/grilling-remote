@@ -5,13 +5,14 @@
  * 镜像构建归 `sandcastle-runner.mjs` 的 `defaultBuildImage`，这里不再另留接口。
  * 释放规则：
  * - 干净工作树直接删，删完跑 `git worktree prune`，`git worktree list` 不留登记。
- * - 只有未跟踪文件（截图、草稿）时，先挪进客户仓的 `.audit/archive/<时间>-<分支>/`，再删。
+ * - 释放前先把 `.audit` 强制提交到票分支；提交失败保留工作树，报 `worktree_dirty`。
+ * - 只有 `.audit` 以外的未跟踪文件（截图、草稿）挪进 `.audit/archive/<时间>-<分支>/`，再删。
  * - 改了已跟踪文件的工作树保留，返回路径，等人工或下一轮处理。
- * - `abort` 是失败路径：未跟踪文件先归档，然后连脏工作树一起删。
+ * - `abort` 是失败路径：先提交 `.audit`，再归档非证据文件，然后连脏工作树一起删。
  * - 被忽略的文件（node_modules、构建产物）不归档，随工作树删除。
  */
 import { execFile } from 'node:child_process'
-import { mkdir, readdir, realpath, rename, stat } from 'node:fs/promises'
+import { mkdir, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -159,12 +160,29 @@ export function createRepoWorkspace({
     return output.split('\0').filter(Boolean)
   }
 
+  /**
+   * 释放前把 `.audit` 强制提交到票分支，包含被 ignore 规则挡住的证据。
+   * 没有改动时不建空提交；提交失败抛错，调用方保留工作树。
+   */
+  async function commitAuditEvidence({ worktree, branch }) {
+    if (!(await exists(join(worktree, '.audit')))) return { committed: false, head: '' }
+    await gitImpl(worktree, ['add', '-f', '-A', '--', '.audit'])
+    const staged = await gitImpl(worktree, ['diff', '--cached', '--name-only', '--', '.audit'])
+    if (!String(staged).trim()) return { committed: false, head: '' }
+    const ticket = /^ticket\/(\d+)$/.exec(String(branch))?.[1] || ''
+    const message = ticket ? `FACTORY: 证据进 git #${ticket}` : 'FACTORY: 证据进 git'
+    await gitImpl(worktree, ['commit', '-m', message, '--', '.audit'])
+    return { committed: true, head: await gitImpl(worktree, ['rev-parse', 'HEAD']) }
+  }
+
   async function archiveUntracked({ repoDir, worktree, branch, at }) {
     const archived = []
     const errors = []
     let files = []
     try {
-      files = await untrackedFiles(worktree)
+      files = (await untrackedFiles(worktree)).filter(
+        (file) => file !== '.audit' && !file.startsWith('.audit/'),
+      )
     } catch (error) {
       return { archived, errors: [{ file: '', error: String(error?.message || error) }] }
     }
@@ -178,15 +196,38 @@ export function createRepoWorkspace({
     }
 
     for (const file of files) {
-      // 工作树里已经归档过的文件不再套一层 .audit。
-      const relativeFile = file.startsWith('.audit/') ? file.slice('.audit/'.length) : file
       try {
-        const target = join(repoDir, '.audit', 'archive', batch, relativeFile)
+        const target = join(repoDir, '.audit', 'archive', batch, file)
         await mkdir(dirname(target), { recursive: true })
         await rename(join(worktree, file), target)
         archived.push({ from: file, to: relative(repoDir, target) })
       } catch (error) {
         errors.push({ file, error: String(error?.message || error) })
+      }
+    }
+    if (archived.length) {
+      let recordName = 'record.json'
+      for (let index = 2; archived.some((row) => row.from === recordName); index += 1) {
+        recordName = `record-${index}.json`
+      }
+      const record = join(repoDir, '.audit', 'archive', batch, recordName)
+      try {
+        await writeFile(
+          record,
+          `${JSON.stringify(
+            {
+              worktree,
+              branch,
+              at: (at instanceof Date ? at : new Date(at ?? Date.now())).toISOString(),
+              files: archived.map((row) => row.from),
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        )
+      } catch (error) {
+        errors.push({ file: relative(repoDir, record), error: String(error?.message || error) })
       }
     }
     return { archived, errors }
@@ -371,6 +412,25 @@ export function createRepoWorkspace({
       }
     }
 
+    // 证据先提交到票分支；失败就保留工作树，不把证据归档走。
+    let auditCommit
+    try {
+      auditCommit = await commitAuditEvidence({ worktree: row.path, branch: branchName })
+    } catch (error) {
+      return {
+        path,
+        branch: branchName,
+        registered: true,
+        removed: false,
+        kept: true,
+        dirty: true,
+        archived: [],
+        auditHead: '',
+        errors: [{ file: '.audit', error: String(error?.message || error) }],
+        worktreeDirty: true,
+      }
+    }
+
     const dirtyText = await statusPorcelain(row.path)
     const { archived, errors } = dirtyText
       ? await archiveUntracked({ repoDir, worktree: row.path, branch: branchName, at: clock() })
@@ -386,6 +446,7 @@ export function createRepoWorkspace({
         kept: true,
         dirty: true,
         archived,
+        auditHead: auditCommit.head,
         ...(errors.length ? { errors } : {}),
       }
     }
@@ -402,6 +463,7 @@ export function createRepoWorkspace({
       kept: !removed,
       dirty: false,
       archived,
+      auditHead: auditCommit.head,
     }
   }
 
@@ -443,6 +505,24 @@ export function createRepoWorkspace({
       }
     }
 
+    let auditCommit
+    try {
+      auditCommit = await commitAuditEvidence({ worktree: row.path, branch: branchName })
+    } catch (error) {
+      return {
+        path,
+        branch: branchName,
+        registered: true,
+        removed: false,
+        kept: true,
+        dirty: true,
+        archived: [],
+        auditHead: '',
+        errors: [{ file: '.audit', error: String(error?.message || error) }],
+        worktreeDirty: true,
+      }
+    }
+
     const dirtyText = await statusPorcelain(row.path)
     const { archived, errors } = await archiveUntracked({
       repoDir,
@@ -459,6 +539,7 @@ export function createRepoWorkspace({
         kept: true,
         dirty: Boolean(dirtyText),
         archived,
+        auditHead: auditCommit.head,
         errors,
       }
     }
@@ -475,6 +556,7 @@ export function createRepoWorkspace({
       kept: !removed,
       dirty: Boolean(dirtyText),
       archived,
+      auditHead: auditCommit.head,
     }
   }
 

@@ -198,6 +198,39 @@ async function uploadSmall(env, quote) {
   return body.orders[0].id
 }
 
+async function makeNumberedV2(scratch) {
+  await editText(
+    join(scratch, '问答记录.md'),
+    `> 「${V1_QUOTE}」`,
+    `> 「${V2_QUOTE}」`,
+  )
+  await writeFile(
+    join(scratch, '验收场景.md'),
+    '# 验收场景\n\n客户确认：2026-11-15\n\n1. 顾客扫码看水果。\n2. 门口也贴一张二维码。\n',
+    'utf8',
+  )
+}
+
+test('重传的验收场景是编号列表时，已有父工单补上条目且不建第二张', async (t) => {
+  const env = await setup(t)
+  const orderId = await uploadWorkspace(env)
+  await runImport(env)
+  const before = await parentOf(env, orderId)
+  assert.equal(before.length, 1)
+
+  await uploadWorkspace(env, makeNumberedV2)
+  const second = await runImport(env)
+  assert.equal(second.uploads[0].status, 'imported')
+
+  const after = await parentOf(env, orderId)
+  assert.deepEqual(after, before)
+  const parent = await env.gh.getIssue({ owner: OWNER, repo: REPO, number: before[0] })
+  assert.match(
+    parent.body,
+    /## 验收条件\n\n- \[ \] 顾客扫码看水果。\n- \[ \] 门口也贴一张二维码。/,
+  )
+})
+
 test('to-spec 前整包重传：沿用父工单，五段、快照、标签和分支换成新包', async (t) => {
   const env = await setup(t)
   const orderId = await uploadWorkspace(env)
@@ -529,22 +562,42 @@ test('重传中途失败再重跑同一份包：不重复追加评论，不建�
   assert.equal(order.import_sha256, v2Dir.meta.sha256)
 })
 
-test('to-spec 锁单后，同一需求目录再上传返回 422', async (t) => {
+test('补缺口点头后，同一需求目录再上传返回 422；写改口：重传后可上传', async (t) => {
   const env = await setup(t)
   const orderId = await uploadWorkspace(env)
+  await runImport(env)
+  const [parentNumber] = await parentOf(env, orderId)
+  env.config.githubToken = 'test'
 
-  env.config.specLock = async ({ requirement }) => requirement === REQUIREMENT
+  await env.gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parentNumber,
+    body: '点头：补缺口\n\n## 最终答案\n\n- 技术栈：Next.js + Postgres',
+  })
   const { zipPath } = await makeWorkspaceZip(env.root, makeV2)
   const response = await upload(env.server.base, env.cookie, await readFile(zipPath))
   assert.equal(response.status, 422)
   const body = await response.json()
-  assert.match(body.message, /新建需求目录/)
+  assert.match(body.message, /补缺口已点头/)
 
-  const order = (await readOrders(env.config)).find((item) => item.id === orderId)
+  let order = (await readOrders(env.config)).find((item) => item.id === orderId)
   assert.equal(order.uploads.length, 1)
+
+  await env.gh.createComment({
+    owner: OWNER,
+    repo: REPO,
+    number: parentNumber,
+    body: '改口：重传 2026-11-24T10:00:00.000Z，旧的提案和点头作废。',
+  })
+  const accepted = await upload(env.server.base, env.cookie, await readFile(zipPath))
+  assert.equal(accepted.status, 200)
+
+  order = (await readOrders(env.config)).find((item) => item.id === orderId)
+  assert.equal(order.uploads.length, 2)
 })
 
-test('导入兜底：同需求已有 ready-for-agent 的 spec 时转运营者，不覆盖', async (t) => {
+test('导入兜底：已锁单时转运营者，不覆盖', async (t) => {
   const env = await setup(t)
   const orderId = await uploadWorkspace(env)
   await runImport(env)
@@ -564,13 +617,19 @@ test('导入兜底：同需求已有 ready-for-agent 的 spec 时转运营者，
   const orderBefore = (await readOrders(env.config)).find((item) => item.id === orderId)
 
   await uploadWorkspace(env, makeV2)
+  const lockCalls = []
   const result = await importOnce({
     config: env.config,
     gh: env.gh,
     remoteUrlFor: () => env.bare,
-    specLock: async ({ requirement }) => requirement === REQUIREMENT,
+    specLock: async (args) => {
+      lockCalls.push(args)
+      return args.requirement === REQUIREMENT
+    },
   })
   assert.equal(result.uploads[0].status, 'needs_operator')
+  assert.equal(lockCalls.length, 1)
+  assert.equal(lockCalls[0].parentIssue, orderBefore.issue)
 
   const v2Dir = (await uploadDirs(env.config)).at(-1)
   const meta = JSON.parse(
@@ -578,7 +637,8 @@ test('导入兜底：同需求已有 ready-for-agent 的 spec 时转运营者，
   )
   assert.equal(meta.status, 'needs_operator')
   assert.equal(meta.operator_alert.reason, 'requirement_locked')
-  assert.match(meta.operator_alert.message, /已经锁单/)
+  assert.match(meta.operator_alert.message, /补缺口已点头/)
+  assert.equal(lockCalls[0].uploadedAt, meta.at)
 
   const parentAfter = await env.gh.getIssue({
     owner: OWNER,

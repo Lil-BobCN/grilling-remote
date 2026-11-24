@@ -270,7 +270,7 @@ async function syncTypeLabel(gh, { owner, repo, issue, type }) {
  * 按 `map.md` 和 `issues/NN-*.md` 建地图 issue 和决定票。
  *
  * - 重跑按编号配对，已有票更新正文、补缺的评论，不建第二套。
- * - `mode='replace'` 用于 to-spec 前重传：换地图正文，按编号换票，
+ * - `mode='replace'` 用于点头前重传：换地图正文，按编号换票，
  *   新包没有的票写 `作废：重传` 再关，运营者自己开的票标 `待复查：重传`。
  * - 小需求（只有 `需求草稿.md`）返回 `{skipped: 'small'}`。
  * - 格式问题在任何 GitHub 写操作之前抛出 `MapFormatError`。

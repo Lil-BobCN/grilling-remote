@@ -56,3 +56,4 @@ AFK_VERDICT {"ok":true,"evidence":[".audit/evidence/<票号>/<验证者>/before.
 - 截图和 trace 不放共享的 `.audit/screenshots/`，同名文件跨票、跨验证者会互相覆盖。
 - 跑了测试才写 `tests`，一条测试一项，`result` 写 `pass` 或 `fail`。
 - 不改代码，不提交，不推分支。发现问题只报给实现者。
+- 不得修改 `.git/info/exclude` 和 `.gitignore`；证据由工厂提交进票分支。发现问题写进结论，不要自己藏文件。

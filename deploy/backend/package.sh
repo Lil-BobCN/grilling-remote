@@ -16,6 +16,8 @@ VERSION=${2:?用法：package.sh <源目录> <版本号> [输出文件]}
 OUT=${3:-output/afkapp-$VERSION.tgz}
 
 [[ -d $SRC ]] || { echo "源目录不存在：$SRC" >&2; exit 1; }
+# 后面 tar 的第二个 -C 会先切到 $META，相对路径 $SRC 会按 $META 解析。入口处统一转绝对路径。
+SRC=$(cd -- "$SRC" && pwd)
 [[ $VERSION =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || { echo "版本号只能用字母、数字、点、下划线和连字符" >&2; exit 1; }
 
 HERE=$(cd -- "$(dirname -- "$0")" && pwd)

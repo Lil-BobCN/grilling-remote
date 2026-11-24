@@ -40,12 +40,14 @@ import {
   createListMergedYesterday,
   createNeedsAnswer,
   createPreviewSweep,
+  createToSpec,
 } from '../lib/scheduler-jobs.mjs'
 import {
   collectBranchFacts,
   collectRepos,
   collectSnapshot,
   hasLabel,
+  resolveTimeouts,
   routeRepo,
   runLoop,
   runOnce,
@@ -102,6 +104,7 @@ function previewDecision(actions) {
   if (actions.some((action) => action.type === 'createFixTicket')) return 'reject'
   if (actions.some((action) => action.type === 'ignite')) return 'develop'
   if (actions.some((action) => action.type === 'runGapProposal')) return 'gap-proposal'
+  if (actions.some((action) => action.type === 'runToSpec')) return 'to-spec'
   if (actions.some((action) => action.type === 'runDecompose')) return 'decompose'
   if (actions.some((action) => action.type === 'addLabel' && action.name === 'needs-info')) {
     return 'needs-info'
@@ -171,6 +174,7 @@ export async function run(
     notifier,
     ignite,
     decompose,
+    toSpec,
     gapProposal,
     ticketPipeline,
     createFixTicket,
@@ -265,6 +269,7 @@ export async function run(
       backoffBaseMs: Number(process.env.AFK_JOB_BACKOFF_MS) || undefined,
     },
     stepTimeoutMs: Number(process.env.AFK_STEP_TIMEOUT_MS) || undefined,
+    pipelineTimeoutMs: Number(process.env.AFK_PIPELINE_TIMEOUT_MS) || undefined,
     jobHeartbeatMs: Number(process.env.AFK_JOB_HEARTBEAT_MS) || undefined,
     roundTimeoutMs: Number(process.env.AFK_ROUND_TIMEOUT_MS) || undefined,
     watchdogIntervalMs: Number(process.env.AFK_HEARTBEAT_MS) || undefined,
@@ -284,6 +289,13 @@ export async function run(
     })
   const createFixTicketFn =
     createFixTicket || createFixTicketJob({ gh: client })
+  const toSpecFn =
+    toSpec ||
+    createToSpec({
+      repoRoot,
+      gh: client,
+      command: process.env.AFK_AGENT_COMMAND || 'claude',
+    })
   const gapProposalFn =
     gapProposal ||
     createGapProposal({
@@ -296,6 +308,8 @@ export async function run(
     createTicketPipeline({
       runner: createAgentRunner({
         command: process.env.AFK_AGENT_COMMAND || 'claude',
+        model: process.env.AFK_AGENT_MODEL || process.env.ANTHROPIC_MODEL || '',
+        timeoutMs: Number(process.env.AFK_AGENT_TIMEOUT_MS) || undefined,
       }),
       notifier: notify,
       log: configOverrides.log || logLine,
@@ -355,6 +369,7 @@ export async function run(
     notifier: notify,
     ignite: igniteFn,
     decompose: decomposeFn,
+    toSpec: toSpecFn,
     gapProposal: gapProposalFn,
     ticketPipeline: ticketPipelineFn,
     createFixTicket: createFixTicketFn,
@@ -400,16 +415,46 @@ function applyConfigEnv(loaded) {
   if (loaded.model?.name) process.env.ANTHROPIC_MODEL = loaded.model.name
 }
 
+/** 启动时用 GET /user 验 token：401 直接退出，网络错误和 5xx 只警告。 */
+export async function verifyGithubToken({ gh, envFile, log = console.error }) {
+  if (!gh || typeof gh.request !== 'function') {
+    throw new ConfigError(`GITHUB_TOKEN 检查失败：GitHub 客户端没有 request 方法`, {
+      key: 'GITHUB_TOKEN',
+      file: envFile,
+    })
+  }
+  try {
+    await gh.request('GET', '/user')
+  } catch (error) {
+    if (error?.status === 401) {
+      throw new ConfigError(
+        `GITHUB_TOKEN 无效（401 未授权）：检查 ${envFile} 里的 token`,
+        { key: 'GITHUB_TOKEN', file: envFile },
+      )
+    }
+    log(
+      JSON.stringify({
+        level: 'warning',
+        msg: '启动时检查 GITHUB_TOKEN 失败，继续启动',
+        status: error?.status || 0,
+        error: error.message,
+      }),
+    )
+  }
+}
+
 /**
  * 命令行启动：先读 env 文件并自检，再进调度循环。
  * 缺 token、helper、模型或 customers 形状不对时，在这里失败退出。
  */
 export async function start(
   argv = process.argv.slice(2),
-  { env = process.env, envFile, probeModel, readFile, ...runOptions } = {},
+  { env = process.env, envFile, probeModel, readFile, checkToken, log, ...runOptions } = {},
 ) {
   const loaded = await loadConfig({ env, envFile, probeModel, readFile })
   applyConfigEnv(loaded)
+  const timeouts = resolveTimeouts(process.env)
+  logLine({ level: 'info', msg: '启动配置', ...timeouts })
   const owner = option(argv, '--owner', process.env.GITHUB_OWNER || '')
   if (!owner) {
     const target = loaded.found ? `${loaded.envFile} 里也没有` : `${loaded.envFile} 不存在`
@@ -418,7 +463,12 @@ export async function start(
       file: loaded.envFile,
     })
   }
-  return run(argv, { ...runOptions, readFile })
+  const client = runOptions.gh || createGithub({ token: loaded.githubToken })
+  // checkToken 传 null 只给离线测试跳过网络；生产启动一律检查。
+  if (checkToken !== null) {
+    await (checkToken || verifyGithubToken)({ gh: client, envFile: loaded.envFile, ...(log ? { log } : {}) })
+  }
+  return run(argv, { ...runOptions, gh: client, readFile })
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
