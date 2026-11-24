@@ -102,13 +102,23 @@ test('addNextTicket 加「第 NN 张」行，重复跑不重复加，「无」�
   assert.match(sectionText(replaced, '接下来'), /^- 第 07 张：起送价多少（你答）$/m)
 })
 
-test('removeNextTicket 删对应行，编号写法不同也能删，找不到时不动', () => {
-  const body = mapBody({ next: '- 第 06 张：送货范围怎么定' })
-  const removed = removeNextTicket(body, 6, '06 送货范围怎么定')
-  assert.equal(sectionText(removed, '接下来'), '')
+test('removeNextTicket 按 NN 匹配，标题改过也能删，不误删别的票', () => {
+  const body = mapBody({ next: '- 第 06 张：旧标题\n- 第 10 张：另一张' })
+  const removed = removeNextTicket(body, 6, '标题已经改过')
+  assert.deepEqual(itemsOf(sectionText(removed, '接下来')), ['第 10 张：另一张'])
 
   const missing = removeNextTicket(body, '07', '别的票')
   assert.equal(missing, body)
+})
+
+test('addNextTicket 同一 NN 只留一行，标题变了就替换', () => {
+  const body = mapBody({ next: '- 第 05 张：别的票\n- 第 06 张：旧标题' })
+  const updated = addNextTicket(body, 6, '送货范围怎么定')
+  assert.deepEqual(itemsOf(sectionText(updated, '接下来')), [
+    '第 05 张：别的票',
+    '第 06 张：送货范围怎么定',
+  ])
+  assert.equal(addNextTicket(updated, '06', '送货范围怎么定'), updated)
 })
 
 test('appendOutOfScope 追加一行并去重，保留最后的工厂注释', () => {
@@ -130,12 +140,29 @@ test('appendUnsettledNote 按未定行格式写入 Notes', () => {
   assert.equal((twice.match(/未定：起送价多少（你答）/g) || []).length, 1)
 })
 
-test('appendDecision 按「标题：结论」写入并去重', () => {
-  const body = mapBody()
-  const updated = appendDecision(body, '01 先做哪一版', '先做取货')
-  assert.equal((updated.match(/01 先做哪一版：先做取货/g) || []).length, 1)
-  const twice = appendDecision(updated, '01 先做哪一版', '先做取货')
-  assert.equal((twice.match(/01 先做哪一版：先做取货/g) || []).length, 1)
+test('appendDecision 没有旧行就追加，有旧行就替换，不留两行', () => {
+  const empty = mapBody({ decisions: '' })
+  const added = appendDecision(empty, '01 先做哪一版', '先做取货')
+  assert.deepEqual(itemsOf(sectionText(added, 'Decisions so far')), ['01 先做哪一版：先做取货'])
+  assert.equal(appendDecision(added, '01 先做哪一版', '先做取货'), added)
+
+  const changed = appendDecision(added, '01 先做哪一版', '改成送货上门')
+  assert.deepEqual(itemsOf(sectionText(changed, 'Decisions so far')), ['01 先做哪一版：改成送货上门'])
+
+  const body = mapBody({
+    decisions: '- 01 先做哪一版：旧结论\n- 02 下单要不要先付钱：先付',
+  })
+  const updated = appendDecision(body, '01 先做哪一版', '新结论')
+  assert.deepEqual(itemsOf(sectionText(updated, 'Decisions so far')), [
+    '01 先做哪一版：新结论',
+    '02 下单要不要先付钱：先付',
+  ])
+
+  const duplicated = mapBody({
+    decisions: '- 01 先做哪一版：旧结论\n- 01 先做哪一版：更旧',
+  })
+  const deduped = appendDecision(duplicated, '01 先做哪一版', '新结论')
+  assert.deepEqual(itemsOf(sectionText(deduped, 'Decisions so far')), ['01 先做哪一版：新结论'])
 })
 
 test('nextTicketNumber 取最大编号加一，两位补零', () => {

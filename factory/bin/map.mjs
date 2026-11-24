@@ -2,21 +2,24 @@
 /**
  * 清图命令：bot 陪运营者清地图的写回入口。
  *
- *   node factory/bin/map.mjs list --owner <owner> --repo <仓> --parent <父工单>
- *   node factory/bin/map.mjs init --owner <owner> --repo <仓> --parent <父工单>
- *   node factory/bin/map.mjs ticket --owner <owner> --repo <仓> --parent <父工单> \
+ *   node factory/bin/map.mjs list --owner <owner> --repo <裸仓库名> --parent <父工单>
+ *   node factory/bin/map.mjs init --owner <owner> --repo <裸仓库名> --parent <父工单>
+ *   node factory/bin/map.mjs ticket --owner <owner> --repo <裸仓库名> --parent <父工单> \
  *     --title <标题> --type <grilling|research|prototype|task> --question <正文> --from-item <原文>
- *   node factory/bin/map.mjs conclude --owner <owner> --repo <仓> --parent <父工单> \
+ *   node factory/bin/map.mjs conclude --owner <owner> --repo <裸仓库名> --parent <父工单> \
  *     --ticket <编号或标题前缀> --conclusion <一句话>
- *   node factory/bin/map.mjs defer --owner <owner> --repo <仓> --parent <父工单> \
+ *   node factory/bin/map.mjs defer --owner <owner> --repo <裸仓库名> --parent <父工单> \
  *     --item <原文> --to <out-of-scope|notes> [--reason <理由>] [--who <谁回话>] [--next <下一步>]
- *   node factory/bin/map.mjs check --owner <owner> --repo <仓> --parent <父工单>
+ *   node factory/bin/map.mjs check --owner <owner> --repo <裸仓库名> --parent <父工单>
+ *
+ * `--owner` 和 `--repo` 与 `gap.mjs`、`tickets.mjs` 一致：`--repo` 只接裸仓库名。
  *
  * 所有命令幂等：重复跑不建第二张票、不写第二条评论、不重复加行。
  * 地图从父工单的 `- 地图：<链接>` 找，并校验地图正文的父工单链接。
  * `--parent` 收工单链接、`#12` 或 `12`。输出一行 JSON；`check` 不通过退出码 1。
  */
 import { pathToFileURL } from 'node:url'
+import { gateReady } from '../lib/gap.mjs'
 import { createGithub } from '../lib/github.mjs'
 import { ensureCommentOnce, ensureLabel, ensureSubIssue } from '../lib/issues.mjs'
 import {
@@ -26,6 +29,7 @@ import {
   appendDecision,
   appendOutOfScope,
   appendUnsettledNote,
+  conclusionOf,
   hasProtocol,
   itemsOf,
   nextTicketNumber,
@@ -33,7 +37,6 @@ import {
   removeNextTicket,
   renderDecisionTicket,
   sectionText,
-  strictGate,
   stripTicketNumber,
   ticketNumberOf,
 } from '../lib/map-clearing.mjs'
@@ -222,12 +225,19 @@ async function commandConclude({ gh, owner, repo, mapIssue, options }) {
   const target = findTicket(children, rawTicket)
   if (!target) throw new MapClearingError(`地图下找不到票：${rawTicket}`)
 
-  const commented = await ensureCommentOnce(gh, {
-    owner,
-    repo,
-    number: target.number,
-    body: `结论：${conclusion}`,
-  })
+  const comments = await gh.listComments({ owner, repo, number: target.number })
+  const previous = conclusionOf(comments)
+  if (previous && previous !== conclusion) {
+    throw new MapClearingError('这张票已有结论，改结论走改口/重传')
+  }
+  const commented = previous
+    ? false
+    : await ensureCommentOnce(gh, {
+        owner,
+        repo,
+        number: target.number,
+        body: `结论：${conclusion}`,
+      })
   const closed = target.state !== 'closed'
   if (closed) await gh.closeIssue({ owner, repo, number: target.number })
 
@@ -293,13 +303,15 @@ async function commandDefer({ gh, owner, repo, mapIssue, options }) {
   return { map: mapIssue.html_url, item, to, changed }
 }
 
+/** 和 `gap.mjs point` 共用 `gateReady`：老地图只看两条，带协议才跑严格门禁。 */
 async function commandCheck({ gh, owner, repo, mapIssue }) {
-  const children = await gh.listSubIssues({ owner, repo, number: mapIssue.number })
-  const commentsByTicket = {}
-  for (const row of children.filter((child) => child.state === 'closed')) {
-    commentsByTicket[row.number] = await gh.listComments({ owner, repo, number: row.number })
-  }
-  return strictGate({ body: mapIssue.body || '', subIssues: children, commentsByTicket })
+  return gateReady({
+    gh,
+    owner,
+    repo,
+    mapIssueNumber: mapIssue.number,
+    mapBody: mapIssue.body || '',
+  })
 }
 
 export async function run(argv, { gh, log = console } = {}) {

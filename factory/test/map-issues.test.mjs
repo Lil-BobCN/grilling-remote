@@ -416,7 +416,7 @@ test('replace 换地图正文、按编号换票、作废旧票、保留运营者
   assert.deepEqual(comments01.map((row) => row.body), [
     '客户原话：「店里贴个二维码，扫一下就能看。」',
     '客户补充：「朋友也会看。」',
-    '店里贴二维码，顾客扫进小程序看当天清单。',
+    '结论：店里贴二维码，顾客扫进小程序看当天清单。',
   ])
 
   const obsolete = issuesOf(fake).find((row) => row.title.startsWith('05 '))
@@ -437,4 +437,52 @@ test('replace 换地图正文、按编号换票、作废旧票、保留运营者
   assert.ok(retransmit)
   assert.match(retransmit.body, /送货要不要设起送价/)
   assert.doesNotMatch(retransmit.body, /01 顾客怎么看到今天有什么/)
+})
+
+test('replace 模式把 resolved 票的结论写成带「结论：」的评论，重复跑不重复写', async (t) => {
+  const { gh, parent } = await githubSetup(t)
+  const scratch = await copyFixture(t)
+  const { readFile } = await import('node:fs/promises')
+  const file = join(scratch, 'issues', '01-顾客怎么看到今天有什么.md')
+  await writeFile(
+    file,
+    (await readFile(file, 'utf8')).replace(
+      '## 结论\n\n店里贴二维码，顾客扫进小程序看当天清单。',
+      '## 结论\n\n结论：店里贴二维码，顾客扫进小程序看当天清单。',
+    ),
+  )
+
+  const args = {
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    requirement: 'xianguopu',
+    scratchDir: scratch,
+    parentIssueUrl: parent.html_url,
+    mode: 'replace',
+  }
+  const first = await ensureMapIssues(args)
+  const children = await gh.listSubIssues({
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    number: first.mapIssue.number,
+  })
+  const ticket01 = children.find((row) => row.title.startsWith('01 '))
+  const ticket02 = children.find((row) => row.title.startsWith('02 '))
+
+  let comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: ticket01.number })
+  assert.deepEqual(
+    comments.filter((row) => row.body.startsWith('结论：')).map((row) => row.body),
+    ['结论：店里贴二维码，顾客扫进小程序看当天清单。'],
+    '已经是结论：开头的不要再加一遍',
+  )
+  const comments02 = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: ticket02.number })
+  assert.ok(
+    comments02.some((row) => row.body === '结论：到店取的不先付，取货时付；送货的微信转账。'),
+    '没带前缀的结论要补上「结论：」',
+  )
+
+  await ensureMapIssues(args)
+  comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: ticket01.number })
+  assert.equal(comments.filter((row) => row.body.startsWith('结论：')).length, 1)
 })

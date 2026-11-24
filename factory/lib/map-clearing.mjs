@@ -140,7 +140,12 @@ export function removeFogItem(body, item) {
   return replaceSection(body, 'Not yet specified', lines.join('\n').trim())
 }
 
-/** 在 `接下来` 加 `- 第 NN 张：<标题>`；已有同一行就不动，`- 无` 被替换。 */
+function nextItemNumberOf(line) {
+  const match = /^第\s*0*(\d+)\s*张[：:]\s*(.*)$/.exec(stripBullet(line))
+  return match ? Number(match[1]) : null
+}
+
+/** 在 `接下来` 加 `- 第 NN 张：<标题>`；同一 NN 只留一行，`- 无` 被替换。 */
 export function addNextTicket(body, number, title) {
   const nn = formatTicketNumber(number)
   const plainTitle = stripTicketNumber(title)
@@ -150,23 +155,32 @@ export function addNextTicket(body, number, title) {
   const lines = section
     .split('\n')
     .filter((line) => line.trim() && stripBullet(line) !== '无')
-  if (lines.some((line) => stripBullet(line) === target)) return normalizeText(body)
-  lines.push(`- ${target}`)
+  const matches = []
+  lines.forEach((line, index) => {
+    if (nextItemNumberOf(line) === Number(nn)) matches.push(index)
+  })
+  if (matches.length === 0) {
+    lines.push(`- ${target}`)
+  } else {
+    if (matches.length === 1 && stripBullet(lines[matches[0]]) === target) {
+      return normalizeText(body)
+    }
+    lines[matches[0]] = `- ${target}`
+    for (let index = lines.length - 1; index > matches[0]; index -= 1) {
+      if (nextItemNumberOf(lines[index]) === Number(nn)) lines.splice(index, 1)
+    }
+  }
   return replaceSection(body, '接下来', lines.join('\n'))
 }
 
-/** 从 `接下来` 删对应行；找不到时原样返回。 */
+/** 从 `接下来` 按 NN 删行，不比对标题；找不到时原样返回。 */
 export function removeNextTicket(body, number, title) {
   if (number === null || number === undefined) return normalizeText(body)
-  const plainTitle = stripTicketNumber(title)
+  const target = Number(number)
   const section = sectionText(body, '接下来')
   if (section === null) return normalizeText(body)
   const lines = section.split('\n')
-  const index = lines.findIndex((line) => {
-    const match = /^第\s*0*(\d+)\s*张[：:]\s*(.*)$/.exec(stripBullet(line))
-    if (!match) return false
-    return Number(match[1]) === Number(number) && match[2].trim() === plainTitle
-  })
+  const index = lines.findIndex((line) => nextItemNumberOf(line) === target)
   if (index === -1) return normalizeText(body)
   lines.splice(index, 1)
   return replaceSection(body, '接下来', lines.join('\n').trim())
@@ -196,14 +210,33 @@ export function appendUnsettledNote(body, item, who, next) {
   return replaceSection(body, 'Notes', lines.join('\n'))
 }
 
-/** `Decisions so far` 追加 `- <标题>：<结论>`。 */
+/** `Decisions so far` 写 `- <标题>：<结论>`；同一标题只留一行，新的替换旧的。 */
 export function appendDecision(body, title, conclusion) {
-  const line = `- ${String(title ?? '').trim()}：${String(conclusion ?? '').trim()}`
+  const cleanTitle = String(title ?? '').trim()
+  const line = `- ${cleanTitle}：${String(conclusion ?? '').trim()}`
+  const target = stripBullet(line)
+  const matchesTitle = (row) => {
+    const stripped = stripBullet(row)
+    return (
+      stripped.startsWith(`${cleanTitle}：`) ||
+      stripped.startsWith(`${cleanTitle}:`) ||
+      stripped === target
+    )
+  }
   const section = sectionText(body, 'Decisions so far')
   if (section === null) throw new MapClearingError('地图缺「Decisions so far」段')
   const lines = section ? section.split('\n').filter((row) => row.trim()) : []
-  if (lines.some((row) => stripBullet(row) === stripBullet(line))) return normalizeText(body)
-  lines.push(line)
+  const firstIndex = lines.findIndex(matchesTitle)
+  if (firstIndex === -1) {
+    lines.push(line)
+  } else {
+    const extras = lines.some((row, index) => index > firstIndex && matchesTitle(row))
+    if (!extras && stripBullet(lines[firstIndex]) === target) return normalizeText(body)
+    lines[firstIndex] = line
+    for (let index = lines.length - 1; index > firstIndex; index -= 1) {
+      if (matchesTitle(lines[index])) lines.splice(index, 1)
+    }
+  }
   return replaceSection(body, 'Decisions so far', lines.join('\n'))
 }
 

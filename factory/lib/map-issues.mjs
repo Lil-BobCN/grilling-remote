@@ -243,6 +243,13 @@ export function appendMapLink(parentBody, mapIssueUrl) {
   return `${body.slice(0, start)}${lines.join('\n')}\n\n${body.slice(end)}`
 }
 
+/** 结论评论第一行必须是 `结论：`，清图协议的严格门禁按这行认结论。 */
+function conclusionComment(text) {
+  const body = String(text ?? '').trim()
+  const firstLine = body.split('\n')[0].trim()
+  return /^结论[：:]/.test(firstLine) ? body : `结论：${body}`
+}
+
 function nextTicketNumbers(map) {
   return map.next
     .split('\n')
@@ -379,7 +386,12 @@ export async function ensureMapIssues({
       await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: comment })
     }
     if (mode === 'replace' && ticket.status === 'resolved' && ticket.conclusion) {
-      await ensureCommentOnce(gh, { owner, repo, number: issue.number, body: ticket.conclusion })
+      await ensureCommentOnce(gh, {
+        owner,
+        repo,
+        number: issue.number,
+        body: conclusionComment(ticket.conclusion),
+      })
     }
     await ensureSubIssue(gh, { owner, repo, parent: mapIssue.number, childId: issue.id })
     savedTickets.push({ number: ticket.number, title: ticket.title, issue, created })

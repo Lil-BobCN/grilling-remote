@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { run } from '../bin/map.mjs'
 import { createGithub } from '../lib/github.mjs'
-import { sectionText } from '../lib/map-clearing.mjs'
+import { itemsOf, sectionText } from '../lib/map-clearing.mjs'
 import { startFakeGithub } from './fake-github.mjs'
 
 const OWNER = 'acme'
@@ -32,7 +32,10 @@ function mapBody(parentUrl, { fog = [], next = '', decisions = '', notes = '', o
   return `${text}\n\n<!-- factory:parent=${parentUrl} -->\n`
 }
 
-async function setup(t, { fog = ['送货范围怎么定', '起送价多少（你答）'], children = [] } = {}) {
+async function setup(
+  t,
+  { fog = ['送货范围怎么定', '起送价多少（你答）'], children = [], next = '', decisions = '', notes = '' } = {},
+) {
   const fake = await startFakeGithub({ repos: [{ owner: OWNER, name: REPO }] })
   t.after(() => fake.close())
   const gh = createGithub({ apiBase: fake.base, token: 'test' })
@@ -41,7 +44,7 @@ async function setup(t, { fog = ['送货范围怎么定', '起送价多少（你
     owner: OWNER,
     repo: REPO,
     title: 'xianguopu 地图',
-    body: mapBody(parent.html_url, { fog }),
+    body: mapBody(parent.html_url, { fog, next, decisions, notes }),
   })
   await gh.updateIssue({
     owner: OWNER,
@@ -332,6 +335,7 @@ test('check 对关闭但没结论的票报 missing-conclusion，补上结论后�
     fog: [],
     children: [{ title: '05 手动关的票', body: '## Question\n\n手动关的。', state: 'closed' }],
   })
+  await run(cli('init', parent), { gh, log: sink })
 
   const blocked = await run(cli('check', parent), { gh, log: sink })
   assert.equal(blocked.ready, false)
@@ -421,4 +425,97 @@ test('ticket 编号接着现有决定票的最大编号往下排', async (t) => 
   assert.deepEqual(ticket.labels.map((row) => row.name), ['wayfinder:research'])
   const body = await mapBodyOf(gh, mapIssue)
   assert.equal(linesCount(body, '- 第 03 张：送货范围怎么定'), 1)
+})
+
+test('conclude 写 Decisions so far 时同一张票只留一行，新的替换旧的', async (t) => {
+  const { gh, parent, mapIssue, sink } = await setup(t, {
+    fog: ['送货范围怎么定'],
+    decisions: '- 01 送货范围怎么定：旧结论',
+  })
+  await run(
+    cli('ticket', parent, [
+      '--title', '送货范围怎么定',
+      '--type', 'grilling',
+      '--question', '送货送到哪？',
+      '--from-item', '送货范围怎么定',
+    ]),
+    { gh, log: sink },
+  )
+  await run(cli('conclude', parent, ['--ticket', '01', '--conclusion', '只送镇上']), { gh, log: sink })
+  await run(cli('conclude', parent, ['--ticket', '01', '--conclusion', '只送镇上']), { gh, log: sink })
+
+  const body = await mapBodyOf(gh, mapIssue)
+  const decisions = itemsOf(sectionText(body, 'Decisions so far')).filter((line) =>
+    line.startsWith('01 送货范围怎么定：'),
+  )
+  assert.deepEqual(decisions, ['01 送货范围怎么定：只送镇上'])
+})
+
+test('ticket 写接下来时同一 NN 不重复，已有行被替换', async (t) => {
+  const { gh, parent, mapIssue, sink } = await setup(t, {
+    fog: ['送货范围怎么定'],
+    next: '- 第 01 张：旧标题',
+  })
+  const created = await run(
+    cli('ticket', parent, [
+      '--title', '送货范围怎么定',
+      '--type', 'grilling',
+      '--question', '送货送到哪？',
+      '--from-item', '送货范围怎么定',
+    ]),
+    { gh, log: sink },
+  )
+  assert.equal(created.ticket.title, '01 送货范围怎么定')
+  const body = await mapBodyOf(gh, mapIssue)
+  assert.deepEqual(itemsOf(sectionText(body, '接下来')), ['第 01 张：送货范围怎么定'])
+})
+
+test('check 对没有协议标记的老地图只看雾和开放票', async (t) => {
+  const { gh, parent, mapIssue, sink } = await setup(t, {
+    fog: ['送货范围怎么定'],
+    children: [{ title: '01 已有票', body: '## Question\n\n已经谈过。' }],
+  })
+
+  const blocked = await run(cli('check', parent), { gh, log: sink })
+  assert.equal(blocked.ready, false)
+  assert.deepEqual([...new Set(blocked.blockers.map((row) => row.kind))].sort(), [
+    'not-yet-specified',
+    'open-ticket',
+  ])
+
+  await run(
+    cli('defer', parent, ['--item', '送货范围怎么定', '--to', 'notes', '--who', '运营者', '--next', '下周定']),
+    { gh, log: sink },
+  )
+  const children = await gh.listSubIssues({ owner: OWNER, repo: REPO, number: mapIssue.number })
+  await gh.closeIssue({ owner: OWNER, repo: REPO, number: children[0].number })
+
+  const ready = await run(cli('check', parent), { gh, log: sink })
+  assert.deepEqual(ready, { ready: true, blockers: [] })
+})
+
+test('conclude 第二次给不同结论时报错，不写第二条评论，Decisions 保持旧结论', async (t) => {
+  const { gh, parent, mapIssue, sink } = await setup(t, { fog: ['送货范围怎么定'] })
+  const created = await run(
+    cli('ticket', parent, [
+      '--title', '送货范围怎么定',
+      '--type', 'grilling',
+      '--question', '送货送到哪？',
+      '--from-item', '送货范围怎么定',
+    ]),
+    { gh, log: sink },
+  )
+  await run(cli('conclude', parent, ['--ticket', '01', '--conclusion', '只送镇上']), { gh, log: sink })
+  const bodyBefore = await mapBodyOf(gh, mapIssue)
+
+  await assert.rejects(
+    run(cli('conclude', parent, ['--ticket', '01', '--conclusion', '只送镇上和邻镇']), { gh, log: sink }),
+    /这张票已有结论，改结论走改口\/重传/,
+  )
+
+  const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: created.ticket.number })
+  assert.deepEqual(comments.map((row) => row.body), ['结论：只送镇上'])
+  const bodyAfter = await mapBodyOf(gh, mapIssue)
+  assert.equal(bodyAfter, bodyBefore)
+  assert.equal(linesCount(bodyAfter, '- 01 送货范围怎么定：只送镇上'), 1)
 })
