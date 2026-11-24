@@ -173,8 +173,14 @@ export async function writeSimCustomers(path, { owner = SIM_OWNER, repo = SIM_RE
 /**
  * 临时 notifier 配置：只有 `orca_bot` 开，邮件和推送都关，都在临时 NOTIFIER_HOME 下。
  * 主 config 不读也不改。
+ *
+ * `sender` 必填：`orca_bot` 开启时它是 `orca orchestration send --from` 的句柄，
+ * 模拟环境不猜也不写占位值，调用方显式传入。
  */
-export async function writeSimNotifierConfig(home, { command = '' } = {}) {
+export async function writeSimNotifierConfig(home, { sender, command = '' } = {}) {
+  if (typeof sender !== 'string' || !sender.trim()) {
+    throw new Error('writeSimNotifierConfig 需要显式传入非空 sender，不能为空')
+  }
   const config = {
     channels: {
       email: {
@@ -188,7 +194,8 @@ export async function writeSimNotifierConfig(home, { command = '' } = {}) {
       push: { enabled: false, timeout_seconds: 5 },
       orca_bot: {
         enabled: true,
-        bot: 'afk',
+        bot: '莹宝（AFK）',
+        sender,
         timeout_seconds: 30,
         ...(command ? { command } : {}),
       },
