@@ -6,7 +6,15 @@ from __future__ import annotations
 
 CHAT_GAP = "补缺口"
 CHAT_SPLIT = "拆票"
+BOT_CHAT_TITLE_PREFIX = "your owner's agent: "
 
 
 def chat_title(prefix: str, owner: str, repo: str, ticket: int) -> str:
     return f"{prefix} {owner}/{repo}#{ticket}"
+
+
+def chat_title_matches(actual, expected: str) -> bool:
+    """真机 bot chat 的标题会带 `your owner's agent: ` 前缀，两种都算命中。"""
+    if not isinstance(actual, str):
+        return False
+    return actual == expected or actual == f"{BOT_CHAT_TITLE_PREFIX}{expected}"

@@ -15,6 +15,7 @@
     "orca_bot": {
       "enabled": false,
       "bot": "莹宝（AFK）",
+      "sender": "bot:<工厂通知的 id>",
       "timeout_seconds": 30,
       "command": "orca"
     }

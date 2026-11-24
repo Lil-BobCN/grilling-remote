@@ -34,6 +34,10 @@ FAKE_ORCA = textwrap.dedent(
         if (root / "fail-send").exists():
             print(json.dumps({"ok": False, "error": {"message": "发送失败"}}))
             sys.exit(1)
+        if (root / "send-error.txt").exists():
+            message = (root / "send-error.txt").read_text(encoding="utf-8").strip()
+            print(json.dumps({"ok": False, "error": {"message": message}}))
+            sys.exit(1)
         print(json.dumps({"ok": True}))
     else:
         print(json.dumps({"ok": False, "error": {"message": "不认识的命令"}}))
@@ -55,6 +59,7 @@ class FakeOrca(unittest.TestCase):
         values = {
             "enabled": True,
             "bot": "莹宝（AFK）",
+            "sender": "bot:factory-notifier",
             "timeout": 10.0,
             "command": self.command,
         }
@@ -206,6 +211,50 @@ class TestProposalRouting(FakeOrca):
 
         self.assertEqual(self.send_args()["--chat"], "new")
 
+    def test_send_uses_configured_sender(self):
+        self.chats([])
+        orca_bot.send(self.config(), "标题", "正文", None, proposal_event("补缺口提案"))
+
+        self.assertEqual(self.send_args()["--from"], "bot:factory-notifier")
+
+    def test_prefixed_title_finds_existing_chat(self):
+        self.chats([{
+            "id": "c-gap",
+            "title": "your owner's agent: 补缺口 acme/demo#42",
+            "closed": False,
+        }])
+        orca_bot.send(self.config(), "标题", "正文", None, proposal_event("补缺口提案"))
+
+        args = self.send_args()
+        self.assertEqual(args["--chat"], "c-gap")
+        self.assertEqual(args["--subject"], "补缺口 acme/demo#42")
+
+    def test_repeated_wake_reuses_same_prefixed_chat(self):
+        self.chats([{
+            "id": "c-gap",
+            "title": "your owner's agent: 补缺口 acme/demo#42",
+            "closed": False,
+        }])
+        orca_bot.send(self.config(), "标题", "正文 1", None, proposal_event("补缺口提案"))
+        orca_bot.send(self.config(), "标题", "正文 2", None, proposal_event("补缺口提案"))
+
+        first, second = self.send_args(0), self.send_args(1)
+        self.assertEqual(first["--chat"], "c-gap")
+        self.assertEqual(second["--chat"], "c-gap")
+
+    def test_prefixed_titles_do_not_mix_parents(self):
+        self.chats([
+            {"id": "c-42", "title": "your owner's agent: 补缺口 acme/demo#42",
+             "closed": False},
+            {"id": "c-43", "title": "your owner's agent: 补缺口 acme/demo#43",
+             "closed": False},
+        ])
+        orca_bot.send(self.config(), "标题", "正文 42", None, proposal_event("补缺口提案", 42))
+        orca_bot.send(self.config(), "标题", "正文 43", None, proposal_event("补缺口提案", 43))
+
+        self.assertEqual(self.send_args(0)["--chat"], "c-42")
+        self.assertEqual(self.send_args(1)["--chat"], "c-43")
+
 
 class TestNonProposalRouting(FakeOrca):
     def test_prefers_split_chat(self):
@@ -291,6 +340,27 @@ class TestFailures(FakeOrca):
         with self.assertRaises(ChannelError) as raised:
             orca_bot.send(self.config(), "标题", "正文", None, proposal_event("补缺口提案"))
         self.assertIn("发送失败", str(raised.exception))
+
+    def test_missing_sender_raises(self):
+        with self.assertRaises(ChannelError) as raised:
+            orca_bot.send(
+                self.config(sender=""), "标题", "正文", None,
+                proposal_event("补缺口提案"),
+            )
+        self.assertIn("sender", str(raised.exception))
+        self.assertEqual(self.calls(), [])
+
+    def test_send_error_redacts_sender(self):
+        (self.dir / "send-error.txt").write_text(
+            "invalid handle bot:factory-notifier", encoding="utf-8")
+        with self.assertRaises(ChannelError) as raised:
+            orca_bot.send(
+                self.config(), "标题", "正文", None,
+                proposal_event("补缺口提案"),
+            )
+        message = str(raised.exception)
+        self.assertNotIn("bot:factory-notifier", message)
+        self.assertIn("<发件人>", message)
 
     def test_missing_command_raises(self):
         with self.assertRaises(ChannelError):

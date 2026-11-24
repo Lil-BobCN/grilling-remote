@@ -80,11 +80,12 @@ class TestOrcaBotConfig(unittest.TestCase):
         self.assertFalse(config.orca_bot.enabled)
         self.assertEqual(config.orca_bot.command, "orca")
 
-    def test_enabled_reads_bot_timeout_and_command(self):
+    def test_enabled_reads_bot_sender_timeout_and_command(self):
         data = json.loads(json.dumps(BASE))
         data["channels"]["orca_bot"] = {
             "enabled": True,
             "bot": "莹宝（AFK）",
+            "sender": "bot:factory-notifier",
             "timeout_seconds": 20,
             "command": "/opt/orca/bin/orca",
         }
@@ -92,8 +93,25 @@ class TestOrcaBotConfig(unittest.TestCase):
         config = load_config(str(self.home))
         self.assertTrue(config.orca_bot.enabled)
         self.assertEqual(config.orca_bot.bot, "莹宝（AFK）")
+        self.assertEqual(config.orca_bot.sender, "bot:factory-notifier")
         self.assertEqual(config.orca_bot.timeout, 20.0)
         self.assertEqual(config.orca_bot.command, "/opt/orca/bin/orca")
+
+    def test_enabled_requires_sender(self):
+        for block in (
+            {"enabled": True, "bot": "莹宝（AFK）", "timeout_seconds": 20},
+            {"enabled": True, "bot": "莹宝（AFK）", "sender": "",
+             "timeout_seconds": 20},
+            {"enabled": True, "bot": "莹宝（AFK）", "sender": "  ",
+             "timeout_seconds": 20},
+        ):
+            with self.subTest(block=block):
+                data = json.loads(json.dumps(BASE))
+                data["channels"]["orca_bot"] = block
+                self.write(data)
+                with self.assertRaises(ConfigError) as raised:
+                    load_config(str(self.home))
+                self.assertIn("sender", str(raised.exception))
 
     def test_enabled_requires_bot_name(self):
         for block in (
@@ -112,7 +130,8 @@ class TestOrcaBotConfig(unittest.TestCase):
     def test_enabled_requires_positive_timeout(self):
         data = json.loads(json.dumps(BASE))
         data["channels"]["orca_bot"] = {
-            "enabled": True, "bot": "afk", "timeout_seconds": 0,
+            "enabled": True, "bot": "afk", "sender": "bot:factory-notifier",
+            "timeout_seconds": 0,
         }
         self.write(data)
         with self.assertRaises(ConfigError):

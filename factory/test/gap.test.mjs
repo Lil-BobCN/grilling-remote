@@ -246,6 +246,7 @@ test('postPoint：父工单还没有提案时拒绝写点头', async (t) => {
       repo: 'acme-shuiguo',
       number: parent.number,
       mapIssueNumber: 2,
+      parentIssueUrl: parent.html_url,
       answers: ['技术栈：Next.js'],
     }),
     (error) => error instanceof GateConflictError && error.kind === null,
@@ -264,6 +265,7 @@ test('postPoint：最新关口是改口：时拒绝，等新的提案', async (t
       repo: 'acme-shuiguo',
       number: parent.number,
       mapIssueNumber: 2,
+      parentIssueUrl: parent.html_url,
       answers: ['技术栈：Next.js'],
     }),
     (error) => error instanceof GateConflictError && error.kind === '改口：',
@@ -279,6 +281,7 @@ test('postPoint：最新是同一条点头时幂等返回，不重写', async (t
     owner: 'acme',
     repo: 'acme-shuiguo',
     number: parent.number,
+    parentIssueUrl: parent.html_url,
     answers: ['技术栈：Next.js + Postgres'],
     impacts: [],
   })
@@ -299,9 +302,25 @@ test('postPoint：最新是另一条点头时拒绝，答案要先改口', async
       repo: 'acme-shuiguo',
       number: parent.number,
       mapIssueNumber: 2,
+      parentIssueUrl: parent.html_url,
       answers: ['技术栈：Vue + MySQL'],
     }),
     (error) => error instanceof GateConflictError && error.kind === '点头：补缺口',
+  )
+})
+
+test('postPoint：缺父工单链接时拒绝，不用空串跳过归属校验', async (t) => {
+  const { gh, parent } = await gateSetup(t, [PROPOSAL])
+  await assert.rejects(
+    postPoint({
+      gh,
+      owner: 'acme',
+      repo: 'acme-shuiguo',
+      number: parent.number,
+      mapIssueNumber: 2,
+      answers: ['技术栈：Next.js'],
+    }),
+    /父工单链接/,
   )
 })
 
@@ -314,6 +333,7 @@ test('postPoint：已经过拆票时拒绝', async (t) => {
       repo: 'acme-shuiguo',
       number: parent.number,
       mapIssueNumber: 2,
+      parentIssueUrl: parent.html_url,
       answers: ['技术栈：Next.js'],
     }),
     (error) => error instanceof GateConflictError && error.kind === '提案：拆票',
@@ -343,6 +363,7 @@ test('postPoint 未就绪时拒绝并只留一条提醒，补完后才写点头'
     number: parent.number,
     mapIssueNumber: mapIssue.number,
     mapBody,
+    parentIssueUrl: parent.html_url,
     answers: ['技术栈：Next.js + Postgres'],
     impacts: [],
   }
