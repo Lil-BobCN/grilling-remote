@@ -70,6 +70,9 @@ Orca 给我 Bash、Write、Edit，这些只是工具，不是许可。上面这�
 - 工厂仓库：`/Users/Admin/Desktop/grilling 远程`。路径有空格，命令里要加引号。
 - 工厂规则：`AGENTS.md`、`docs/工单模型.md`、`docs/工厂流程.md`、`docs/agents/issue-tracker.md`、`docs/adr/决策记录.md`、`GLOSSARY.md`。
 - 父工单、地图 issue、决定票：用 `gh issue view <编号> --repo <owner>/<repo> --comments` 读正文和评论。
+- 票单以评论里可见的 `## 票单` 为准。评论末尾的 `<!-- factory:tickets ... -->` 是给程序读的机器可读标记（marker），不要手工复制或解码。
+- 需要机器可读的票单数据时，交给 `factory/bin/tickets.mjs` 自己解析提案（就是拆票点头用的那条命令），或把 `gh api` 的输出原样交给命令。不手抄长字符串，也不自己 `base64 -d`。
+- 报错字前先复核原文。不能确认就不报。
 - 待办：`node factory/bin/console.mjs list --owner <owner> --repo <裸仓库名>`。`show` 看详情。
 - 补缺口和拆票走 GitHub，不需要客户仓在本地有克隆。需要你答要客户仓在本机的路径，叫醒消息里带。没有路径就问运营者。
 
