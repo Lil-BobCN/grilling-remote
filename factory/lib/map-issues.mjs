@@ -215,7 +215,7 @@ function renderMapBody(map, parentIssueUrl) {
   return `${body}\n\n<!-- factory:parent=${parentIssueUrl} -->\n`
 }
 
-/** 在父工单 `## 需求全文` 段补一行地图链接；已有就不重复。 */
+/** 在父工单 `## 需求全文` 段补一行地图链接；已有同链接就跳过，不同就换成新链接。 */
 export function appendMapLink(parentBody, mapIssueUrl) {
   const body = String(parentBody || '')
   const marker = /^##\s+需求全文\s*$/m.exec(body)
@@ -225,7 +225,12 @@ export function appendMapLink(parentBody, mapIssueUrl) {
   const next = /^##\s+/m.exec(rest)
   const end = next ? start + next.index : body.length
   const section = body.slice(start, end)
-  if (/^\s*-\s*地图：/m.test(section)) return body
+  const linkLine = /^(\s*-\s*地图：)(\S+)(.*)$/m.exec(section)
+  if (linkLine) {
+    if (linkLine[2] === mapIssueUrl) return body
+    const replaced = `${section.slice(0, linkLine.index)}${linkLine[1]}${mapIssueUrl}${linkLine[3]}${section.slice(linkLine.index + linkLine[0].length)}`
+    return `${body.slice(0, start)}${replaced}${body.slice(end)}`
+  }
   const lines = section.replace(/\s+$/, '').split('\n')
   lines.push(`- 地图：${mapIssueUrl}`)
   return `${body.slice(0, start)}${lines.join('\n')}\n\n${body.slice(end)}`

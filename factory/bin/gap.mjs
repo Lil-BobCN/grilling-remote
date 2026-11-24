@@ -169,6 +169,7 @@ export async function run(argv, { gh, log = console } = {}) {
       repo,
       number: parentNumber,
       mapIssueNumber,
+      parentIssueUrl: parent.html_url,
       answers,
       impacts,
     })

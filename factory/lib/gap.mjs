@@ -272,6 +272,8 @@ export async function assertPointGate({
 /**
  * 写 `点头：补缺口` 前先查最新关口，再查地图。没补完就抛 GateNotReadyError，
  * 并在父工单留一条提醒；提醒用固定正文，重复跑不会刷屏。
+ * 传 `parentIssueUrl` 时校验地图正文的 `- 父工单：` 行指向当前父工单；
+ * 指向别处说明父工单里的地图链接是旧的，抛错且什么都不写。
  */
 export async function postPoint({
   gh,
@@ -280,6 +282,7 @@ export async function postPoint({
   number,
   mapIssueNumber,
   mapBody,
+  parentIssueUrl = '',
   answers = [],
   impacts = [],
 }) {
@@ -291,6 +294,17 @@ export async function postPoint({
   if (!body) {
     if (!mapIssueNumber) throw new Error('缺地图编号，查不了地图是否补完')
     body = (await gh.getIssue({ owner, repo, number: mapIssueNumber })).body
+  }
+  if (parentIssueUrl) {
+    const belongs = String(body || '')
+      .split('\n')
+      .some((line) => line.trim() === `- 父工单：${parentIssueUrl}`)
+    if (!belongs) {
+      throw new Error(
+        `地图 #${mapIssueNumber} 的正文不含当前父工单链接 ${parentIssueUrl}：` +
+          '父工单里的地图链接可能指向旧图。先修父工单正文里的地图链接，或重跑 apply-map',
+      )
+    }
   }
   const gate = await gateReady({ gh, owner, repo, mapIssueNumber, mapBody: body })
   if (!gate.ready) {

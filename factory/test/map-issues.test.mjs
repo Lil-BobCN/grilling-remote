@@ -235,6 +235,50 @@ test('重跑不建第二套，按编号更新正文和缺失的评论', async (t
   assert.equal((reloadedParent.body.match(/^- 地图：/gm) || []).length, 1)
 })
 
+test('父工单已有旧地图链接时，apply-map 换成新地图链接，同段其他行不动', async (t) => {
+  const oldLink = 'https://github.com/acme/acme-shuiguo/issues/2'
+  const fake = await startFakeGithub({
+    repos: [{ owner: 'acme', name: 'acme-shuiguo' }],
+    issues: [
+      {
+        owner: 'acme',
+        repo: 'acme-shuiguo',
+        title: '复制来的父工单',
+        body: PARENT_BODY.replace(
+          '- 需求名：xianguopu',
+          `- 需求名：xianguopu\n- 备注：从旧单复制\n- 地图：${oldLink}`,
+        ),
+      },
+      {
+        owner: 'acme',
+        repo: 'acme-shuiguo',
+        title: '旧地图',
+        body: '## Destination\n\n旧图\n\n## Notes\n\n- 父工单：https://github.com/acme/acme-shuiguo/issues/999\n\n## 接下来\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n',
+        labels: ['wayfinder:map'],
+      },
+    ],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const parent = await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: 1 })
+
+  const result = await ensureMapIssues({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    requirement: 'xianguopu',
+    scratchDir: FIXTURE,
+    parentIssueUrl: parent.html_url,
+  })
+
+  assert.notEqual(result.mapIssue.html_url, oldLink)
+  const reloaded = await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })
+  assert.deepEqual(reloaded.body.match(/^- 地图：.*$/gm), [`- 地图：${result.mapIssue.html_url}`])
+  assert.match(reloaded.body, /- 备注：从旧单复制/)
+  assert.match(reloaded.body, /- 客户简称：acme/)
+  assert.match(result.mapIssue.body, new RegExp(`^- 父工单：${parent.html_url}$`, 'm'))
+})
+
 test('格式不对时停下，不写任何 GitHub 状态', async (t) => {
   const { fake, gh, parent } = await githubSetup(t)
   const scratch = await copyFixture(t)
