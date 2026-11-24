@@ -33,23 +33,23 @@ import {
   hasProtocol,
   itemsOf,
   nextTicketNumber,
+  outOfScopeLine,
   removeFogItem,
   removeNextTicket,
   renderDecisionTicket,
   sectionText,
   stripTicketNumber,
   ticketNumberOf,
+  unsettledLine,
 } from '../lib/map-clearing.mjs'
-import { mapBelongsToParent, TICKET_TYPES } from '../lib/map-issues.mjs'
+import {
+  issueNumberFromUrl,
+  mapBelongsToParent,
+  TICKET_TYPES,
+  TYPE_LABELS,
+} from '../lib/map-issues.mjs'
 
 const COMMANDS = ['list', 'init', 'ticket', 'conclude', 'defer', 'check']
-
-const TYPE_LABELS = {
-  grilling: { color: 'fbca04', description: '决定票：和客户聊' },
-  research: { color: '1d76db', description: '决定票：查资料' },
-  prototype: { color: 'd4c5f9', description: '决定票：看原型' },
-  task: { color: '0e8a16', description: '决定票：动手做一步' },
-}
 
 function parseOptions(argv) {
   const options = {}
@@ -66,11 +66,6 @@ function parseOptions(argv) {
 function required(options, name) {
   if (!options[name]) throw new Error(`缺 --${name}`)
   return options[name]
-}
-
-function issueNumberFromUrl(url) {
-  const match = /\/issues\/(\d+)(?:[#?].*)?\/?$/.exec(String(url || '').trim())
-  return match ? Number(match[1]) : null
 }
 
 /** `--parent` 接受 issue 链接、`#12` 或 `12`。 */
@@ -238,10 +233,10 @@ async function commandConclude({ gh, owner, repo, mapIssue, options }) {
         number: target.number,
         body: `结论：${conclusion}`,
       })
-  const closed = target.state !== 'closed'
-  if (closed) await gh.closeIssue({ owner, repo, number: target.number })
+  const closedNow = target.state !== 'closed'
+  if (closedNow) await gh.closeIssue({ owner, repo, number: target.number })
 
-  let nextBody = removeNextTicket(body, ticketNumberOf(target.title), target.title)
+  let nextBody = removeNextTicket(body, ticketNumberOf(target.title))
   const withDecision = appendDecision(nextBody, target.title, conclusion)
   const decisionsAdded = withDecision !== nextBody
   nextBody = withDecision
@@ -253,7 +248,7 @@ async function commandConclude({ gh, owner, repo, mapIssue, options }) {
     map: mapIssue.html_url,
     ticket: ticketSummary(target),
     commented,
-    closed,
+    closed: closedNow,
     decisionsAdded,
   }
 }
@@ -270,13 +265,13 @@ async function commandDefer({ gh, owner, repo, mapIssue, options }) {
   if (to === 'out-of-scope') {
     const reason = String(options.reason || '').trim()
     if (!reason) throw new Error('--to out-of-scope 要带 --reason')
-    line = `${item}（本版不做：${reason}）`
+    line = outOfScopeLine(item, reason)
     sectionName = 'Out of scope'
   } else {
     const who = String(options.who || '').trim()
     const next = String(options.next || '').trim()
     if (!who || !next) throw new Error('--to notes 要带 --who 和 --next')
-    line = `未定：${item}（${who}，${next}）`
+    line = unsettledLine(item, who, next)
     sectionName = 'Notes'
   }
 
@@ -296,7 +291,7 @@ async function commandDefer({ gh, owner, repo, mapIssue, options }) {
     if (changed) {
       await gh.updateIssue({ owner, repo, number: mapIssue.number, body: nextBody })
     }
-  } else if (!itemsOf(sectionText(body, sectionName) || '').includes(line)) {
+  } else if (!itemsOf(sectionText(body, sectionName) || '').includes(line.replace(/^\s*-\s+/, ''))) {
     throw new MapClearingError(`Not yet specified 里找不到这一项：${item}`)
   }
 

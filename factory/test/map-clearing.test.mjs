@@ -102,12 +102,12 @@ test('addNextTicket 加「第 NN 张」行，重复跑不重复加，「无」�
   assert.match(sectionText(replaced, '接下来'), /^- 第 07 张：起送价多少（你答）$/m)
 })
 
-test('removeNextTicket 按 NN 匹配，标题改过也能删，不误删别的票', () => {
+test('removeNextTicket 按 NN 匹配，不误删别的票', () => {
   const body = mapBody({ next: '- 第 06 张：旧标题\n- 第 10 张：另一张' })
-  const removed = removeNextTicket(body, 6, '标题已经改过')
+  const removed = removeNextTicket(body, 6)
   assert.deepEqual(itemsOf(sectionText(removed, '接下来')), ['第 10 张：另一张'])
 
-  const missing = removeNextTicket(body, '07', '别的票')
+  const missing = removeNextTicket(body, '07')
   assert.equal(missing, body)
 })
 

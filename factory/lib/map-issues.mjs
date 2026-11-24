@@ -180,7 +180,7 @@ export async function readDecisionTickets(dir) {
 }
 
 const MAP_LABEL = { name: 'wayfinder:map', color: '5319e7', description: '客户地图，决定票挂在下面' }
-const TYPE_LABELS = {
+export const TYPE_LABELS = {
   grilling: { color: 'fbca04', description: '决定票：和客户聊' },
   research: { color: '1d76db', description: '决定票：查资料' },
   prototype: { color: 'd4c5f9', description: '决定票：看原型' },
@@ -196,7 +196,7 @@ async function readOptional(path) {
   }
 }
 
-function issueNumberFromUrl(url) {
+export function issueNumberFromUrl(url) {
   const match = /\/issues\/(\d+)(?:[#?].*)?\/?$/.exec(String(url || '').trim())
   return match ? Number(match[1]) : null
 }
