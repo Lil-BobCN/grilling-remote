@@ -8,10 +8,9 @@
 export const PROTOCOL_MARKER = '- 清图协议：v1'
 
 export class MapClearingError extends Error {
-  constructor(message, { code = 'map-clearing' } = {}) {
+  constructor(message) {
     super(message)
     this.name = 'MapClearingError'
-    this.code = code
   }
 }
 
@@ -31,6 +30,8 @@ function stripBullet(line) {
   return String(line ?? '').replace(/^\s*[-*]\s+/, '').trim()
 }
 
+// 这里不并到 map-issues 的私有 sectionText：清图版要剥掉地图末尾的
+// `<!-- factory:parent=... -->`，那个私有版本不剥，两份用途不同。
 /** 读一段原文；地图最后一段末尾的 `<!-- factory:parent=... -->` 不算正文。 */
 export function sectionText(text, heading) {
   const source = normalizeText(text)
@@ -173,8 +174,8 @@ export function addNextTicket(body, number, title) {
   return replaceSection(body, '接下来', lines.join('\n'))
 }
 
-/** 从 `接下来` 按 NN 删行，不比对标题；找不到时原样返回。 */
-export function removeNextTicket(body, number, title) {
+/** 从 `接下来` 按 NN 删行，找不到时原样返回。 */
+export function removeNextTicket(body, number) {
   if (number === null || number === undefined) return normalizeText(body)
   const target = Number(number)
   const section = sectionText(body, '接下来')
@@ -186,9 +187,22 @@ export function removeNextTicket(body, number, title) {
   return replaceSection(body, '接下来', lines.join('\n').trim())
 }
 
+/** `Out of scope` 的行格式：`- <原文>（本版不做：<理由>）`。 */
+export function outOfScopeLine(item, reason) {
+  return `- ${String(item ?? '').trim()}（本版不做：${String(reason ?? '').trim()}）`
+}
+
+/** `Notes` 未定行格式：`- 未定：<原文>（<谁回话>，<下一步>）`。 */
+export function unsettledLine(item, who, next) {
+  return (
+    `- 未定：${String(item ?? '').trim()}` +
+    `（${String(who ?? '').trim()}，${String(next ?? '').trim()}）`
+  )
+}
+
 /** `Out of scope` 追加 `- <原文>（本版不做：<理由>）`。 */
 export function appendOutOfScope(body, item, reason) {
-  const line = `- ${String(item ?? '').trim()}（本版不做：${String(reason ?? '').trim()}）`
+  const line = outOfScopeLine(item, reason)
   const section = sectionText(body, 'Out of scope')
   if (section === null) throw new MapClearingError('地图缺「Out of scope」段')
   const lines = section ? section.split('\n').filter((row) => row.trim()) : []
@@ -199,9 +213,7 @@ export function appendOutOfScope(body, item, reason) {
 
 /** `Notes` 追加 `- 未定：<原文>（<谁回话>，<下一步>）`。 */
 export function appendUnsettledNote(body, item, who, next) {
-  const line =
-    `- 未定：${String(item ?? '').trim()}` +
-    `（${String(who ?? '').trim()}，${String(next ?? '').trim()}）`
+  const line = unsettledLine(item, who, next)
   const section = sectionText(body, 'Notes')
   if (section === null) throw new MapClearingError('地图缺「Notes」段')
   const lines = section ? section.split('\n').filter((row) => row.trim()) : []
