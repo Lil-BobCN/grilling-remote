@@ -301,6 +301,7 @@ def orca_config():
     config["channels"]["orca_bot"] = {
         "enabled": True,
         "bot": "莹宝（AFK）",
+        "sender": "bot:factory-notifier",
         "timeout_seconds": 5,
     }
     return config

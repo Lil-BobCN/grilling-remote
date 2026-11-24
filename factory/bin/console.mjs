@@ -83,7 +83,7 @@ function printEntry(entry, out) {
   if (entry.recommended) out(`  推荐：${entry.recommended}`)
 }
 
-export async function run(argv = process.argv.slice(2), { gh, out = console.log } = {}) {
+export async function run(argv = process.argv.slice(2), { gh, out = console.log, run } = {}) {
   const [command, ...rest] = argv
   if (!command) throw new Error('缺命令：list、show、open、answer')
 
@@ -166,6 +166,8 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
       repoDir,
       question: option(rest, '--question') || '',
     }
+    // 子进程 CLI 只读 process.env.GITHUB_TOKEN，这里补上控制台从 env 文件读到的 token。
+    const token = await githubToken()
     const result = await answerWaiting({
       entry,
       answer: parseAnswer(option(rest, '--answer')),
@@ -174,6 +176,8 @@ export async function run(argv = process.argv.slice(2), { gh, out = console.log 
       commit: rest.includes('--commit'),
       push: rest.includes('--push'),
       repoRoot: REPO_ROOT,
+      env: token ? { ...process.env, GITHUB_TOKEN: token } : undefined,
+      run,
     })
     out(result)
     return result

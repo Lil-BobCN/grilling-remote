@@ -180,6 +180,41 @@ test('answerWaiting 调 gap CLI 写回答案', async () => {
   })
 })
 
+test('console answer 把 env 文件里的 token 传给子进程', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'afk-console-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const envFile = join(dir, 'env')
+  await writeFile(envFile, 'GITHUB_TOKEN=token-from-file\n', 'utf8')
+
+  const saved = {}
+  for (const key of ['GITHUB_TOKEN', 'GH_TOKEN', 'AFK_ENV_FILE']) {
+    saved[key] = process.env[key]
+    delete process.env[key]
+  }
+  process.env.AFK_ENV_FILE = envFile
+  t.after(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  const calls = []
+  await runConsoleCli(
+    ['answer', '--kind', 'gap', '--owner', 'o', '--repo', 'r', '--ticket', '3', '--answer', '[]'],
+    {
+      out: () => {},
+      run: async (command, args, options) => {
+        calls.push({ command, args, options })
+        return '{"posted":true}'
+      },
+    },
+  )
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].options.env.GITHUB_TOKEN, 'token-from-file')
+})
+
 test('answerWaiting 调 tickets CLI 从提案建票并点头', async () => {
   const calls = []
   await answerWaiting({
