@@ -45,6 +45,7 @@ class PushConfig:
 class OrcaBotConfig:
     enabled: bool
     bot: str
+    sender: str
     timeout: float
     command: str
 
@@ -106,10 +107,15 @@ def _require_port(mapping, where):
 
 
 def _orca_bot_config(raw) -> OrcaBotConfig:
-    """orca_bot 可以整段不写，等于关闭；开着才要求 bot 和超时。"""
+    """orca_bot 可以整段不写，等于关闭；开着才要求 bot、sender 和超时。
+
+    sender 是发给 `orca orchestration send --from` 的句柄。launchd 进程没有
+    ORCA_TERMINAL_HANDLE，CLI 推不出调用方，所以开启时必须显式配置。
+    """
     if raw is None:
         return OrcaBotConfig(
-            enabled=False, bot="", timeout=0.0, command=ORCA_DEFAULT_COMMAND)
+            enabled=False, bot="", sender="", timeout=0.0,
+            command=ORCA_DEFAULT_COMMAND)
     mapping = _require_mapping(raw, "channels.orca_bot")
     enabled = _require_bool(mapping, "enabled", "channels.orca_bot")
     command = mapping.get("command", ORCA_DEFAULT_COMMAND)
@@ -117,10 +123,12 @@ def _orca_bot_config(raw) -> OrcaBotConfig:
         raise ConfigError("channels.orca_bot.command 必须是非空字符串")
     if not enabled:
         bot = mapping.get("bot", "")
+        sender = mapping.get("sender", "")
         timeout = mapping.get("timeout_seconds", 0)
         return OrcaBotConfig(
             enabled=False,
             bot=bot if isinstance(bot, str) else "",
+            sender=sender if isinstance(sender, str) else "",
             timeout=float(timeout) if isinstance(timeout, (int, float))
             and not isinstance(timeout, bool) and timeout > 0 else 0.0,
             command=command,
@@ -128,6 +136,7 @@ def _orca_bot_config(raw) -> OrcaBotConfig:
     return OrcaBotConfig(
         enabled=True,
         bot=_require_str(mapping, "bot", "channels.orca_bot"),
+        sender=_require_str(mapping, "sender", "channels.orca_bot"),
         timeout=_require_number(mapping, "timeout_seconds", "channels.orca_bot"),
         command=command,
     )
