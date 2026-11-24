@@ -9,7 +9,8 @@ import json
 import re
 import subprocess
 
-from ..chat_titles import CHAT_GAP, CHAT_SPLIT, chat_title
+from ..chat_titles import (
+    CHAT_GAP, CHAT_SPLIT, chat_title, chat_title_matches)
 from ..config import OrcaBotConfig
 from . import ChannelError
 
@@ -80,14 +81,24 @@ def _open_chats(config: OrcaBotConfig) -> list[dict]:
 
 def _find_chat(chats: list[dict], title: str):
     for row in chats:
-        if row.get("title") == title and isinstance(row.get("id"), str):
+        if (isinstance(row.get("id"), str)
+                and chat_title_matches(row.get("title"), title)):
             return row["id"]
     return None
+
+
+def _redact_sender(message: str, sender: str) -> str:
+    """错误里可能带上 --from 的句柄，日志不能露出它。"""
+    if not sender:
+        return message
+    return message.replace(sender, "<发件人>")
 
 
 def send(config: OrcaBotConfig, title: str, body: str, secret=None, event=None):
     if not isinstance(event, dict):
         raise ChannelError("orca_bot 通道缺少事件上下文")
+    if not config.sender:
+        raise ChannelError("orca_bot 通道缺少发件人 sender")
 
     subject = title
     identity = _parent_identity(event)
@@ -121,12 +132,16 @@ def send(config: OrcaBotConfig, title: str, body: str, secret=None, event=None):
     else:
         chat_args = []
 
-    _run(config, [
-        "orchestration", "send",
-        "--to", f"bot:{config.bot}",
-        "--type", "handoff",
-        "--subject", subject,
-        "--body", body,
-        *chat_args,
-        "--json",
-    ])
+    try:
+        _run(config, [
+            "orchestration", "send",
+            "--to", f"bot:{config.bot}",
+            "--from", config.sender,
+            "--type", "handoff",
+            "--subject", subject,
+            "--body", body,
+            *chat_args,
+            "--json",
+        ])
+    except ChannelError as exc:
+        raise ChannelError(_redact_sender(str(exc), config.sender)) from None
