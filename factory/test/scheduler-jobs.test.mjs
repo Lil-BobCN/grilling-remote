@@ -218,7 +218,7 @@ test('createDecompose 已有提案或点头时不重复跑，AFK_DECOMPOSE_SKIP 
   assert.match(calls[0].allowedTools, /Bash\(node:\*\)/)
 })
 
-test('createDecompose 的 brief 不含建票命令，写清提案阶段禁止建票', async () => {
+test('createDecompose 的 brief 只带 agent 段落，不含建票命令和运营者段落', async () => {
   const calls = []
   const runner = okRunner(calls)
   const gh = commentsGh([{ body: proposalBody() }])
@@ -237,7 +237,17 @@ test('createDecompose 的 brief 不含建票命令，写清提案阶段禁止建
   assert.ok(!brief.includes('tickets.mjs create'), 'brief 不应带建票命令')
   assert.match(brief, /不建任何子票/)
   assert.match(brief, /不要运行/)
+  assert.ok(!brief.includes('点头后建票'), 'brief 不应带 bot 的建票段落')
+  assert.ok(!brief.includes('工作台 bot 执行'), 'brief 不应带 bot 段落')
+  assert.ok(!brief.includes('运营者执行'), 'brief 不应带运营者执行段落')
+  assert.match(brief, /## 这次拆票/)
+  assert.ok(!brief.includes('运营者执行'), 'brief 不应带运营者段落')
+  assert.ok(!brief.includes('建票后核对'), 'brief 不应带运营者核对段落')
+  assert.match(brief, /## 怎么拆/)
+  assert.match(brief, /## 出提案/)
+  assert.match(brief, /## 自检/)
 })
+
 
 test('createDecompose 发现 agent 在提案阶段建了子票时判失败，并在父工单写说明评论', async () => {
   const parent = { number: 42, title: '要个预约取货', body: '', comments: [] }
