@@ -263,10 +263,25 @@ export function createListMergedYesterday({ run = runGh } = {}) {
   }
 }
 
+/** 去掉标题带「运营者」或「工作台 bot」的段落，这些段落不是给拆票 agent 的。 */
+function agentFacingInstructions(text) {
+  const lines = String(text || '').split('\n')
+  const kept = []
+  let skipping = false
+  for (const line of lines) {
+    const heading = /^##\s+(.+)$/.exec(line)
+    if (heading) {
+      skipping = /运营者|工作台 bot/.test(heading[1])
+    }
+    if (!skipping) kept.push(line)
+  }
+  return kept.join('\n').trim()
+}
+
 function decomposeBrief({ instructions, parent, spec, factoryDir }) {
   const cli = join(factoryDir, 'bin', 'tickets.mjs')
   return [
-    String(instructions || '').trim(),
+    agentFacingInstructions(instructions),
     '',
     '## 这次拆票',
     '',
@@ -284,7 +299,7 @@ function decomposeBrief({ instructions, parent, spec, factoryDir }) {
     '',
     '把 `提案：拆票` 写成父工单的一条评论（`gh issue comment <父工单号> --body-file <提案文件>`）。',
     '提案阶段只写这一条评论，不建任何子票。',
-    '不要运行建票命令（`tickets.mjs` 的 `create`、`point` 子命令），也不要运行 `gh issue create`。点头后建票由运营者在控制台执行，不在这一跑里做。',
+    '不要运行建票命令（`tickets.mjs` 的 `create`、`point` 子命令），也不要运行 `gh issue create`。点头后的建票由运营者在控制台执行，不在这一跑里做。',
   ].join('\n')
 }
 
