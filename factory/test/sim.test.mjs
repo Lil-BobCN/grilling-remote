@@ -347,13 +347,39 @@ test('临时 notifier 和 customers 只指向模拟环境', async (t) => {
   ])
 
   const home = join(stateDir, 'notifier')
-  const config = await writeSimNotifierConfig(home)
+  const config = await writeSimNotifierConfig(home, { sender: 'bot:sim-notifier' })
   assert.equal(config.channels.orca_bot.enabled, true)
-  assert.equal(config.channels.orca_bot.bot, 'afk')
+  assert.equal(config.channels.orca_bot.bot, '莹宝（AFK）')
+  assert.equal(config.channels.orca_bot.sender, 'bot:sim-notifier')
   assert.equal(config.channels.email.enabled, false)
   assert.equal(config.channels.push.enabled, false)
   const saved = JSON.parse(await readFile(join(home, 'config.json'), 'utf8'))
   assert.deepEqual(saved, config)
+})
+
+test('生成的临时 notifier 配置能被 load_config 接受', async (t) => {
+  const stateDir = await tempDir(t, 'afk-sim-contract-')
+  const home = join(stateDir, 'notifier')
+  await writeSimNotifierConfig(home, { sender: 'bot:sim-notifier' })
+  const result = await execFileAsync(
+    'python3',
+    [
+      '-c',
+      'import json; from notifier.config import load_config; c = load_config(); '
+        + 'print(json.dumps({"bot": c.orca_bot.bot, "sender": c.orca_bot.sender}))',
+    ],
+    { cwd: REPO_ROOT, env: { ...process.env, NOTIFIER_HOME: home } },
+  )
+  const loaded = JSON.parse(String(result.stdout))
+  assert.equal(loaded.bot, '莹宝（AFK）')
+  assert.equal(loaded.sender, 'bot:sim-notifier')
+})
+
+test('sender 缺了直接报错，不写配置', async (t) => {
+  const stateDir = await tempDir(t, 'afk-sim-sender-')
+  const home = join(stateDir, 'notifier')
+  await assert.rejects(writeSimNotifierConfig(home), /sender/)
+  await assert.rejects(readFile(join(home, 'config.json'), 'utf8'))
 })
 
 test('临时 notifier 给两张父工单各开 chat，不碰主 config', async (t) => {
@@ -382,7 +408,7 @@ test('临时 notifier 给两张父工单各开 chat，不碰主 config', async (
     'utf8',
   )
   await chmod(orca, 0o755)
-  await writeSimNotifierConfig(home, { command: orca })
+  await writeSimNotifierConfig(home, { sender: 'bot:sim-notifier', command: orca })
 
   const events = [
     {
