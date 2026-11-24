@@ -81,8 +81,8 @@ bot 收到 handoff 后已回：`lastSaid` 开头是「已读完题，先把结�
 
 ## 七、PR 和关票记录
 
-- PR：#628，基线 `Lil-BobCN/drill4-repair-plan`（本地 main 快进后 `8129572`），head `4aa10a9`。
-- 待关票记录：CL-0213，决定草稿 D-0392。
+- PR：#628，基线 `Lil-BobCN/drill4-repair-plan`（本地 main 快进后 `8129572`）。
+- 决定草稿：D-0394；待关票记录见中台。
 - 合并后中台服务自动关票；关票只代表修完，不代表 I-0263 通过。
 
 ## 八、后续
