@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { createGithub } from '../lib/github.mjs'
-import { ensureMapIssues, MapFormatError, parseMap, readDecisionTickets } from '../lib/map-issues.mjs'
+import { ensureMapIssues, MapFormatError, mapBelongsToParent, parseMap, readDecisionTickets } from '../lib/map-issues.mjs'
 import { startFakeGithub } from './fake-github.mjs'
 
 const FIXTURE = fileURLToPath(
@@ -154,6 +154,25 @@ test('建地图 issue：六段原文、Notes 第一行父工单链接、挂 wayf
   const reloadedParent = await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })
   assert.match(reloadedParent.body, new RegExp(`- 地图：${mapIssue.html_url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   assert.equal(issuesOf(fake).length, 7)
+})
+
+test('mapBelongsToParent：按地图正文的父工单行判断归属', async (t) => {
+  const { gh, parent } = await githubSetup(t)
+  const result = await ensureMapIssues({
+    gh,
+    owner: 'acme',
+    repo: 'acme-shuiguo',
+    requirement: 'xianguopu',
+    scratchDir: FIXTURE,
+    parentIssueUrl: parent.html_url,
+  })
+  const mapIssue = await gh.getIssue({ owner: 'acme', repo: 'acme-shuiguo', number: result.mapIssue.number })
+
+  assert.equal(mapBelongsToParent(mapIssue.body, parent.html_url), true)
+  assert.equal(
+    mapBelongsToParent(mapIssue.body, 'https://github.com/acme/acme-shuiguo/issues/999'),
+    false,
+  )
 })
 
 test('建决定票：标题保编号、正文去评论和结论、评论逐段、挂类型标签、挂到地图下', async (t) => {

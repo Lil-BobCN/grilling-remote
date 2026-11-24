@@ -215,6 +215,13 @@ function renderMapBody(map, parentIssueUrl) {
   return `${body}\n\n<!-- factory:parent=${parentIssueUrl} -->\n`
 }
 
+/** 地图正文含 `- 父工单：<url>` 行时，说明这张地图属于该父工单。 */
+export function mapBelongsToParent(mapBody, parentIssueUrl) {
+  return String(mapBody || '')
+    .split('\n')
+    .some((line) => line.trim() === `- 父工单：${parentIssueUrl}`)
+}
+
 /** 在父工单 `## 需求全文` 段补一行地图链接；已有同链接就跳过，不同就换成新链接。 */
 export function appendMapLink(parentBody, mapIssueUrl) {
   const body = String(parentBody || '')
