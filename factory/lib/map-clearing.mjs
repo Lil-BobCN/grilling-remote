@@ -222,12 +222,33 @@ export function appendUnsettledNote(body, item, who, next) {
   return replaceSection(body, 'Notes', lines.join('\n'))
 }
 
-/** `Decisions so far` 写 `- <标题>：<结论>`；同一标题只留一行，新的替换旧的。 */
+/** 行首票号前缀，两位补零（`01 `）；标题没有票号返回 null。 */
+function decisionNumberPrefix(title) {
+  const number = ticketNumberOf(title)
+  return number === null ? null : `${formatTicketNumber(number)} `
+}
+
+/** 保留旧行冒号前的标题部分，换上新结论；旧行没有冒号时整行当标题。 */
+function decisionLineWith(row, conclusion) {
+  const stripped = stripBullet(row)
+  const match = /^[^：:]*[：:]/.exec(stripped)
+  const titlePart = match ? match[0].slice(0, -1) : stripped
+  return `- ${titlePart}：${conclusion}`
+}
+
+/**
+ * `Decisions so far` 写 `- <标题>：<结论>`。
+ *
+ * 先按票号前缀（`01 `）匹配旧行：命中时保留地图原来的短名，只换冒号后的结论；
+ * 同一票号多行只留一行，用这次写入的结论。找不到票号再按完整标题匹配，
+ * 最后才追加。
+ */
 export function appendDecision(body, title, conclusion) {
   const cleanTitle = String(title ?? '').trim()
-  const line = `- ${cleanTitle}：${String(conclusion ?? '').trim()}`
+  const cleanConclusion = String(conclusion ?? '').trim()
+  const line = `- ${cleanTitle}：${cleanConclusion}`
   const target = stripBullet(line)
-  const matchesTitle = (row) => {
+  const titleMatches = (row) => {
     const stripped = stripBullet(row)
     return (
       stripped.startsWith(`${cleanTitle}：`) ||
@@ -235,18 +256,26 @@ export function appendDecision(body, title, conclusion) {
       stripped === target
     )
   }
+  const numberPrefix = decisionNumberPrefix(cleanTitle)
+  const numberMatches = (row) =>
+    numberPrefix !== null && stripBullet(row).startsWith(numberPrefix)
   const section = sectionText(body, 'Decisions so far')
   if (section === null) throw new MapClearingError('地图缺「Decisions so far」段')
   const lines = section ? section.split('\n').filter((row) => row.trim()) : []
-  const firstIndex = lines.findIndex(matchesTitle)
+  const byNumber = numberPrefix !== null && lines.some(numberMatches)
+  const matches = byNumber ? numberMatches : titleMatches
+  const firstIndex = lines.findIndex(matches)
   if (firstIndex === -1) {
     lines.push(line)
   } else {
-    const extras = lines.some((row, index) => index > firstIndex && matchesTitle(row))
-    if (!extras && stripBullet(lines[firstIndex]) === target) return normalizeText(body)
-    lines[firstIndex] = line
+    const nextLine = byNumber ? decisionLineWith(lines[firstIndex], cleanConclusion) : line
+    const extras = lines.some((row, index) => index > firstIndex && matches(row))
+    if (!extras && stripBullet(lines[firstIndex]) === stripBullet(nextLine)) {
+      return normalizeText(body)
+    }
+    lines[firstIndex] = nextLine
     for (let index = lines.length - 1; index > firstIndex; index -= 1) {
-      if (matchesTitle(lines[index])) lines.splice(index, 1)
+      if (matches(lines[index])) lines.splice(index, 1)
     }
   }
   return replaceSection(body, 'Decisions so far', lines.join('\n'))
@@ -289,6 +318,18 @@ function commentsFor(source, number) {
   return source[number] ?? source[String(number)] ?? []
 }
 
+/** 关闭的决定票在 decisions 里有没有对应行；有票号时按票号加结论匹配，地图短名也算。 */
+function hasDecisionLine(decisions, title, conclusion) {
+  if (decisions.includes(`${title}：${conclusion}`)) return true
+  const prefix = decisionNumberPrefix(title)
+  if (prefix === null) return false
+  return decisions.some((row) => {
+    if (!row.startsWith(prefix)) return false
+    const match = /^[^：:]*[：:]/.exec(row)
+    return Boolean(match) && row.slice(match[0].length) === conclusion
+  })
+}
+
 /**
  * 带清图协议的严格门禁。
  *
@@ -317,7 +358,7 @@ export function strictGate({ body, subIssues = [], commentsByTicket = {} } = {})
       continue
     }
     const line = `${row.title}：${conclusion}`
-    if (!decisions.includes(line)) {
+    if (!hasDecisionLine(decisions, row.title, conclusion)) {
       blockers.push({ kind: 'decisions-missing', text: line, number: row.number })
     }
   }

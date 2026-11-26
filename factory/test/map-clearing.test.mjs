@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   MapClearingError,
@@ -163,6 +164,141 @@ test('appendDecision 没有旧行就追加，有旧行就替换，不留两行',
   })
   const deduped = appendDecision(duplicated, '01 先做哪一版', '新结论')
   assert.deepEqual(itemsOf(sectionText(deduped, 'Decisions so far')), ['01 先做哪一版：新结论'])
+})
+
+// 第五次演练 F5 的结构样例：票标题和结论已脱敏，只保留四条票和短名的形状。
+const DRILL_DECISIONS = [
+  {
+    title: '01 页面长什么样：商家那边加时段、顾客那边挑时段',
+    conclusion:
+      '顾客点开链接看到按天排好的取货时段，点一个填名字和取货内容；商家页面上方是今日名单，点两下能加一个时段。',
+  },
+  {
+    title: '02 你自己怎么进管理页，别人进不去',
+    conclusion:
+      '商家用专属网址加口令进管理页；顾客页不放商家入口。手机为主、电脑也能用；设备记住 30 天，连错 5 次锁 10 分钟。',
+  },
+  {
+    title: '03 取消和过期的规矩',
+    conclusion:
+      '顾客随时能取消，取消后时段变回空；过了开始时间顾客看不到；商家加时段撞上已有时间会被拦住，头尾相接能加。',
+  },
+  {
+    title: '04 顾客关掉页面再回来，怎么找到自己约的',
+    conclusion:
+      '顾客回来点自己那个已被约的时段，填名字核对，对得上就看到时间、地点和自己的名字；点取消先确认，取消后提示已取消。',
+  },
+]
+
+function drillMap(name) {
+  return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+}
+
+function replayDrillDecisions(body) {
+  return DRILL_DECISIONS.reduce(
+    (current, { title, conclusion }) => appendDecision(current, title, conclusion),
+    body,
+  )
+}
+
+function decisionRows(body) {
+  return itemsOf(sectionText(body, 'Decisions so far'))
+}
+
+test('appendDecision 按票号前缀匹配旧行，保留地图短名，只换结论', () => {
+  const body = mapBody({ decisions: '- 01 页面长什么样：旧结论' })
+  const updated = appendDecision(
+    body,
+    '01 页面长什么样：你那边加时段、顾客那边挑时段',
+    '新结论',
+  )
+  assert.deepEqual(decisionRows(updated), ['01 页面长什么样：新结论'])
+})
+
+test('appendDecision 同一票号多行只留一行，用最后一次结论', () => {
+  const body = mapBody({
+    decisions: [
+      '- 01 页面长什么样：短名行的旧结论',
+      '- 01 页面长什么样：你那边加时段、顾客那边挑时段：完整标题行的旧结论',
+    ].join('\n'),
+  })
+  const updated = appendDecision(
+    body,
+    '01 页面长什么样：你那边加时段、顾客那边挑时段',
+    '最终结论',
+  )
+  assert.deepEqual(decisionRows(updated), ['01 页面长什么样：最终结论'])
+})
+
+test('appendDecision 没有票号前缀行时按标题匹配，仍没有才追加', () => {
+  const titled = mapBody({ decisions: '- 先做哪一版：旧结论' })
+  assert.deepEqual(decisionRows(appendDecision(titled, '先做哪一版', '新结论')), [
+    '先做哪一版：新结论',
+  ])
+
+  const fresh = mapBody({ decisions: '- 02 别的决定：不动' })
+  assert.deepEqual(decisionRows(appendDecision(fresh, '05 新决定', '新结论')), [
+    '02 别的决定：不动',
+    '05 新决定：新结论',
+  ])
+})
+
+test('演练地图：4 行原文重放四条决定票，仍是 4 行且保留短名', () => {
+  const before = drillMap('map-2-decisions-clean.md')
+  const after = replayDrillDecisions(before)
+  const rows = decisionRows(after)
+  assert.equal(rows.length, 4)
+  assert.deepEqual(rows.map((row) => row.slice(0, 2)), ['01', '02', '03', '04'])
+  assert.ok(rows.every((row) => !row.includes('商家那边加时段')))
+  assert.deepEqual(rows[0], `01 页面长什么样：${DRILL_DECISIONS[0].conclusion}`)
+  assert.deepEqual(rows[1], `02 管理页怎么进：${DRILL_DECISIONS[1].conclusion}`)
+  assert.deepEqual(rows[2], `03 取消和过期的规矩：${DRILL_DECISIONS[2].conclusion}`)
+  assert.deepEqual(rows[3], `04 顾客怎么找回自己的预约：${DRILL_DECISIONS[3].conclusion}`)
+  for (const heading of ['Destination', 'Notes', '接下来', 'Not yet specified', 'Out of scope']) {
+    assert.equal(sectionText(after, heading), sectionText(before, heading), heading)
+  }
+})
+
+test('演练地图：7 行脏地图重放四条决定票，回到 4 行；重复清不增加，改结论只替换', () => {
+  const dirty = drillMap('map-2-decisions-duplicate.md')
+  assert.equal(decisionRows(dirty).length, 7)
+
+  const cleaned = replayDrillDecisions(dirty)
+  const rows = decisionRows(cleaned)
+  assert.equal(rows.length, 4)
+  assert.deepEqual(rows.map((row) => row.slice(0, 2)), ['01', '02', '03', '04'])
+  assert.deepEqual(rows[0], `01 页面长什么样：${DRILL_DECISIONS[0].conclusion}`)
+  assert.deepEqual(rows[1], `02 管理页怎么进：${DRILL_DECISIONS[1].conclusion}`)
+  assert.deepEqual(rows[2], `03 取消和过期的规矩：${DRILL_DECISIONS[2].conclusion}`)
+  assert.deepEqual(rows[3], `04 顾客怎么找回自己的预约：${DRILL_DECISIONS[3].conclusion}`)
+  assert.equal(replayDrillDecisions(cleaned), cleaned)
+  for (const heading of ['Destination', 'Notes', '接下来', 'Not yet specified', 'Out of scope']) {
+    assert.equal(sectionText(cleaned, heading), sectionText(dirty, heading), heading)
+  }
+
+  const changed = appendDecision(cleaned, DRILL_DECISIONS[1].title, '改过的结论')
+  const changedRows = decisionRows(changed)
+  assert.equal(changedRows.length, 4)
+  assert.equal(changedRows[1], '02 管理页怎么进：改过的结论')
+})
+
+test('strictGate：决定行保留短名时，按票号匹配结论行', () => {
+  const body = mapBody({ fog: [], decisions: '- 01 先做哪一版：先做取货' })
+  const subIssues = [{ number: 3, title: '01 先做哪一版：先取还是先送', state: 'closed' }]
+  const gate = strictGate({
+    body,
+    subIssues,
+    commentsByTicket: { 3: [{ body: '结论：先做取货' }] },
+  })
+  assert.deepEqual(gate, { ready: true, blockers: [] })
+
+  const stale = strictGate({
+    body,
+    subIssues,
+    commentsByTicket: { 3: [{ body: '结论：先做送货' }] },
+  })
+  assert.equal(stale.ready, false)
+  assert.deepEqual(stale.blockers.map((row) => row.kind), ['decisions-missing'])
 })
 
 test('nextTicketNumber 取最大编号加一，两位补零', () => {
