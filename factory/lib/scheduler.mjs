@@ -18,7 +18,7 @@ import { acquireFileLock } from './lock.mjs'
 import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
-import { parseProgress, progressLine } from './progress.mjs'
+import { clientRound, parseProgress, progressLine } from './progress.mjs'
 
 export const STATES = ['已提交', '排队中', '开发中', '待验收']
 
@@ -110,15 +110,7 @@ function isWaitingSignal(kind) {
 }
 
 function roundOf(comments = []) {
-  let latest = null
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) latest = parsed
-    }
-  }
-  if (!latest) return 1
-  return latest.tier === '已驳回' ? latest.round + 1 : latest.round
+  return clientRound(comments)
 }
 
 /** 驳回之后已经写过进度行，说明这一条驳回处理过了，不能再开一张修复票。 */
@@ -141,10 +133,17 @@ function pathOf(parent) {
  *
  * @returns {Array<{reason: string, detail: string}>} 命中的判据；空数组表示没停
  */
-export function stallHits({ comments = [], trails = [] } = {}) {
+export function stallHits({ comments = [], trails = [], openTickets = null } = {}) {
   const hits = []
-  const rounds = roundsWithoutProgress({ comments })
-  if (rounds.stalled) hits.push({ reason: '三圈没进展', detail: rounds.reason })
+  const rounds = roundsWithoutProgress({ comments, openTickets })
+  if (rounds.stalled) {
+    hits.push({
+      reason: '三圈没进展',
+      detail: rounds.reason,
+      ticket: rounds.ticket,
+      tickets: rounds.tickets,
+    })
+  }
 
   const repeated = repeatProblems({ trails })
   if (repeated.repeat) {
@@ -161,7 +160,14 @@ export function stallHits({ comments = [], trails = [] } = {}) {
 /** 命中停法：打 needs-info、写卡住进度、推 `出事`，不点火。 */
 function stallActions({ parent, comments, state, hits, owner, repo }) {
   const detail = hits.map((hit) => `${hit.reason}：${hit.detail}`).join('；')
-  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo })
+  const tickets = [
+    ...new Set(
+      hits.flatMap((hit) =>
+        Array.isArray(hit.tickets) ? hit.tickets : hit.ticket === undefined ? [] : [hit.ticket],
+      ),
+    ),
+  ]
+  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo, tickets })
   for (const hit of hits) {
     actions.push(
       notifyAction({
@@ -191,11 +197,12 @@ function stageFor(state, small) {
   return '建单'
 }
 
-function progressFor({ parent, state, comments, tier, step, stuck, note = '' }) {
+function progressFor({ parent, state, comments, tier, step, ticket, stuck, note = '' }) {
   return progressLine({
     path: pathOf(parent),
     tier: tier || customerTier(state),
     step: step || stageFor(state, isSmall(parent)),
+    ticket,
     round: roundOf(comments),
     stuck: stuck ?? (hasLabel(parent, NEEDS_INFO_LABEL) || hasLabel(parent, '点火超时')),
     note,
@@ -213,14 +220,20 @@ function notifyAction({ parent, owner, repo, event, scope = '', data, link }) {
   }
 }
 
-function needsInfoActions({ parent, comments, state, reason, owner, repo }) {
-  const body = progressFor({
-    parent,
-    state,
-    comments,
-    stuck: true,
-    note: reason,
-  })
+function needsInfoActions({ parent, comments, state, reason, owner, repo, tickets = [] }) {
+  const targets = tickets.length ? tickets : [undefined]
+  const body = targets
+    .map((ticket) =>
+      progressFor({
+        parent,
+        state,
+        comments,
+        ticket,
+        stuck: true,
+        note: reason,
+      }),
+    )
+    .join('\n')
   return [
     { type: 'addLabel', name: NEEDS_INFO_LABEL },
     { type: 'comment', body },
@@ -325,6 +338,7 @@ export function routeParent({
 
   const small = isSmall(parent)
   const signal = latestSignal(comments)
+  const openTickets = subIssues.filter(isOpen).map((ticket) => ticket.number)
 
   if (state === '待验收') {
     if (signal?.kind === '驳回：' && !progressAfter(comments, signal.index)) {
@@ -393,7 +407,7 @@ export function routeParent({
       if (!already && (repoBusy || activeCount >= maxActive)) return []
       return [
         { type: 'setState', from: '已提交', to: '开发中' },
-        { type: 'comment', body: progressFor({ parent, state: '开发中', comments }) },
+        { type: 'comment', body: progressFor({ parent, state: '开发中', comments, ticket: ticket.number }) },
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }
@@ -405,7 +419,7 @@ export function routeParent({
     if (state === '开发中') {
       const finish = finishActions({ parent, subIssues, jobs, now, jobPolicy })
       if (finish.length) return finish
-      const hits = stallHits({ comments, trails })
+      const hits = stallHits({ comments, trails, openTickets })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
       return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive, jobs, now, jobPolicy })
     }
@@ -438,7 +452,7 @@ export function routeParent({
   }
 
   if (state === '排队中' || state === '开发中') {
-    const hits = stallHits({ comments, trails })
+    const hits = stallHits({ comments, trails, openTickets })
     if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
   }
 
@@ -467,7 +481,7 @@ export function routeParent({
       if (!already && (repoBusy || activeCount >= maxActive)) return []
       return [
         { type: 'setState', from: '排队中', to: '开发中' },
-        { type: 'comment', body: progressFor({ parent, state: '开发中', comments }) },
+        { type: 'comment', body: progressFor({ parent, state: '开发中', comments, ticket: ticket.number }) },
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }

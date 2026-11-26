@@ -1,8 +1,7 @@
 /**
  * 「停法」里两条可检查的判据：
  *
- * 1. 同一张票三圈没进展：父工单的进度行按轮次取最后一条，最近三轮
- *    客户档和细阶段都一样；
+ * 1. 同一张票连续三条进度停在同一个细阶段；
  * 2. 同类问题跨票两次：两张以上票的 trail 里有同一条失败的验证或评审记录。
  *
  * 只读评论和 trail，不碰 GitHub，不改状态。
@@ -21,25 +20,70 @@ function progressRowsOf(comments = []) {
   return rows
 }
 
+function openTicketSet(openTickets) {
+  if (openTickets === null || openTickets === undefined) return null
+  return openTickets instanceof Set ? openTickets : new Set(openTickets)
+}
+
 /**
- * @returns {{stalled: boolean, rounds: number, reason: string, tiers: string[]}}
+ * 按票分组看最近三条进度。
+ *
+ * 没有票号的旧进度不参与；`openTickets` 传了集合时，已关闭的票跳过。
+ * 同一张票的进度按出现顺序取最近三条，客户视角和细阶段都相同才算停滞。
+ *
+ * @param {object} options
+ * @param {Array<{body?: string}>} [options.comments]
+ * @param {number} [options.threshold]
+ * @param {Iterable<number>|Set<number>|null} [options.openTickets]
+ * @returns {{stalled: boolean, rounds: number, reason: string, tiers: string[], ticket?: number, tickets: number[]}}
  */
-export function roundsWithoutProgress({ comments = [], threshold = 3 } = {}) {
-  const byRound = new Map()
-  for (const row of progressRowsOf(comments)) byRound.set(row.round, row)
-  const ordered = [...byRound.values()].sort((left, right) => left.round - right.round)
-  const last = ordered.slice(-Math.max(1, threshold))
-  if (last.length < threshold) {
-    return { stalled: false, rounds: last.length, reason: `只有 ${last.length} 轮进度，不够 ${threshold} 轮`, tiers: [] }
+export function roundsWithoutProgress({ comments = [], threshold = 3, openTickets = null } = {}) {
+  const open = openTicketSet(openTickets)
+  const groups = new Map()
+  for (const row of progressRowsOf(comments)) {
+    if (row.ticket === undefined) continue
+    if (open && !open.has(row.ticket)) continue
+    if (!groups.has(row.ticket)) groups.set(row.ticket, [])
+    groups.get(row.ticket).push(row)
   }
+
   const key = (row) => `${row.tier}｜${row.sub}`
-  const same = last.every((row) => key(row) === key(last[0]))
-  const increasing = last.every((row, index) => index === 0 || row.round > last[index - 1].round)
+  const tickets = []
+  let firstRows = []
+  for (const [ticket, rows] of groups) {
+    const last = rows.slice(-Math.max(1, threshold))
+    if (last.length < threshold) continue
+    if (!last.every((row) => key(row) === key(last[0]))) continue
+    tickets.push(ticket)
+    if (!firstRows.length) firstRows = last
+  }
+
+  if (tickets.length) {
+    const where = key(firstRows[0])
+    const label = tickets.map((ticket) => `#${ticket}`).join('、')
+    return {
+      stalled: true,
+      rounds: firstRows.length,
+      reason: `票 ${label} 连续 ${firstRows.length} 条都停在 ${where}`,
+      tiers: firstRows.map((row) => key(row)),
+      ticket: tickets[0],
+      tickets,
+    }
+  }
+
+  const total = [...groups.values()].reduce((sum, rows) => sum + rows.length, 0)
+  const reason =
+    total === 0
+      ? '没有带票号的进度'
+      : total < threshold
+        ? `只有 ${total} 条带票号的进度，不够 ${threshold} 条`
+        : '没有任何一张票连续三条停在同一个细阶段'
   return {
-    stalled: same && increasing,
-    rounds: last.length,
-    reason: same ? `连续 ${last.length} 轮都停在 ${key(last[0])}` : '最近几轮有推进',
-    tiers: last.map((row) => key(row)),
+    stalled: false,
+    rounds: total,
+    reason,
+    tiers: [],
+    tickets: [],
   }
 }
 

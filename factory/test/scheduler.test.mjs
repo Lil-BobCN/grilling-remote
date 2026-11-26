@@ -104,7 +104,7 @@ test('其余单已提交+点头：补缺口 → 排队中，写安排中进度�
   assert.deepEqual(types(actions), ['setState', 'comment', 'notify'])
   assert.equal(actions[0].from, '已提交')
   assert.equal(actions[0].to, '排队中')
-  assert.match(actions[1].body, /^进度 v1｜路径：其余｜客户档：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
+  assert.match(actions[1].body, /^进度｜路径：其余｜客户视角：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
   assert.equal(actions[2].event, '该跑 to-spec')
   assert.equal(actions[2].data.customer, 'acme')
   assert.equal(actions[2].data.requirement, 'yuyue-quhuo')
@@ -159,7 +159,8 @@ test('其余单排队中+有 open 子票+点头：拆票 → 开发中并点火�
   assert.deepEqual(types(actions), ['setState', 'comment', 'ignite'])
   assert.equal(actions[0].to, '开发中')
   assert.equal(actions[2].ticket.number, 52)
-  assert.equal(actions[1].body.includes('客户档：开发中'), true)
+  assert.equal(actions[1].body.includes('客户视角：开发中'), true)
+  assert.match(actions[1].body, /票：52/)
 })
 
 test('待验收的子票不再点火', () => {
@@ -227,6 +228,7 @@ test('小需求已提交+点头：补缺口+一张 open 子票 → 开发中并�
   assert.equal(actions[0].to, '开发中')
   assert.equal(actions[2].ticket.number, 51)
   assert.match(actions[1].body, /路径：小需求/)
+  assert.match(actions[1].body, /票：51/)
 })
 
 test('小需求已提交+点头：补缺口+没有 open 子票 → needs-info，推需要人看', () => {
@@ -248,7 +250,7 @@ test('待验收+驳回： → 回开发中，写已驳回进度，另开修复�
   assert.deepEqual(types(actions), ['setState', 'comment', 'createFixTicket'])
   assert.equal(actions[0].from, '待验收')
   assert.equal(actions[0].to, '开发中')
-  assert.match(actions[1].body, /客户档：已驳回｜细阶段：记驳回/)
+  assert.match(actions[1].body, /客户视角：已驳回｜细阶段：记驳回/)
   assert.equal(actions[2].rejection.body.includes('取货时间不能选'), true)
 })
 
@@ -271,8 +273,8 @@ test('开发中 → 停', () => {
   assert.deepEqual(route({ stateLabel: '状态:开发中', comments: [gate('点头：拆票')] }), [])
 })
 
-function progressComment(tier, step, round) {
-  return gate(progressLine({ path: '其余', tier, step, round, stuck: false }))
+function progressComment(tier, step, round, ticket = 51) {
+  return gate(progressLine({ path: '其余', tier, step, ticket, round, stuck: false }))
 }
 
 test('排队中：三圈同进度 → needs-info 和出事，不点火', () => {
@@ -292,7 +294,7 @@ test('排队中：三圈同进度 → needs-info 和出事，不点火', () => {
   const incident = actions.find((action) => action.type === 'notify' && action.event === '出事')
   assert.equal(incident.data.reason, '三圈没进展')
   assert.equal(incident.key, '#42:出事:三圈没进展')
-  assert.match(incident.data.tried, /连续 3 轮/)
+  assert.match(incident.data.tried, /连续 3 条/)
   assert.match(actions.find((action) => action.type === 'comment').body, /备注：三圈没进展/)
 })
 
@@ -953,15 +955,15 @@ test('runOnce：已提交+点头：补缺口 → 排队中，写进度，推该�
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:排队中'])
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
-  assert.match(progress[0], /^进度 v1｜路径：其余｜客户档：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
+  assert.match(progress[0], /^进度｜路径：其余｜客户视角：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
   assert.equal(notifier.delivered.size, 1)
   assert.equal([...notifier.delivered.values()][0].event, '该跑 to-spec')
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:排队中'])
   assert.equal(notifier.delivered.size, 1)
 })
@@ -1971,14 +1973,14 @@ test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火�
   assert.deepEqual(labelsOf(fake, OWNER, REPO, child.number).sort(), ['Sandcastle', '状态:排队中'].sort())
   assert.equal(ignite.calls.length, 1)
   assert.equal(ignite.calls[0].ticket.number, child.number)
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
 
   // 新实例：新的通知器、新的锁目录、新的内存去重集合。
   const restarted = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
   await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite: ignite.ignite, clock: () => NOW, config: restarted })
 
   assert.equal(ignite.calls.length, 1, '重启后不重复点火')
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.equal(labelsOf(fake, OWNER, REPO, child.number).filter((name) => name === 'Sandcastle').length, 1)
 })
 
@@ -2436,9 +2438,9 @@ test('待验收+驳回： → 回开发中，写已驳回进度，另开修复�
   await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), createFixTicket: fix.createFixTicket.bind(fix), clock: () => NOW, config })
 
   assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:开发中'))
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
-  assert.match(progress[0], /客户档：已驳回｜细阶段：记驳回/)
+  assert.match(progress[0], /客户视角：已驳回｜细阶段：记驳回/)
   assert.equal(fix.calls.length, 1)
   assert.match(fix.calls[0].rejection.body, /取货时间不能选/)
 
@@ -2466,13 +2468,13 @@ test('小需求却是排队中 → needs-info，写卡住进度并推需要人�
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
   assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
   assert.match(progress[0], /卡住：是/)
   assert.equal([...notifier.delivered.values()][0].event, 'needs-info')
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.equal(labelsOf(fake, OWNER, REPO, parent.number).filter((name) => name === 'needs-info').length, 1)
   assert.equal(notifier.delivered.size, 1)
 })
@@ -2486,7 +2488,14 @@ test('排队中三圈同进度：runOnce 推 needs-info 和出事，不点火，
       owner: OWNER,
       repo: REPO,
       number: parent.number,
-      body: progressLine({ path: '其余', tier: '开发中', step: '开工', round, stuck: false }),
+      body: progressLine({
+        path: '其余',
+        tier: '开发中',
+        step: '开工',
+        ticket: child.number,
+        round,
+        stuck: false,
+      }),
     })
   }
   await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：拆票' })
@@ -2503,16 +2512,16 @@ test('排队中三圈同进度：runOnce 推 needs-info 和出事，不点火，
   assert.ok(incident, '没有发出事通知')
   assert.equal(incident.key, `${OWNER}/${REPO}:#${parent.number}:出事:三圈没进展`)
   assert.equal(incident.data.reason, '三圈没进展')
-  assert.match(incident.data.tried, /连续 3 轮/)
+  assert.match(incident.data.tried, /连续 3 条/)
 
   const progressAfterFirst = commentsOf(fake, OWNER, REPO, parent.number).filter((body) =>
-    body.startsWith('进度 v1｜'),
+    body.startsWith('进度'),
   ).length
   assert.equal(progressAfterFirst, 4)
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal(notifier.delivered.size, 2)
   assert.equal(
-    commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length,
+    commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length,
     progressAfterFirst,
   )
 })
@@ -2635,7 +2644,7 @@ test('没接入点火实现时整组动作都跳过，不先改状态', async (t
   })
 
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number).sort(), ['状态:已提交', '大小:小需求'].sort())
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 0)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 0)
   assert.equal(report.repos[0].parents[0].decision, 'develop')
   assert.equal(report.repos[0].parents[0].executed.skipped, 'ignite')
 })
@@ -2669,7 +2678,7 @@ test('抢不到仓锁时整张票不动，等下一轮', async (t) => {
 
   assert.equal(ignite.calls.length, 0)
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number).sort(), ['状态:已提交', '大小:小需求'].sort())
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 0)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 0)
   assert.equal(report.repos[0].parents[0].executed.skipped, 'locked')
 })
 
@@ -2887,16 +2896,26 @@ test('同一停滞连续 5 轮：needs-info key 稳定，轮次进 data，只送
       return { code: 0, stdout: '{}' }
     },
   }
-  const comments = [1, 2, 3].map((round) => ({
-    body: progressLine({ path: '其余', tier: '开发中', step: '开工', round, stuck: false }),
-  }))
+  const comments = [
+    { body: progressLine({ path: '其余', tier: '安排中', step: '写规格', round: 3 }) },
+    ...[1, 2, 3].map((round) => ({
+      body: progressLine({
+        path: '其余',
+        tier: '开发中',
+        step: '开工',
+        ticket: 51,
+        round,
+        stuck: false,
+      }),
+    })),
+  ]
   const seen = []
 
   for (let index = 0; index < 5; index += 1) {
     const actions = routeParent({
       parent: parent({ labels: labels('状态:排队中') }),
       comments,
-      subIssues: [],
+      subIssues: [sub({ number: 51 })],
       spec: null,
       now: NOW,
       owner: OWNER,

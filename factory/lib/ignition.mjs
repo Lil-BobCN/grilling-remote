@@ -15,7 +15,7 @@ import { sendEvent } from './notify.mjs'
 import { git, gitAuthEnv } from './git.mjs'
 import { ensureCommentOnce, ensureLabel } from './issues.mjs'
 import { logLine } from './log.mjs'
-import { parseProgress, progressLine } from './progress.mjs'
+import { clientRound, parseProgress, progressLine } from './progress.mjs'
 import { createRepoWorkspace } from './repo-workspace.mjs'
 import { hasLabel, labelNames, SMALL_LABEL } from './scheduler.mjs'
 
@@ -404,21 +404,6 @@ async function removeSandcastleIfPresent({ gh, owner, repo, number, log }) {
   }
 }
 
-/**
- * @param {Array<{body?: string}>} comments
- * @returns {number} 父工单已有进度的最大轮次；没有进度行时是 0
- */
-function maxProgressRound(comments = []) {
-  let round = 0
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) round = Math.max(round, parsed.round)
-    }
-  }
-  return round
-}
-
 function oneLine(text, limit = 200) {
   return String(text ?? '')
     .replace(/\s+/g, ' ')
@@ -609,7 +594,8 @@ export function createIgnite({ config = {}, runner, openPr, push, notifier, cloc
           path: hasLabel(current, SMALL_LABEL) ? '小需求' : '其余',
           tier: '开发中',
           step: '点火失败',
-          round: maxProgressRound(comments) + 1,
+          ticket: ticket.number,
+          round: clientRound(comments),
           stuck: true,
           note: oneLine(`${stage}（第 ${attempt} 次，${retryNote}）：${message}`, 160),
         }),

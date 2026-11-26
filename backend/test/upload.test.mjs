@@ -37,7 +37,7 @@ test('地图型需求完整包上传成功，写订单；重传沿用同一张�
     assert.equal(firstBody.orders[0].id, 'o-0001')
     assert.equal(firstBody.orders[0].missing.length, 0)
     assert.equal(firstBody.orders[0].transitions.length, 2)
-    assert.match(firstBody.orders[0].transitions[0].line, /客户档：已收到｜细阶段：收包｜轮次：1/)
+    assert.match(firstBody.orders[0].transitions[0].line, /客户视角：已收到｜细阶段：收包｜轮次：1/)
     assert.ok(firstBody.orders[0].uploaded_at)
 
     const stored = await orderFile(config, 'o-0001')
@@ -355,7 +355,7 @@ test('内容不全返回 200 和 missing，补好后同一轮重传', async () =
     assert.equal(body.orders[0].id, 'o-0001')
     assert.ok(body.orders[0].missing.length > 0)
     assert.equal(body.orders[0].uploaded_at, null)
-    assert.match(body.orders[0].transitions[1].line, /客户档：校验未通过/)
+    assert.match(body.orders[0].transitions[1].line, /客户视角：校验未通过/)
 
     const complete = await makeWorkspace({ complete: true })
     const second = await upload(server.base, cookie, await readZip(complete.zipPath))

@@ -7,7 +7,16 @@
  * 每种格式的规范写法和兼容写法见各函数注释。改动格式先改这里的契约测试。
  */
 
-export const PROGRESS_PREFIX = '进度 v1｜'
+export const PROGRESS_PREFIX = '进度｜'
+/** 旧写法，历史评论还在用。解析端要一直认。 */
+export const LEGACY_PROGRESS_PREFIX = '进度 v1｜'
+
+/** 一条进度：行首是 `进度｜` 或旧的 `进度 v1｜`。 */
+export function isProgressLine(value) {
+  if (typeof value !== 'string') return false
+  const text = value.trim()
+  return text.startsWith(PROGRESS_PREFIX) || text.startsWith(LEGACY_PROGRESS_PREFIX)
+}
 
 /**
  * 上传失败或需要人处理的终态。
@@ -239,48 +248,49 @@ export function parseTicketsPayload(body) {
 
 /**
  * 生成一行进度。规范写法：
- * `进度 v1｜路径：其余｜客户档：安排中｜细阶段：写规格｜轮次：1｜卡住：否`
+ * `进度｜路径：其余｜客户视角：安排中｜细阶段：写规格｜票：12｜轮次：1｜卡住：否`
  * 备注可选，非空时接在末尾 `｜备注：...`。
  * `path` 传 null 时不写路径，给订单转档行用；`parseProgress` 读回时按 `其余`。
+ * `ticket` 是子票号，只给票级进度写；父单级的进度不传。
  */
-export function progressLine({ path = '其余', tier, step, round = 1, stuck = false, note = '' }) {
-  const parts = ['进度 v1']
+export function progressLine({ path = '其余', tier, step, ticket = null, round = 1, stuck = false, note = '' }) {
+  const parts = ['进度']
   if (path !== null) parts.push(`路径：${path}`)
-  parts.push(
-    `客户档：${tier}`,
-    `细阶段：${step}`,
-    `轮次：${round}`,
-    `卡住：${stuck ? '是' : '否'}`,
-  )
+  parts.push(`客户视角：${tier}`, `细阶段：${step}`)
+  if (ticket !== null && ticket !== undefined) parts.push(`票：${ticket}`)
+  parts.push(`轮次：${round}`, `卡住：${stuck ? '是' : '否'}`)
   if (note) parts.push(`备注：${note}`)
   return parts.join('｜')
 }
 
 /**
- * 解析一行进度。不是 `进度 v1｜` 开头或缺客户档，返回 null。
- * 兼容写法：没有 `路径：` 的订单进度行按默认路径 `其余` 读。
+ * 解析一行进度。行首是 `进度｜` 或旧的 `进度 v1｜`，缺客户视角返回 null。
+ * 兼容旧字段名 `客户档`。没有 `路径：` 的订单进度行按默认路径 `其余` 读。
  * 字段之间用全角 `｜` 分隔，每个字段是 `名：值`。
  * `sub` 是细阶段第一段，`progress` 是后面的进度数（如 `2/4`），合起来是细阶段原文。
+ * `ticket` 是子票号；旧进度没有这个字段，返回 undefined。
  */
 export function parseProgress(line) {
-  if (typeof line !== 'string') return null
+  if (!isProgressLine(line)) return null
   const text = line.trim()
-  if (!text.startsWith(PROGRESS_PREFIX)) return null
 
   const fields = {}
   for (const segment of text.split('｜').slice(1)) {
     const cut = segment.indexOf('：')
     if (cut > 0) fields[segment.slice(0, cut).trim()] = segment.slice(cut + 1).trim()
   }
-  if (!fields['客户档']) return null
+  const tier = fields['客户视角'] || fields['客户档']
+  if (!tier) return null
 
   const [sub = '', ...rest] = (fields['细阶段'] || '').split(/\s+/)
+  const ticketText = fields['票'] || ''
   return {
     line: text,
     path: fields['路径'] || '其余',
-    tier: fields['客户档'],
+    tier,
     sub,
     progress: rest.join(' '),
+    ticket: /^\d+$/.test(ticketText) ? Number(ticketText) : undefined,
     round: Number(fields['轮次']) || 1,
     stuck: fields['卡住'] === '是',
     note: fields['备注'] || '',

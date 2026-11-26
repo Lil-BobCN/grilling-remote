@@ -16,7 +16,7 @@
 | `bin/scheduler.mjs` | 调度器命令行：`--once`、`--loop`、`--dry-run`；每轮输出 `executed` 和错误，`--loop` 写 JSONL | #463、#479 |
 | `bin/status.mjs` | 汇总父工单、子票、最新 trail、PR、正在跑的 job 和最后错误 | #479 |
 | `bin/gate.mjs` | `answer` 追加 gate 答行，给控制台用 | #479 |
-| `lib/progress.mjs` | 客户进度转档行 `进度 v1｜…` | #463 |
+| `lib/progress.mjs` | 客户进度转档行 `进度｜…`（旧的 `进度 v1｜` 也认） | #463 |
 | `lib/notify.mjs` | 调 `notifier/` 命令行发通知 | #463 |
 | `lib/lock.mjs` | 每仓一把文件锁 | #463 |
 | `lib/ignition.mjs` | 挑 frontier、贴标签、跑一次 Sandcastle | #464 |

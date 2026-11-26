@@ -309,7 +309,7 @@ test('两分钟没回执：写点火超时评论、打标签、发通知，摘 S
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:排队中'))
   assert.ok(!labelsOf(fake, ticket.number).includes('状态:待验收'))
 
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
   assert.match(progress[0], /细阶段：点火失败/)
 })
@@ -772,7 +772,7 @@ test('没有提交且票分支也没有时，不 push、不开 PR，写「没有
   assert.equal(incident.data.repo, REPO)
   assert.equal(incident.data.ticket, parent.number)
 
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
   assert.match(progress[0], /细阶段：点火失败/)
   assert.match(progress[0], /没有产生提交/)
@@ -881,11 +881,11 @@ test('runner 抛错：摘 Sandcastle、发出事、父工单写进度，不开 P
   assert.equal(incident.data.repo, REPO)
   assert.equal(incident.data.ticket, parent.number)
 
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   const failureLine = progress.at(-1)
   assert.equal(progress.length, 2)
   assert.match(failureLine, /细阶段：点火失败/)
-  assert.match(failureLine, /轮次：2/)
+  assert.match(failureLine, /轮次：1/)
   assert.match(failureLine, /容器起不来/)
 })
 
@@ -907,7 +907,7 @@ test('连续三次点火失败：父工单三圈进度，stallHits 读到三圈�
   }
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
-  const progress = comments.map((comment) => comment.body).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = comments.map((comment) => comment.body).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 3)
   assert.match(progress[0], /细阶段：点火失败/)
   assert.match(progress[1], /细阶段：点火失败/)
@@ -944,7 +944,7 @@ test('点火失败进度行带第几次和下次重试时间，到上限写停�
   const pad = (value) => String(value).padStart(2, '0')
   const expectedHhMm = `${pad(retryAt.getHours())}:${pad(retryAt.getMinutes())}`
   const progressOf = () =>
-    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   assert.match(progressOf().at(-1), /第 1 次/)
   assert.match(progressOf().at(-1), /下次约 \d{2}:\d{2} 重试/)
   assert.ok(
@@ -1050,7 +1050,7 @@ test('重启后同一票已有 Sandcastle，不重复点火', async (t) => {
 
   assert.equal(runner.calls.length, 1, '重启后不重复点火')
   assert.equal(
-    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜')).length,
+    commentsOf(fake, parent.number).filter((body) => body.startsWith('进度')).length,
     1,
   )
 })

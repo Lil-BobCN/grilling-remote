@@ -649,10 +649,10 @@ test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge
     const issue = fake.state.issues
       .get(`${OWNER}/${REPO}`)
       .find((row) => row.number === parent.number)
-    const progress = issue.comments.filter((row) => row.body.startsWith('进度 v1｜'))
+    const progress = issue.comments.filter((row) => row.body.startsWith('进度'))
     assert.ok(
       progress.some((row) =>
-        /^进度 v1｜路径：其余｜客户档：待客户验收｜细阶段：已部署｜轮次：1｜卡住：否$/.test(row.body),
+        /^进度｜路径：其余｜客户视角：待客户验收｜细阶段：已部署｜轮次：1｜卡住：否$/.test(row.body),
       ),
       `父工单没有部署进度评论：${JSON.stringify(progress.map((row) => row.body))}`,
     )

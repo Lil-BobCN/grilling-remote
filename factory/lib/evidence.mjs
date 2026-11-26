@@ -1243,6 +1243,7 @@ export async function mergeTicket({
               path: ticket.path || '其余',
               tier: '开发中',
               step: '合分支',
+              ticket: ticket.number,
               round: ticket.round || 1,
               stuck: false,
             }),

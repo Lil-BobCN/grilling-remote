@@ -540,7 +540,7 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     const parentComments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 1 })
     assert.ok(
       parentComments.some(
-        (row) => row.body.startsWith('进度 v1｜') && row.body.includes('细阶段：合分支'),
+        (row) => row.body.startsWith('进度') && row.body.includes('细阶段：合分支'),
       ),
       JSON.stringify(parentComments),
     )

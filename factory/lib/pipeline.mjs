@@ -29,7 +29,7 @@ import {
 import { logLine } from './log.mjs'
 import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
-import { parseProgress, progressLine } from './progress.mjs'
+import { clientRound, parseProgress, progressLine } from './progress.mjs'
 import { createRepoWorkspace } from './repo-workspace.mjs'
 import { hasLabel, NEEDS_INFO_LABEL } from './scheduler.mjs'
 
@@ -73,17 +73,6 @@ function firstLine(body) {
     .trimStart()
     .split(/\r?\n/)[0]
     .trim()
-}
-
-function progressRound(comments = []) {
-  let round = 1
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) round = parsed.round
-    }
-  }
-  return round + 1
 }
 
 function archiveStamp(at) {
@@ -210,6 +199,7 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
     path: ticket.path,
     tier: '开发中',
     step: stage === 'verify' ? '验证' : '评审',
+    ticket: ticket.number,
     round: ticket.round,
     stuck: true,
     note,
@@ -350,7 +340,7 @@ export function createTicketPipeline({
       customer: parentCustomer(parent?.body) || parent?.title || '',
       requirement: parentRequirement(parent?.body) || parent?.title || '',
       path: hasLabel(parent, '大小:小需求') ? '小需求' : '其余',
-      round: progressRound(parent?.comments || []),
+      round: clientRound(parent?.comments || []),
       htmlUrl: ticket.html_url || `https://github.com/${owner}/${repo}/issues/${ticket.number}`,
     }
 
@@ -386,7 +376,8 @@ export function createTicketPipeline({
         path: ticketInfo.path,
         tier: '开发中',
         step: '评审修复',
-        round: ticketInfo.round + round - 1,
+        ticket: ticket.number,
+        round: ticketInfo.round,
         stuck: false,
         note: `${label}：${problems.slice(0, 2).join('；')}`.replace(/\s+/g, ' ').slice(0, 160),
       })

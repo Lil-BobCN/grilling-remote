@@ -43,6 +43,7 @@ import { parentCustomer, parentRequirement } from '../lib/ignition.mjs'
 import { createNotifier, sendEvent } from '../lib/notify.mjs'
 import { previewNeeded, startPreview, stopPreview } from '../lib/preview.mjs'
 import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
+import { clientRound } from '../lib/progress.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
@@ -651,7 +652,7 @@ async function runMerge(options, deps = {}) {
   if (!parentIssue) throw new Error('找不到父工单，用 --parent 指定')
 
   const comments = await gh.listComments({ owner, repo, number: parentIssue.number }).catch(() => [])
-  const round = comments.filter((row) => String(row.body).startsWith('进度 v1｜')).length + 1
+  const round = clientRound(comments)
   const ticket = {
     number: issue.number,
     title: issue.title,

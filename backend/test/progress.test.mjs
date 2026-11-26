@@ -5,9 +5,12 @@ import { mergeTransitions, parseProgressEntry } from '../lib/progress.mjs'
 import { makeConfig, startFakeGithub } from './helpers.mjs'
 
 const LINE = (fields) =>
-  `进度 v1｜路径：其余｜客户档：${fields.tier}｜细阶段：${fields.sub}｜轮次：${fields.round}｜卡住：${
+  `进度｜路径：其余｜客户视角：${fields.tier}｜细阶段：${fields.sub}｜轮次：${fields.round}｜卡住：${
     fields.stuck ? '是' : '否'
   }${fields.note ? `｜备注：${fields.note}` : ''}`
+
+const LEGACY_LINE = (fields) =>
+  `进度 v1｜路径：其余｜客户档：${fields.tier}｜细阶段：${fields.sub}｜轮次：${fields.round}｜卡住：否`
 
 const preTicket = [
   { at: '2026-11-15T09:00:00Z', line: LINE({ tier: '已收到', sub: '收包', round: 1 }) },
@@ -36,6 +39,17 @@ test('转档行解析出档、细阶段、轮次、卡住和备注', () => {
   assert.equal(parsed.note, '等接口')
 })
 
+test('旧写法的转档行也能解析', () => {
+  const parsed = parseProgressEntry({
+    at: '2026-11-15T10:00:00Z',
+    line: LEGACY_LINE({ tier: '开发中', sub: '合分支', round: 5 }),
+  })
+  assert.equal(parsed.tier, '开发中')
+  assert.equal(parsed.sub, '合分支')
+  assert.equal(parsed.round, 5)
+  assert.equal(parsed.ticket, undefined)
+})
+
 test('订单记录和工单评论按时间拼起来，重复行只留一条', () => {
   const merged = mergeTransitions(order(), {
     state: 'open',
@@ -60,6 +74,7 @@ test('父工单关闭且停在待客户验收，补一条已完成，时间取�
   })
   const last = parseProgressEntry(merged.at(-1))
   assert.equal(last.tier, '已完成')
+  assert.ok(merged.at(-1).line.includes('客户视角：已完成'))
   assert.equal(merged.at(-1).at, '2026-11-16T10:00:00Z')
 })
 

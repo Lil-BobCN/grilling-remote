@@ -33,7 +33,7 @@ import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.
 import { ensureCommentOnce } from '../lib/issues.mjs'
 import { eventKey } from '../../backend/lib/protocol.mjs'
 import { createNotifier } from '../lib/notify.mjs'
-import { parseProgress, progressLine } from '../lib/progress.mjs'
+import { clientRound, progressLine } from '../lib/progress.mjs'
 import { createRepoWorkspace, parseWorktreeList } from '../lib/repo-workspace.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
 import { deployWithDefaults, markDeliveredWithDefaults, publishZipWithDefaults } from './deploy.mjs'
@@ -128,14 +128,7 @@ function labelNames(issue) {
  * 父工单评论里最新一条进度行的轮次；没有进度行按第 1 轮。
  */
 export function latestRound(comments = []) {
-  let round = 1
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) round = parsed.round
-    }
-  }
-  return round
+  return clientRound(comments)
 }
 
 /** 部署成功后写在父工单的交付地址评论；没有代码包时省掉那一行。 */

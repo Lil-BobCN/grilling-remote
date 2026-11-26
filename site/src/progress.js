@@ -2,7 +2,7 @@
  * 订单进度：把转档评论行还原成客户看到的五档和小步骤。
  * 行格式见 prototype/issue-109/README.md 的「转档状态：结论」。
  *
- * 页面只认 `进度 v1｜…` 开头的行；其它评论不算转档。
+ * 页面认 `进度｜…` 和旧的 `进度 v1｜…` 开头的行；其它评论不算转档。
  *
  * 档位和细阶段用中文键名解析（服务端协议），显示文字按语言从 content 里取。
  */
@@ -48,7 +48,7 @@ export const TIERS = [
 
 export const TIER_KEYS = TIERS.map((tier) => tier.key)
 const PROGRESS_COPY = { zh: zh.progress, en: en.progress }
-const PROGRESS_PREFIX = '进度 v1｜'
+const PROGRESS_PREFIXES = ['进度｜', '进度 v1｜']
 
 export function tierName(lang, key) {
   const copy = PROGRESS_COPY[lang] || PROGRESS_COPY.zh
@@ -82,7 +82,10 @@ export function formatAt(iso) {
 }
 
 function isProgressLine(line) {
-  return typeof line === 'string' && line.startsWith(PROGRESS_PREFIX)
+  return (
+    typeof line === 'string' &&
+    PROGRESS_PREFIXES.some((prefix) => line.trim().startsWith(prefix))
+  )
 }
 
 /**
@@ -100,13 +103,15 @@ function parseLine(entry) {
 
   const subRaw = fields['细阶段'] || ''
   const subMatch = subRaw.match(/^(\S+)(?:\s+(.+))?$/)
+  const ticketText = fields['票'] || ''
 
   return {
     at: entry?.at || '',
     path: fields['路径'] || '',
-    tier: fields['客户档'] || '',
+    tier: fields['客户视角'] || fields['客户档'] || '',
     sub: subMatch ? subMatch[1] : '',
     progress: subMatch && subMatch[2] ? subMatch[2] : '',
+    ticket: /^\d+$/.test(ticketText) ? Number(ticketText) : undefined,
     round: Number(fields['轮次']) || 1,
     stuck: fields['卡住'] === '是',
     note: fields['备注'] || '',
