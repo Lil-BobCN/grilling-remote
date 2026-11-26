@@ -485,8 +485,8 @@ function gapBrief({ instructions, owner, repo, parent, factoryDir }) {
     ...rejectionSection(parent?.comments),
     '',
     '依次跑这两条，两条的 stdout/stderr 都会随这一跑写进调度器日志：',
-    `1. node ${cli} apply-map --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --requirement <需求名> --parent <父工单链接>`,
-    `2. node ${cli} propose --scratch <回传件>/.scratch/<需求名> --owner ${owner} --repo ${repo} --number <地图编号>`,
+    `1. node ${cli} apply-map --scratch <回传件>/work/.scratch/<需求名> --owner ${owner} --repo ${repo} --requirement <需求名> --parent <父工单链接>`,
+    `2. node ${cli} propose --scratch <回传件>/work/.scratch/<需求名> --owner ${owner} --repo ${repo} --number <地图编号>`,
     '',
     '失败时把错误原样留在 stderr，不要吞掉；也不要手改回传件。',
   ].join('\n')

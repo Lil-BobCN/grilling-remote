@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,20 +16,62 @@ async function makeRoots(t) {
   return { remoteRoot, inboxDir }
 }
 
+const zipCache = new Map()
+
 function zipBytes(id) {
-  return Buffer.from(`zip-${id}`)
+  const cached = zipCache.get(id)
+  if (cached) return cached
+  const root = mkdtempSync(join(tmpdir(), 'afk-zip-'))
+  try {
+    const requirement = join(root, 'src', '.scratch', 'demo')
+    mkdirSync(join(requirement, 'issues'), { recursive: true })
+    writeFileSync(join(requirement, 'map.md'), `# ${id}\n`)
+    writeFileSync(join(requirement, 'issues', '01-a.md'), `- ${id}\n`)
+    const out = join(root, 'package.zip')
+    execFileSync('zip', ['-qry', out, '.'], { cwd: join(root, 'src'), stdio: 'ignore' })
+    const bytes = readFileSync(out)
+    zipCache.set(id, bytes)
+    return bytes
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 }
 
-async function seedUpload(remoteRoot, id, { status = 'ready', operator_alert, extra = {} } = {}) {
+function evilZip(entries) {
+  const root = mkdtempSync(join(tmpdir(), 'afk-evil-'))
+  try {
+    const out = join(root, 'evil.zip')
+    const script = [
+      'import stat, sys, zipfile',
+      'path, *specs = sys.argv[1:]',
+      "with zipfile.ZipFile(path, 'w') as archive:",
+      '    for spec in specs:',
+      "        kind, name = spec.split('|', 1)",
+      "        if kind == 'symlink':",
+      '            info = zipfile.ZipInfo(name)',
+      '            info.external_attr = (stat.S_IFLNK | 0o777) << 16',
+      "            archive.writestr(info, '/etc/passwd')",
+      '        else:',
+      "            archive.writestr(name, 'payload')",
+    ].join('\n')
+    const specs = entries.map(([kind, name]) => `${kind}|${name}`)
+    execFileSync('python3', ['-I', '-c', script, out, ...specs], { stdio: 'ignore' })
+    return readFileSync(out)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+async function seedUpload(remoteRoot, id, { status = 'ready', operator_alert, extra = {}, bytes } = {}) {
   const dir = join(remoteRoot, id)
   await mkdir(dir, { recursive: true })
-  const bytes = zipBytes(id)
-  await writeFile(join(dir, 'package.zip'), bytes)
+  const zip = bytes ?? zipBytes(id)
+  await writeFile(join(dir, 'package.zip'), zip)
   const meta = {
     id,
     status,
-    sha256: createHash('sha256').update(bytes).digest('hex'),
-    size: bytes.length,
+    sha256: createHash('sha256').update(zip).digest('hex'),
+    size: zip.length,
     user: { id: 'c-0001', short_name: 'acme' },
     requirements: [{ name: 'demo', passed: true }],
     orders: ['o-0001'],
@@ -74,6 +118,100 @@ test('ready 的上传只拷到本地，不删远端', async (t) => {
   assert.equal(archive.status, 'ready')
   assert.equal(archive.sha256, meta.sha256)
   await stat(join(remoteRoot, 'upload-ready', 'package.zip'))
+})
+
+test('只有 package.zip 的样例，拉取后解出 work/ 且内容对', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-work', { status: 'ready' })
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  const work = join(inboxDir, 'upload-work', 'work')
+  assert.equal(await readFile(join(work, '.scratch', 'demo', 'map.md'), 'utf8'), '# upload-work\n')
+  assert.equal(
+    await readFile(join(work, '.scratch', 'demo', 'issues', '01-a.md'), 'utf8'),
+    '- upload-work\n',
+  )
+  const archive = JSON.parse(await readFile(join(inboxDir, 'upload-work', 'archived.json'), 'utf8'))
+  assert.ok(archive.work && archive.work.sha256)
+})
+
+test('恶意 zip 的 .. 路径被拒绝，不落盘', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-traversal', { bytes: evilZip([['file', '../escape.txt']]) })
+
+  const result = await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  assert.deepEqual(result.pulled, ['upload-traversal'])
+  await assert.rejects(stat(join(inboxDir, 'upload-traversal', 'work')))
+  await assert.rejects(stat(join(inboxDir, 'escape.txt')))
+  const archive = JSON.parse(
+    await readFile(join(inboxDir, 'upload-traversal', 'archived.json'), 'utf8'),
+  )
+  assert.match(archive.work_error, /不安全/)
+  await stat(join(inboxDir, 'upload-traversal', 'package.zip'))
+})
+
+test('恶意 zip 的绝对路径被拒绝，不落盘', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-absolute', { bytes: evilZip([['file', '/abs.txt']]) })
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  await assert.rejects(stat(join(inboxDir, 'upload-absolute', 'work')))
+  await assert.rejects(stat(join(inboxDir, 'abs.txt')))
+  const archive = JSON.parse(
+    await readFile(join(inboxDir, 'upload-absolute', 'archived.json'), 'utf8'),
+  )
+  assert.match(archive.work_error, /不安全/)
+})
+
+test('恶意 zip 的符号链接被拒绝，不落盘', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-symlink', { bytes: evilZip([['symlink', 'link']]) })
+
+  await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  await assert.rejects(stat(join(inboxDir, 'upload-symlink', 'work')))
+  const archive = JSON.parse(
+    await readFile(join(inboxDir, 'upload-symlink', 'archived.json'), 'utf8'),
+  )
+  assert.match(archive.work_error, /符号链接/)
+})
+
+test('重复拉取不重复解压 work/', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-ready', { status: 'ready' })
+  const remote = createDirRemote(remoteRoot)
+
+  await pullInbox({ remote, inboxDir })
+  const work = join(inboxDir, 'upload-ready', 'work')
+  await writeFile(join(work, 'sentinel.txt'), 'keep\n', 'utf8')
+
+  await pullInbox({ remote, inboxDir })
+
+  assert.equal(await readFile(join(work, 'sentinel.txt'), 'utf8'), 'keep\n')
+  assert.equal(await readFile(join(work, '.scratch', 'demo', 'map.md'), 'utf8'), '# upload-ready\n')
+})
+
+test('坏包解压失败不影响后面的包', async (t) => {
+  const { remoteRoot, inboxDir } = await makeRoots(t)
+  await seedUpload(remoteRoot, 'upload-broken', { bytes: Buffer.from('不是 zip') })
+  await seedUpload(remoteRoot, 'upload-good', {})
+
+  const result = await pullInbox({ remote: createDirRemote(remoteRoot), inboxDir })
+
+  assert.deepEqual(result.pulled, ['upload-broken', 'upload-good'])
+  await assert.rejects(stat(join(inboxDir, 'upload-broken', 'work')))
+  const broken = JSON.parse(
+    await readFile(join(inboxDir, 'upload-broken', 'archived.json'), 'utf8'),
+  )
+  assert.match(broken.work_error, /package\.zip/)
+  await stat(join(inboxDir, 'upload-broken', 'package.zip'))
+  assert.equal(
+    await readFile(join(inboxDir, 'upload-good', 'work', '.scratch', 'demo', 'map.md'), 'utf8'),
+    '# upload-good\n',
+  )
 })
 
 test('imported 的上传拷完删远端', async (t) => {
