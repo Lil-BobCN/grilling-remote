@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { run } from '../bin/gap.mjs'
 import {
   draftProposal,
   GateConflictError,
@@ -205,6 +206,103 @@ test('draftProposal：列出 pending 的题和推荐，也列地图上「你答�
     recommendations: { '送货范围怎么定，超区怎么办': '只送镇上，超区自取' },
   })
   assert.match(withRecommendations.body, /推荐：只送镇上，超区自取/)
+})
+
+test('draftProposal：不传 compliance 时合规用中性句，不断言不收个人信息', async (t) => {
+  const scratch = await copyFixture(t)
+  const map = parseMap(await readFile(join(scratch, 'map.md'), 'utf8'))
+
+  const proposal = await draftProposal({ scratchDir: scratch, map })
+
+  assert.ok(
+    proposal.body.includes('- 合规：按本单实际收集的信息判断；收个人信息要写明用途和保存期限'),
+    proposal.body,
+  )
+  assert.doesNotMatch(proposal.body, /不收个人信息/)
+})
+
+test('draftProposal：传 compliance 时替换合规行，其他闸门项不动', async (t) => {
+  const scratch = await copyFixture(t)
+  const map = parseMap(await readFile(join(scratch, 'map.md'), 'utf8'))
+
+  const proposal = await draftProposal({
+    scratchDir: scratch,
+    map,
+    compliance: '收学生姓名、班级，用来排课和课后通知；保存到本学期结束',
+  })
+
+  assert.ok(
+    proposal.body.includes('- 合规：收学生姓名、班级，用来排课和课后通知；保存到本学期结束'),
+    proposal.body,
+  )
+  assert.doesNotMatch(proposal.body, /不收个人信息/)
+  assert.doesNotMatch(proposal.body, /按本单实际收集的信息判断/)
+  assert.ok(proposal.body.includes('- 技术栈：用默认技术栈，照模板仓已有的写法。'))
+  assert.ok(proposal.body.includes('- 查重：先搜 open 和 closed 工单，有重复就停下报运营者。'))
+})
+
+test('CLI propose --compliance：地图路径的合规行用传入的句子', async (t) => {
+  const { gh, parent, mapIssue } = await githubSetup(t)
+  const sink = { log() {} }
+
+  await run(
+    [
+      'propose',
+      '--scratch',
+      FIXTURE,
+      '--owner',
+      'acme',
+      '--repo',
+      'acme-shuiguo',
+      '--number',
+      String(mapIssue.number),
+      '--compliance',
+      '收家长手机号，用来发取货通知；订单完成后删除',
+    ],
+    { gh, log: sink },
+  )
+
+  const comments = await gh.listComments({ owner: 'acme', repo: 'acme-shuiguo', number: parent.number })
+  const proposal = comments.find((row) => row.body.startsWith('提案：补缺口'))
+  assert.ok(proposal)
+  assert.ok(proposal.body.includes('- 合规：收家长手机号，用来发取货通知；订单完成后删除'), proposal.body)
+})
+
+test('CLI propose 小需求传 --compliance：合规行用传入的句子', async (t) => {
+  const fake = await startFakeGithub({
+    repos: [{ owner: 'acme', name: 'acme-demo' }],
+    issues: [{ owner: 'acme', repo: 'acme-demo', title: '想要个预约取货的小程序', body: PARENT_BODY }],
+  })
+  t.after(() => fake.close())
+  const gh = createGithub({ apiBase: fake.base, token: 'test' })
+  const dir = await mkdtemp(join(tmpdir(), 'gap-small-compliance-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  await writeFile(join(dir, '需求草稿.md'), '# 需求草稿\n')
+  await writeFile(join(dir, 'pending.md'), PENDING)
+
+  const result = await run(
+    [
+      'propose',
+      '--scratch',
+      dir,
+      '--owner',
+      'acme',
+      '--repo',
+      'acme-demo',
+      '--parent',
+      '1',
+      '--compliance',
+      '收学生姓名、班级，用来点名；学期结束删除',
+    ],
+    { gh, log: { log() {} } },
+  )
+
+  assert.equal(result.small, true)
+  const comments = await gh.listComments({ owner: 'acme', repo: 'acme-demo', number: 1 })
+  const proposal = comments.find((row) => row.body.startsWith('提案：补缺口'))
+  assert.ok(proposal)
+  assert.ok(proposal.body.includes('- 合规：收学生姓名、班级，用来点名；学期结束删除'), proposal.body)
+  assert.match(proposal.body, /## 实现票/)
 })
 
 test('renderPoint 两段格式，正文影响为空写「无」', () => {
