@@ -38,6 +38,12 @@
 | [operator-daily.md](agents/operator-daily.md) | 运营者每天看什么，信号亮了做什么 |
 | [triage-labels.md](agents/triage-labels.md) | 五个处理状态标签 |
 
+## docs/演练
+
+| 文件 | 讲什么 |
+| --- | --- |
+| [开工前检查.md](演练/开工前检查.md) | 全链演练开工前逐项检查的清单，演练包条数从包里数 |
+
 ## docs/adr
 
 只有一份 [决策记录.md](adr/决策记录.md)，收够三条标准的决定：难回退、不写会让人意外、有真实取舍。完整决策记录在中台。被取代的条目留在原位，标「被取代，见 D-xxxx」，不删。
