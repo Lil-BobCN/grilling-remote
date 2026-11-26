@@ -1909,7 +1909,7 @@ async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
 }
 
 /**
- * 看门狗：一轮开始后超过 stallMs 没结束，或心跳停了 stallMs，发一次「出事」。
+ * 看门狗：心跳停了 stallMs 就发一次「出事」，不看这一轮跑了多久。
  * 同一轮只发一次；一轮结束（roundStart 清空）后自然安静。
  */
 export function createWatchdog({
@@ -1927,11 +1927,11 @@ export function createWatchdog({
     const at = clock()
     const stalled = jobs.stalledFor(at, { stallMs })
     if (!stalled) return null
-    // 探活事件的身份固定：同一轮超时只报一次，轮次开始时间放 scope。
+    // 探活事件的身份固定：同一轮只报一次，轮次开始时间放 scope。
     const key = eventKey({
       subject: '调度器',
       event: '出事',
-      scope: `轮次超时:${stalled.roundStart}`,
+      scope: `心跳停止:${stalled.roundStart}`,
     })
     if (config.notifiedKeys?.has(key)) return null
     const minutes = Math.max(1, Math.round(stalled.stalledMs / 60000))
@@ -1944,20 +1944,21 @@ export function createWatchdog({
       data: {
         customer: '工厂',
         requirement: '调度器',
-        reason: '轮次超时',
-        tried: `这一轮从 ${stalled.roundStart} 开始，${minutes} 分钟没跑完`,
+        reason: '心跳停止',
+        tried: `心跳停了 ${minutes} 分钟`,
         heartbeat: stalled.lastBeat,
+        round_start: stalled.roundStart,
       },
     }
     if (typeof notifier?.send !== 'function') {
-      log({ level: 'error', msg: '轮次超时通知没发出去', reason: '没有注入 notifier' })
+      log({ level: 'error', msg: '心跳停止通知没发出去', reason: '没有注入 notifier' })
       return event
     }
     try {
       const result = await deliverEvent({ notifier, event, config, now: at })
       if (result?.skipped) return null
     } catch (error) {
-      log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
+      log({ level: 'error', msg: '心跳停止通知没发出去', error: error.message })
     }
     return event
   }

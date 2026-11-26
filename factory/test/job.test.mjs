@@ -236,6 +236,37 @@ test('心跳：开始写 lastBeat，结束记 lastEnd，停止进程后按注入
   assert.equal(store.stalledFor(clock(), { stallMs: 10 * 60_000 }), null, '一轮结束就不算卡住')
 })
 
+test('看门狗只看心跳：轮次跑了 31 分钟但心跳新鲜，不报', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const clock = clockFrom('2026-11-20T10:00:00+08:00')
+
+  await store.startRound({ now: clock() })
+  clock.advance(31 * 60_000)
+  await store.beat({ now: clock() })
+  assert.equal(store.stalledFor(clock(), { stallMs: 30 * 60_000 }), null)
+
+  clock.advance(31 * 60_000)
+  const stalled = store.stalledFor(clock(), { stallMs: 30 * 60_000 })
+  assert.equal(stalled.stalledMs, 31 * 60_000)
+  assert.equal(stalled.basis, 'heartbeat')
+})
+
+test('看门狗：没有心跳才退回轮次开始时间', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const clock = clockFrom('2026-11-20T10:00:00+08:00')
+
+  await store.startRound({ now: clock() })
+  store.heartbeat.lastBeat = ''
+  clock.advance(31 * 60_000)
+  const stalled = store.stalledFor(clock(), { stallMs: 30 * 60_000 })
+  assert.equal(stalled.stalledMs, 31 * 60_000)
+  assert.equal(stalled.basis, 'roundStart')
+})
+
 test('退避按指数增长，有上限', () => {
   assert.equal(backoffMs(1, { baseMs: 60_000 }), 60_000)
   assert.equal(backoffMs(2, { baseMs: 60_000 }), 120_000)

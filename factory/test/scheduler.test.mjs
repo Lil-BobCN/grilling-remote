@@ -1740,8 +1740,9 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
   const event = await watchdog.tick()
   assert.equal(event.event, '出事')
-  assert.match(event.data.reason, /轮次超时/)
-  assert.equal(event.key, `调度器:出事:轮次超时:${jobs.heartbeat.roundStart}`)
+  assert.match(event.data.reason, /心跳停止/)
+  assert.match(event.data.tried, /心跳停了 11 分钟/)
+  assert.equal(event.key, `调度器:出事:心跳停止:${jobs.heartbeat.roundStart}`)
   assert.ok(config.notifiedKeys.has(event.key), '探活发送要留下 sent 记录')
   assert.equal(event.data.customer, '工厂')
   assert.match(event.link, /^file:\/\//, '出事通知必须带 link，否则真 notifier 拒收')
@@ -1752,6 +1753,26 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
   await jobs.endRound({ now: clock() })
   assert.equal(await watchdog.tick(), null)
+})
+
+test('看门狗：轮次跑了 31 分钟但心跳新鲜，不报', async (t) => {
+  const jobs = await loadStore(await jobFile(t))
+  let now = NOW.getTime()
+  const clock = () => new Date(now)
+  await jobs.startRound({ now: clock() })
+  now += 31 * 60_000
+  await jobs.beat({ now: clock() })
+  const notifier = fakeNotifier()
+  const watchdog = createWatchdog({
+    jobs,
+    notifier,
+    clock,
+    stallMs: 30 * 60_000,
+    log: () => {},
+    config: {},
+  })
+  assert.equal(await watchdog.tick(), null)
+  assert.equal(notifier.calls.length, 0)
 })
 
 test('runJobStep 在长步骤里按时写心跳', async () => {
@@ -1925,7 +1946,7 @@ test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
   }
   assert.equal(notifier.calls.length, 1, '同一轮只发一次')
   assert.equal(notifier.calls[0].event, '出事')
-  assert.match(notifier.calls[0].data.reason, /轮次超时/)
+  assert.match(notifier.calls[0].data.reason, /心跳停止/)
   assert.match(notifier.calls[0].link, /^file:\/\//)
 
   controller.abort()

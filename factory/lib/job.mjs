@@ -331,18 +331,23 @@ export function createJobStore({
       return { ...table.heartbeat }
     },
 
-    /** 一轮卡了多久；没在跑就返回 null。 */
+    /**
+     * 这一轮卡了多久。只看心跳：有 lastBeat 时按 now - lastBeat 算，
+     * 没有心跳才退回轮次开始时间。一轮结束（roundStart 清空）返回 null。
+     */
     stalledFor(at, { stallMs = 15 * 60 * 1000 } = {}) {
       const start = Date.parse(table.heartbeat.roundStart || '')
       if (!Number.isFinite(start)) return null
       const beat = Date.parse(table.heartbeat.lastBeat || '')
       const end = msOf(at)
-      const stalledMs = Math.max(end - start, Number.isFinite(beat) ? end - beat : 0)
+      const basis = Number.isFinite(beat) ? 'heartbeat' : 'roundStart'
+      const stalledMs = basis === 'heartbeat' ? end - beat : end - start
       if (stalledMs < stallMs) return null
       return {
         roundStart: table.heartbeat.roundStart,
         lastBeat: table.heartbeat.lastBeat,
         stalledMs,
+        basis,
       }
     },
 
