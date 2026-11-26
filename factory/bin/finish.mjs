@@ -195,6 +195,16 @@ export async function runFinish(options, deps = {}) {
   if (!owner || !repo || !Number.isInteger(parentNumber) || parentNumber <= 0 || !reqBranch) {
     throw new Error(USAGE)
   }
+  // 部署序号只增不减；调度器从作业行传进来，直接跑 CLI 时用时间戳兜底。
+  const deploySeq = deps.deploySeq === undefined || deps.deploySeq === null ? Date.now() : deps.deploySeq
+  const deployEventKey = (scope) =>
+    eventKey({
+      owner,
+      repo,
+      subject: `#${parentNumber}`,
+      event: '出事',
+      scope: `${scope}:${deploySeq}`,
+    })
 
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''
   if (!deps.gh && !token) throw new Error('缺 GITHUB_TOKEN 或 GH_TOKEN')
@@ -345,13 +355,13 @@ export async function runFinish(options, deps = {}) {
     const error = `父工单正文缺 ${missing.join('、')}，不猜，没部署`
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer: customer || '未知客户',
       requirement: requirement || parentIssue?.title || '',
       tried: error,
       link: parentIssue?.html_url || '',
     })
-    result.deploy = { ok: false, reason: 'bad_parent', error, missing }
+    result.deploy = { ok: false, reason: 'bad_parent', error, missing, deploySeq }
     return { output: result, exitCode: 1 }
   }
 
@@ -360,13 +370,13 @@ export async function runFinish(options, deps = {}) {
     const error = `软件简称拼不出来：传 --product，或让仓名是 ${customer}-<软件简称>；不猜`
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer,
       requirement,
       tried: error,
       link: parentIssue?.html_url || '',
     })
-    result.deploy = { ok: false, reason: 'bad_product', error }
+    result.deploy = { ok: false, reason: 'bad_product', error, deploySeq }
     return { output: result, exitCode: 1 }
   }
 
@@ -384,12 +394,13 @@ export async function runFinish(options, deps = {}) {
       link: parentIssue?.html_url || '',
       pr: result.pr?.number,
       notifier,
+      deploySeq,
     })
   } catch (error) {
-    deployed = { ok: false, reason: '部署失败', error: errorText(error) }
+    deployed = { ok: false, reason: '部署失败', error: errorText(error), deploySeq }
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer,
       requirement,
       tried: `部署脚本抛错：${errorText(error)}`,

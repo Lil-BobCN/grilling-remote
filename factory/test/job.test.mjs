@@ -320,6 +320,38 @@ test('人工放行不重置 auth-failed 的预算', async (t) => {
   assert.equal(row.lastBeat, failed.toISOString())
 })
 
+test('部署序号只增不减，人工放行不清', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const now = new Date('2026-11-20T10:00:00+08:00')
+
+  assert.equal(await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }), 1)
+  assert.equal(await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }), 2)
+
+  await store.stop({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '部署失败',
+    now,
+  })
+  await store.clearStop({ owner: 'acme', repo: 'demo', parent: 42, now, resetBudget: true })
+  assert.equal(
+    await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }),
+    3,
+    '人工放行不重置部署序号',
+  )
+
+  await store.recordSuccess({ owner: 'acme', repo: 'demo', parent: 42, action: 'finish', now })
+  const row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), {
+    action: 'finish',
+  })
+  assert.equal(row.deploySeq, 3)
+})
+
 test('心跳：开始写 lastBeat，结束记 lastEnd，停止进程后按注入时钟判断卡住', async (t) => {
   const dir = await tempDir(t)
   const store = createJobStore({ filePath: join(dir, 'jobs.json') })

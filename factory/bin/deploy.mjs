@@ -165,6 +165,7 @@ export async function deployWithDefaults({
   tries,
   remote,
   notifier,
+  deploySeq,
 } = {}) {
   return deployProduct({
     repoDir,
@@ -184,6 +185,7 @@ export async function deployWithDefaults({
     healthCheck: httpHealthCheck,
     sendDeliveryMail: sshSendDeliveryMail,
     notifier: notifier || createNotifier(),
+    deploySeq,
   })
 }
 

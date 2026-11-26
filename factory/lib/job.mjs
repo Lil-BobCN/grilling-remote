@@ -237,6 +237,20 @@ export function createJobStore({
       return row
     },
 
+    /**
+     * 部署序号：只增不减，记在 finish 行上。
+     * 每次收尾要部署时取一个，人工放行和 recordSuccess 都不会清零。
+     */
+    async nextDeploySeq({ owner, repo, parent, now: at } = {}) {
+      const key = jobKey({ owner, repo, parent, action: 'finish' })
+      const previous =
+        table.jobs[key] || baseRow({ owner, repo, parent, ticket: null, action: 'finish', at })
+      const deploySeq = (Number(previous.deploySeq) || 0) + 1
+      putRow(key, { ...previous, deploySeq, updatedAt: stamp(at) })
+      await flush()
+      return deploySeq
+    },
+
     /** 管道开始：在作业表里写 running 标记和开始时间。 */
     async markRunning({ owner, repo, parent, ticket = null, action, reason = '', now: at } = {}) {
       const key = jobKey({ owner, repo, parent, ticket, action })

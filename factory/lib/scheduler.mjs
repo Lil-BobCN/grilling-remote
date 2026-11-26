@@ -1577,7 +1577,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
   }
   const ensureStopLabel = () =>
     ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
-  const failureEvent = (action, result, row, scope, reason = '作业失败') =>
+  const failureEvent = (action, result, row, scope, reason = '作业失败', extra = {}) =>
     notifyAction({
       parent,
       owner,
@@ -1588,6 +1588,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         reason,
         tried: failureText(result),
         attempt: row?.attempt ?? 0,
+        ...extra,
       },
     })
   // 同一故障只报一次：key 稳定，attempt 放 data；到上限另发一条换 key 的升级。
@@ -1680,10 +1681,17 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         }),
       )
       await guard(ensureStopLabel())
+      const deploySeq = finishResult.deploy?.deploySeq
+      const deployScope =
+        deploySeq === undefined || deploySeq === null
+          ? '作业失败:finish:升级'
+          : `作业失败:finish:升级:${deploySeq}`
       await guard(
         deliverEvent({
           notifier,
-          event: failureEvent('finish', { reason }, row, '作业失败:finish:升级', '部署失败，作业停了'),
+          event: failureEvent('finish', { reason }, row, deployScope, '部署失败，作业停了', {
+            deploy_seq: deploySeq,
+          }),
           config,
           now,
         }),

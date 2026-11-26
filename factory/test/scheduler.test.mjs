@@ -1184,15 +1184,20 @@ test('runOnce：部署失败写 stop，下一轮不再收尾、不开重复 PR',
   let calls = 0
   const finish = async () => {
     calls += 1
-    return { ok: false, reason: '部署失败', deploy: { ok: false, reason: 'bad_address', error: '地址不通' } }
+    return {
+      ok: false,
+      reason: '部署失败',
+      deploy: { ok: false, reason: 'bad_address', error: '地址不通', deploySeq: 7 },
+    }
   }
   const jobs = await loadStore(await jobFile(t))
   const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, repoRoot: root, jobs }
+  const notifier = fakeNotifier()
 
   const firstReport = await runOnce({
     gh,
     customers: customers(),
-    notifier: fakeNotifier(),
+    notifier,
     finish,
     clock: () => NOW,
     config,
@@ -1202,6 +1207,12 @@ test('runOnce：部署失败写 stop，下一轮不再收尾、不开重复 PR',
   const row = jobs.get([...Object.keys(jobs.table.jobs)][0])
   assert.equal(row.stop, 'deploy-failed')
   assert.match(row.reason, /部署失败/)
+  assert.ok(
+    [...notifier.delivered.keys()].some((key) =>
+      key.endsWith(':作业失败:finish:升级:7'),
+    ),
+    `升级 key 没带部署序号：${[...notifier.delivered.keys()].join(', ')}`,
+  )
 
   await runOnce({
     gh,
