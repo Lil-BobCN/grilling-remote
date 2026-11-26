@@ -322,6 +322,9 @@ test('开发中：同类问题跨票两次 → needs-info 和出事', () => {
   assert.equal(incident.key, '#42:出事:同类两次')
   assert.match(incident.data.tried, /漏了错误处理/)
   assert.match(incident.data.tried, /#51、#52/)
+  const comment = actions.find((action) => action.type === 'comment')
+  assert.match(comment.body, /票：51/)
+  assert.match(comment.body, /票：52/)
 })
 
 test('同类两次的长原因：可见备注截断，折叠区留全文', () => {

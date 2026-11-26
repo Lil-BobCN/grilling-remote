@@ -153,11 +153,19 @@ export function stallHits({ comments = [], trails = [], openTickets = null } = {
 
   const repeated = repeatProblems({ trails })
   if (repeated.repeat) {
+    const hitTickets = [
+      ...new Set(
+        repeated.repeats.flatMap((item) =>
+          item.tickets.map((ticket) => Number(ticket)).filter((ticket) => Number.isInteger(ticket)),
+        ),
+      ),
+    ]
     hits.push({
       reason: '同类两次',
       detail: repeated.repeats
         .map((item) => `${item.problem}（#${item.tickets.join('、#')}）`)
         .join('；'),
+      tickets: hitTickets,
     })
   }
   return hits

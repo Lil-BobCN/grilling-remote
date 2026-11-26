@@ -272,7 +272,7 @@ export async function deployProduct({
 
       await notifyDeployDone({
         notifier,
-        key: deployKey(orderId, '部署完成', textVersion, sequence),
+        key: deployKey(orderId, '部署完成', textVersion),
         customer,
         requirement: requirementName,
         address,

@@ -663,6 +663,7 @@ export function createTicketPipeline({
             branch: mergedHead,
             runner: activeRunner,
             now: clock(),
+            clock,
           })
           return { ok: audit.ok, problems: audit.problems, evidence: audit.evidence.join(',') }
         },
@@ -674,6 +675,7 @@ export function createTicketPipeline({
             mode: mode || 'all',
             runner: activeRunner,
             now: clock(),
+            clock,
           })
           return { ok: audit.ok, problems: audit.problems, decision: audit.decision }
         },
