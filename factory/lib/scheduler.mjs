@@ -1895,14 +1895,23 @@ async function notePipelineTimeout({ jobs, gh, owner, repo, parents, active, err
   }
 }
 
-/** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
+/** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop，needs-info 的重置重试预算。 */
 async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
   if (!jobs) return
   try {
     const rows = jobs.rowsFor({ owner, repo, parent: parent.number })
     if (!blockingStop(rows)) return
     if (hasLabel(parent, NEEDS_INFO_LABEL)) return
-    await jobs.clearStop({ owner, repo, parent: parent.number, now })
+    const cleared = await jobs.clearStop({
+      owner,
+      repo,
+      parent: parent.number,
+      now,
+      resetBudget: true,
+    })
+    if (cleared) {
+      logLine({ level: 'info', msg: '人工放行', owner, repo, parent: parent.number, cleared })
+    }
   } catch (error) {
     report.errors.push({ repo, parent: parent.number, jobs: true, message: error.message })
   }

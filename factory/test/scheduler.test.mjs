@@ -461,6 +461,42 @@ test('finish 失败后退避：没到时间不重发，过了退避再试', () =
   assert.deepEqual(types(routeParent(options)), ['finish', 'setState'], '过了退避时间再试')
 })
 
+test('人工放行 needs-info：预算归零，下一轮立刻选到 finish', async (t) => {
+  const store = await loadStore(await jobFile(t))
+  const failed = new Date(NOW.getTime() - 40 * 60_000)
+  for (let index = 0; index < 3; index += 1) {
+    await store.recordFailure({
+      owner: OWNER,
+      repo: REPO,
+      parent: 42,
+      action: 'finish',
+      reason: '评审没过',
+      now: new Date(failed.getTime() + index * 1000),
+      policy: { maxAttempts: 3 },
+    })
+  }
+  await store.stop({
+    owner: OWNER,
+    repo: REPO,
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '三圈没进展',
+    now: failed,
+  })
+  await store.clearStop({ owner: OWNER, repo: REPO, parent: 42, now: NOW, resetBudget: true })
+
+  const actions = routeParent({
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: true }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+    jobs: store.rowsFor({ owner: OWNER, repo: REPO, parent: 42 }),
+  })
+  assert.deepEqual(types(actions), ['finish', 'setState'])
+})
+
 test('已提交父工单贴 needs-info：补缺口不再跑', () => {
   const blocked = routeParent({
     parent: parent({ labels: labels('状态:已提交', 'needs-info') }),

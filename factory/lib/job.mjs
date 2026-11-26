@@ -293,14 +293,23 @@ export function createJobStore({
       return row
     },
 
-    /** 清掉这张父工单所有 stop，留着 attempt；运营者摘标签后恢复用。 */
-    async clearStop({ owner, repo, parent, now: at } = {}) {
+    /**
+     * 清掉这张父工单所有 stop，默认留着 attempt。
+     * `resetBudget` 打开时，只有被清的 stop 是 `needs-info` 才把 attempt 归零、
+     * lastBeat 设为现在，让人工放行后下一轮立即能跑。其他 stop 保持原样。
+     */
+    async clearStop({ owner, repo, parent, now: at, resetBudget = false } = {}) {
       let changed = 0
       for (const row of Object.values(table.jobs)) {
         if (row?.owner !== owner || row?.repo !== repo || row?.parent !== parent) continue
         if (!row.stop) continue
+        const manualRelease = resetBudget && row.stop === 'needs-info'
         row.stop = ''
         row.reason = ''
+        if (manualRelease) {
+          row.attempt = 0
+          row.lastBeat = stamp(at)
+        }
         row.updatedAt = stamp(at)
         changed += 1
       }
