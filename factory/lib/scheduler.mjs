@@ -18,7 +18,13 @@ import { acquireFileLock } from './lock.mjs'
 import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
-import { clientRound, parseProgress, progressLine } from './progress.mjs'
+import {
+  clientRound,
+  parseProgress,
+  progressComment,
+  progressLine,
+  visibleNote,
+} from './progress.mjs'
 
 export const STATES = ['已提交', '排队中', '开发中', '待验收']
 
@@ -205,7 +211,7 @@ function progressFor({ parent, state, comments, tier, step, ticket, stuck, note 
     ticket,
     round: roundOf(comments),
     stuck: stuck ?? (hasLabel(parent, NEEDS_INFO_LABEL) || hasLabel(parent, '点火超时')),
-    note,
+    note: visibleNote(note),
   })
 }
 
@@ -222,7 +228,7 @@ function notifyAction({ parent, owner, repo, event, scope = '', data, link }) {
 
 function needsInfoActions({ parent, comments, state, reason, owner, repo, tickets = [] }) {
   const targets = tickets.length ? tickets : [undefined]
-  const body = targets
+  const lines = targets
     .map((ticket) =>
       progressFor({
         parent,
@@ -234,6 +240,7 @@ function needsInfoActions({ parent, comments, state, reason, owner, repo, ticket
       }),
     )
     .join('\n')
+  const body = progressComment(lines, reason)
   return [
     { type: 'addLabel', name: NEEDS_INFO_LABEL },
     { type: 'comment', body },

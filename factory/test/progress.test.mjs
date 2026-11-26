@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { clientRound, parseProgress, progressLine } from '../lib/progress.mjs'
+import {
+  clientRound,
+  NOTE_LIMIT,
+  parseProgress,
+  progressComment,
+  progressLine,
+  reasonDetails,
+  visibleNote,
+} from '../lib/progress.mjs'
 
 test('进度行逐字段：路径、客户视角、细阶段、票、轮次、卡住', () => {
   const line = progressLine({
@@ -130,4 +138,44 @@ test('客户轮次只数不带票号的进度，已驳回加一', () => {
     ),
     1,
   )
+})
+
+
+test('可见备注按标点截断，总长含省略号不超过 160', () => {
+  const long = `${'甲'.repeat(80)}。${'乙'.repeat(80)}`
+  assert.ok(long.length > NOTE_LIMIT)
+  const note = visibleNote(long)
+  assert.ok(note.length <= NOTE_LIMIT)
+  assert.ok(note.endsWith('…'))
+  assert.ok(note.includes('。'), '切在句号处')
+
+  const semicolon = `${'甲'.repeat(100)}；${'乙'.repeat(100)}`
+  assert.ok(visibleNote(semicolon).includes('；'))
+
+  const comma = `${'甲'.repeat(100)}，${'乙'.repeat(100)}`
+  assert.ok(visibleNote(comma).includes('，'))
+})
+
+test('刚好 160 字不截断', () => {
+  const text = '甲'.repeat(NOTE_LIMIT)
+  assert.equal(visibleNote(text), text)
+  assert.equal(visibleNote(text).endsWith('…'), false)
+})
+
+test('没有标点的长备注硬切，末尾也带省略号', () => {
+  const note = visibleNote('甲'.repeat(300))
+  assert.equal(note.length, NOTE_LIMIT)
+  assert.equal(note.slice(0, -1), '甲'.repeat(NOTE_LIMIT - 1))
+  assert.ok(note.endsWith('…'))
+})
+
+test('折叠区放全部原因，进度行只放可见备注', () => {
+  const problems = ['第一条原因'.repeat(30), '第二条原因'.repeat(30), '第三条原因'.repeat(30)]
+  const full = problems.join('；')
+  const line = progressLine({ tier: '开发中', step: '评审修复', ticket: 12, note: visibleNote(full) })
+  const body = progressComment(line, full)
+  assert.ok(body.startsWith(line))
+  assert.ok(body.includes('<details><summary>完整原因</summary>'))
+  for (const problem of problems) assert.ok(body.includes(problem), '折叠区不能只留前两条')
+  assert.ok(reasonDetails(full).includes(full))
 })

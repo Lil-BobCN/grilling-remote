@@ -16,6 +16,45 @@ import {
 
 export { LEGACY_PROGRESS_PREFIX, PROGRESS_PREFIX, progressLine }
 
+/** 可见备注的上限，含末尾省略号。 */
+export const NOTE_LIMIT = 160
+
+function collapse(text) {
+  return String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * 进度行里给人看的那段备注。空白折叠，超过 limit 时切到最近的句号、分号或逗号，
+ * 末尾加「…」，总长不超过 limit。找不到标点才硬切。
+ */
+export function visibleNote(text, limit = NOTE_LIMIT) {
+  const clean = collapse(text)
+  if (clean.length <= limit) return clean
+  const budget = Math.max(1, limit - 1)
+  const head = clean.slice(0, budget)
+  let cut = -1
+  for (const mark of ['。', '；', ';', '，', ',']) {
+    cut = Math.max(cut, head.lastIndexOf(mark))
+  }
+  const body = cut >= 0 ? head.slice(0, cut + 1) : head
+  return `${body.trimEnd()}…`
+}
+
+/** 完整原因放进 GitHub 折叠区，和进度行同一条评论。 */
+export function reasonDetails(text) {
+  const clean = collapse(text)
+  if (!clean) return ''
+  return `<details><summary>完整原因</summary>\n\n${clean}\n\n</details>`
+}
+
+/** 进度行加完整原因折叠区；没有原因时只返回进度行。 */
+export function progressComment(line, fullNote) {
+  const details = reasonDetails(fullNote)
+  return details ? `${line}\n\n${details}` : line
+}
+
 export function parseProgress(line) {
   const text = typeof line === 'string' ? line.trim() : ''
   if (!isAnyProgressLine(text) || !text.includes('｜路径：')) return null

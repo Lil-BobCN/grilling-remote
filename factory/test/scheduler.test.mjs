@@ -324,6 +324,32 @@ test('开发中：同类问题跨票两次 → needs-info 和出事', () => {
   assert.match(incident.data.tried, /#51、#52/)
 })
 
+test('同类两次的长原因：可见备注截断，折叠区留全文', () => {
+  const longA = `连接池缺 error 监听，${'超时没处理；'.repeat(20)}`
+  const longB = `错误提示写死中文，${'重试次数没测；'.repeat(20)}`
+  const trails = [
+    { ticket: 51, rows: [{ phase: 'review', decision: '标准', evidence: longA, result: 'fail' }] },
+    { ticket: 52, rows: [{ phase: 'review', decision: 'spec', evidence: longA, result: 'fail' }] },
+    { ticket: 51, rows: [{ phase: 'review', decision: '标准', evidence: longB, result: 'fail' }] },
+    { ticket: 52, rows: [{ phase: 'review', decision: 'spec', evidence: longB, result: 'fail' }] },
+  ]
+  const actions = routeParent({
+    parent: parent({ labels: labels('状态:开发中') }),
+    comments: [],
+    subIssues: [sub({ number: 51 }), sub({ number: 52 })],
+    trails,
+    now: NOW,
+  })
+  const comment = actions.find((action) => action.type === 'comment')
+  const note = comment.body.split('\n')[0].split('备注：')[1]
+  assert.ok(note.length <= 160, `可见备注 ${note.length} 字`)
+  assert.ok(note.endsWith('…'))
+  assert.ok(comment.body.includes('<details><summary>完整原因</summary>'))
+  assert.ok(comment.body.includes('连接池缺error监听'), '折叠区保留第一条原因')
+  assert.ok(comment.body.includes('错误提示写死中文'), '折叠区保留第二条原因')
+  assert.ok(comment.body.split('<details>')[1].length > 160, '折叠区比可见备注长')
+})
+
 test('排队中：进度有推进就继续点火', () => {
   const actions = route({
     stateLabel: '状态:排队中',

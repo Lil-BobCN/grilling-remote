@@ -29,7 +29,13 @@ import {
 import { logLine } from './log.mjs'
 import { sendEvent } from './notify.mjs'
 import { previewNeeded } from './preview.mjs'
-import { clientRound, parseProgress, progressLine } from './progress.mjs'
+import {
+  clientRound,
+  parseProgress,
+  progressComment,
+  progressLine,
+  visibleNote,
+} from './progress.mjs'
 import { createRepoWorkspace } from './repo-workspace.mjs'
 import { hasLabel, NEEDS_INFO_LABEL } from './scheduler.mjs'
 
@@ -194,16 +200,19 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
       }),
   )
   if (already) return
-  const note = `认证失败：${problems[0] || 'agent 认证失败'}`.replace(/\s+/g, ' ').slice(0, 160)
-  const body = progressLine({
-    path: ticket.path,
-    tier: '开发中',
-    step: stage === 'verify' ? '验证' : '评审',
-    ticket: ticket.number,
-    round: ticket.round,
-    stuck: true,
-    note,
-  })
+  const fullNote = `认证失败：${problems.join('；') || 'agent 认证失败'}`
+  const body = progressComment(
+    progressLine({
+      path: ticket.path,
+      tier: '开发中',
+      step: stage === 'verify' ? '验证' : '评审',
+      ticket: ticket.number,
+      round: ticket.round,
+      stuck: true,
+      note: visibleNote(fullNote),
+    }),
+    fullNote,
+  )
   await gh.createComment({ owner, repo, number: parent.number, body })
   if (typeof notifier?.send !== 'function') return
   try {
@@ -219,7 +228,7 @@ async function stopForAuthFailure({ gh, notifier, owner, repo, parent, ticket, p
         customer: ticket.customer,
         requirement: ticket.requirement,
         reason: '认证失败',
-        tried: note,
+        tried: visibleNote(fullNote),
         round: ticket.round,
         owner,
         repo,
@@ -372,15 +381,19 @@ export function createTicketPipeline({
     const reviewProgress = async ({ round, ok, problems, stage = '' }) => {
       if (ok) return
       const label = stage === 'verify' ? '验证没过' : '评审没过'
-      const body = progressLine({
-        path: ticketInfo.path,
-        tier: '开发中',
-        step: '评审修复',
-        ticket: ticket.number,
-        round: ticketInfo.round,
-        stuck: false,
-        note: `${label}：${problems.slice(0, 2).join('；')}`.replace(/\s+/g, ' ').slice(0, 160),
-      })
+      const fullNote = `${label}：${problems.join('；')}`
+      const body = progressComment(
+        progressLine({
+          path: ticketInfo.path,
+          tier: '开发中',
+          step: '评审修复',
+          ticket: ticket.number,
+          round: ticketInfo.round,
+          stuck: false,
+          note: visibleNote(fullNote),
+        }),
+        fullNote,
+      )
       try {
         await gh.createComment({ owner, repo, number: parent.number, body })
       } catch (error) {
