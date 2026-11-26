@@ -136,7 +136,7 @@ test('只有 package.zip 的样例，拉取后解出 work/ 且内容对', async 
   assert.ok(archive.work && archive.work.sha256)
 })
 
-test('恶意 zip 的 .. 路径被拒绝，不落盘', async (t) => {
+test('恶意 zip 的 .. 路径被拒绝，不写到本地', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
   await seedUpload(remoteRoot, 'upload-traversal', { bytes: evilZip([['file', '../escape.txt']]) })
 
@@ -152,7 +152,7 @@ test('恶意 zip 的 .. 路径被拒绝，不落盘', async (t) => {
   await stat(join(inboxDir, 'upload-traversal', 'package.zip'))
 })
 
-test('恶意 zip 的绝对路径被拒绝，不落盘', async (t) => {
+test('恶意 zip 的绝对路径被拒绝，不写到本地', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
   await seedUpload(remoteRoot, 'upload-absolute', { bytes: evilZip([['file', '/abs.txt']]) })
 
@@ -166,7 +166,7 @@ test('恶意 zip 的绝对路径被拒绝，不落盘', async (t) => {
   assert.match(archive.work_error, /不安全/)
 })
 
-test('恶意 zip 的符号链接被拒绝，不落盘', async (t) => {
+test('恶意 zip 的符号链接被拒绝，不写到本地', async (t) => {
   const { remoteRoot, inboxDir } = await makeRoots(t)
   await seedUpload(remoteRoot, 'upload-symlink', { bytes: evilZip([['symlink', 'link']]) })
 

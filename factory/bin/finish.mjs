@@ -12,7 +12,7 @@
  * 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜；订单号从
  * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
  * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`；在父工单写一条
- * `进度 v1｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
+ * `进度｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
  * 把地址写进订单的 `delivery` 和 `delivery_url`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
