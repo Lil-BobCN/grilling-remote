@@ -225,7 +225,8 @@ test_init() {
   assert_mode "$dir/releases" 700 "releases 是 700"
   assert_file "$TMP/caddy/products/$ADDR.caddy" "Caddy 路由写好"
 
-  assert_contains "$compose" 'mem_limit: 512m' "compose 内存上限 512m"
+  assert_contains "$compose" 'mem_limit: ${APP_MEM_LIMIT:-512m}' "compose 内存上限用 APP_MEM_LIMIT"
+  assert_contains "$env" 'APP_MEM_LIMIT=1g' "新成品默认 1g"
   assert_contains "$compose" 'cpus: 0.5' "compose CPU 上限 0.5"
   assert_contains "$compose" 'pids_limit: 256' "compose pids 上限 256"
   assert_contains "$compose" '127.0.0.1:${PORT}:' "compose 只绑回环"
@@ -312,7 +313,7 @@ test_init() {
 
   # 旧版 .env 没有管理相关键：再跑 init 要补上，其他键一个不动。
   local before_legacy after_without
-  grep -vE '^(ADMIN_PASSWORD|ADMIN_PATH|ADMIN_PASSPHRASE|SESSION_SECRET)=' "$env" >"$TMP/legacy.env"
+  grep -vE '^(ADMIN_PASSWORD|ADMIN_PATH|ADMIN_PASSPHRASE|SESSION_SECRET|APP_MEM_LIMIT)=' "$env" >"$TMP/legacy.env"
   cat "$TMP/legacy.env" >"$env"
   rm -f "$TMP/legacy.env"
   before_legacy=$(cat "$env")
@@ -348,6 +349,11 @@ test_init() {
   fi
   after_without=$(grep -vE '^(ADMIN_PASSWORD|ADMIN_PATH|ADMIN_PASSPHRASE|SESSION_SECRET)=' "$env")
   assert_eq "$before_legacy" "$after_without" "补管理相关键不改其他键"
+  if [[ -z $(env_get "$env" APP_MEM_LIMIT) ]]; then
+    ok "既有 .env 不补 APP_MEM_LIMIT"
+  else
+    bad "既有 .env 被补了 APP_MEM_LIMIT"
+  fi
   assert_mode "$env" 600 "补键后 .env 还是 600"
 }
 
@@ -451,7 +457,7 @@ test_deploy() {
   else
     ok "容器不用 host 网络"
   fi
-  assert_contains "$dir/compose.yml" 'mem_limit: 512m' "资源上限仍写在 compose 里"
+  assert_contains "$dir/compose.yml" 'mem_limit: ${APP_MEM_LIMIT:-512m}' "资源上限仍写在 compose 里"
 
   sleep 1
   if bash "$HELPER" product-deploy "$ADDR"; then

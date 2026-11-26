@@ -60,6 +60,10 @@ assert_contains() { # 文件 文本 说明
   if grep -qF -- "$2" "$1" 2>/dev/null; then ok "$3"; else bad "$3（$1 里没有 $2）"; fi
 }
 
+assert_not_contains() { # 文件 文本 说明
+  if grep -qF -- "$2" "$1" 2>/dev/null; then bad "$3（$1 里不应有 $2）"; else ok "$3"; fi
+}
+
 assert_file() { # 路径 说明
   if [[ -f $1 ]]; then ok "$2"; else bad "$2（$1 不存在）"; fi
 }
@@ -469,7 +473,8 @@ test_preview_start() {
   assert_file "$env" "预览 .env 建好"
   assert_mode "$env" 600 "预览 .env 是 600"
   assert_mode "$compose" 600 "预览 compose.yml 是 600"
-  assert_contains "$compose" 'mem_limit: 512m' "预览内存上限 512m"
+  assert_contains "$compose" 'mem_limit: ${APP_MEM_LIMIT:-512m}' "预览 compose 内存上限用变量"
+  assert_not_contains "$env" 'APP_MEM_LIMIT=' "预览不写 APP_MEM_LIMIT，保持 512m"
   assert_contains "$compose" 'cpus: 0.5' "预览 CPU 上限 0.5"
   assert_contains "$compose" 'pids_limit: 256' "预览 pids 上限 256"
   assert_contains "$compose" '127.0.0.1:${PORT}:' "预览只绑回环"
