@@ -40,6 +40,35 @@ function verdictLine(value) {
   return `AFK_VERDICT ${JSON.stringify(value)}`
 }
 
+test('审计行按写入时刻取时间，不共用进入时间', async () => {
+  const dir = await makeRepo()
+  try {
+    const times = [
+      new Date('2026-11-17T10:00:00Z'),
+      new Date('2026-11-17T10:05:00Z'),
+    ]
+    let index = 0
+    const clock = () => times[Math.min(index++, times.length - 1)]
+    const runner = fakeRunner(
+      verdictLine({
+        ok: true,
+        evidence: ['.audit/screenshots/after.png'],
+        problems: [],
+        tests: [{ command: 'npm test', result: 'pass' }],
+      }),
+    )
+    await runVerifyAudit({ repoDir: dir, ticket: 71, branch: 'HEAD', runner, clock })
+    const rows = await readTrail({ repoDir: dir, ticket: 71 })
+    const verify = rows.find((row) => row.phase === 'verify')
+    const testRow = rows.find((row) => row.phase === 'test')
+    assert.equal(verify.ts, times[0].toISOString())
+    assert.equal(testRow.ts, times[1].toISOString())
+    assert.ok(Date.parse(testRow.ts) > Date.parse(verify.ts), '两行时间递增')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('验证通过：写 verify 行和 test 行，decision 是 head', async () => {
   const dir = await makeRepo()
   try {

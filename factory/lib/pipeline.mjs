@@ -514,6 +514,7 @@ export function createTicketPipeline({
           preview: previewImpl,
           notifier,
           now: clock(),
+          clock,
           fixer,
           onReviewRound: reviewProgress,
           maxFixRounds,

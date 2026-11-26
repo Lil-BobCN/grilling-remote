@@ -204,6 +204,51 @@ test('证据不齐：先起预览，跑验证和评审写 trail，预览留给�
   }
 })
 
+test('ensureEvidenceBeforeMerge 每行审计取当时时间', async () => {
+  const dir = await makeRepo()
+  try {
+    await appendTrail({
+      repoDir: dir,
+      ticket: 51,
+      ts: NOW,
+      phase: 'preview',
+      decision: '有界面',
+      result: 'required',
+    })
+    const times = [
+      new Date('2026-11-17T10:00:00Z'),
+      new Date('2026-11-17T10:01:00Z'),
+      new Date('2026-11-17T10:02:00Z'),
+      new Date('2026-11-17T10:03:00Z'),
+      new Date('2026-11-17T10:04:00Z'),
+    ]
+    let index = 0
+    const clock = () => times[Math.min(index++, times.length - 1)]
+    const result = await ensureEvidenceBeforeMerge({
+      repoDir: dir,
+      ticket: ticket(),
+      ticketNumber: 51,
+      branch: 'HEAD',
+      runner: fakeRunner(true),
+      preview: fakePreview(),
+      notifier: fakeNotifier(),
+      now: NOW,
+      clock,
+    })
+
+    assert.equal(result.ok, true, JSON.stringify(result))
+    const rows = (await readTrail({ repoDir: dir, ticket: 51 })).filter((row) =>
+      ['verify', 'test', 'review'].includes(row.phase),
+    )
+    assert.ok(rows.length >= 3)
+    const stamps = rows.map((row) => Date.parse(row.ts))
+    assert.ok(new Set(stamps).size > 1, '审计行不共用进入时间')
+    assert.ok(stamps.every((value, i) => i === 0 || value >= stamps[i - 1]), '时间递增')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('证据不齐且 agent 判不过：销毁预览，发出事，返回 evidence_not_ready', async () => {
   const dir = await makeRepo()
   try {

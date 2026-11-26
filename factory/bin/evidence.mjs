@@ -278,11 +278,20 @@ export async function ensureEvidenceBeforeMerge({
   preview,
   notifier,
   now,
+  clock,
   fixer,
   onReviewRound,
   maxFixRounds = resolveMaxFixRounds(),
   cleanCheck = verifyInCleanCheckout,
 } = {}) {
+  const rowClock =
+    typeof clock === 'function'
+      ? clock
+      : typeof now === 'function'
+        ? now
+        : now !== undefined && now !== null
+          ? () => now
+          : () => new Date()
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)
 
@@ -397,7 +406,7 @@ export async function ensureEvidenceBeforeMerge({
       await appendTrail({
         repoDir,
         ticket: ticketNumber,
-        ts: now,
+        ts: rowClock(),
         phase: 'test',
         decision: result.command || '干净检查',
         why: `${CLEAN_CHECK_MARKER} head ${boundHead || head}`,
@@ -421,6 +430,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'review')) return []
       if (stopOnAbort(audit, 'review')) return []
@@ -435,6 +445,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'review')) return []
       if (stopOnAbort(audit, 'review')) return []
@@ -452,7 +463,7 @@ export async function ensureEvidenceBeforeMerge({
     if (cleanProblems.length) return cleanProblems
     const fixedHead = await git(repoDir, ['rev-parse', branch])
     if (!plan) {
-      const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
+      const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now, clock: rowClock })
       if (stopOnAuth(audit, 'verify')) return []
       if (stopOnAbort(audit, 'verify')) return []
       return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
@@ -470,6 +481,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'verify')) break
       if (stopOnAbort(audit, 'verify')) break
@@ -504,6 +516,7 @@ export async function ensureEvidenceBeforeMerge({
           runner,
           extraBrief,
           now,
+          clock: rowClock,
         })
         if (stopOnAuth(audit, 'verify')) break
         if (stopOnAbort(audit, 'verify')) break
