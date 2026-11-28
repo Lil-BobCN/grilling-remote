@@ -12,7 +12,7 @@
  * 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜；订单号从
  * `<!-- factory:order=... -->` 取，版本用 merge SHA 短号。部署成功后默认
  * 打代码 zip 并发到下载目录，URL 写在 `deploy.codeZipUrl`；在父工单写一条
- * `进度 v1｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
+ * `进度｜…｜细阶段：已部署｜…` 评论，并调 `afk-uploads mark-delivered`
  * 把地址写进订单的 `delivery` 和 `delivery_url`。`--no-deploy` 关掉部署和 zip。
  * trail 从工作树读，`--dry-run` 要在需求分支的 worktree 里跑；真跑会先切到需求分支。
  */
@@ -33,7 +33,7 @@ import { parentCustomer, parentOrder, parentRequirement } from '../lib/ignition.
 import { ensureCommentOnce } from '../lib/issues.mjs'
 import { eventKey } from '../../backend/lib/protocol.mjs'
 import { createNotifier } from '../lib/notify.mjs'
-import { parseProgress, progressLine } from '../lib/progress.mjs'
+import { clientRound, progressLine } from '../lib/progress.mjs'
 import { createRepoWorkspace, parseWorktreeList } from '../lib/repo-workspace.mjs'
 import { parseParentAcceptance } from '../lib/tickets.mjs'
 import { deployWithDefaults, markDeliveredWithDefaults, publishZipWithDefaults } from './deploy.mjs'
@@ -128,14 +128,7 @@ function labelNames(issue) {
  * 父工单评论里最新一条进度行的轮次；没有进度行按第 1 轮。
  */
 export function latestRound(comments = []) {
-  let round = 1
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) round = parsed.round
-    }
-  }
-  return round
+  return clientRound(comments)
 }
 
 /** 部署成功后写在父工单的交付地址评论；没有代码包时省掉那一行。 */
@@ -202,6 +195,16 @@ export async function runFinish(options, deps = {}) {
   if (!owner || !repo || !Number.isInteger(parentNumber) || parentNumber <= 0 || !reqBranch) {
     throw new Error(USAGE)
   }
+  // 部署序号只增不减；调度器从作业行传进来，直接跑 CLI 时用时间戳兜底。
+  const deploySeq = deps.deploySeq === undefined || deps.deploySeq === null ? Date.now() : deps.deploySeq
+  const deployEventKey = (scope) =>
+    eventKey({
+      owner,
+      repo,
+      subject: `#${parentNumber}`,
+      event: '出事',
+      scope: `${scope}:${deploySeq}`,
+    })
 
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''
   if (!deps.gh && !token) throw new Error('缺 GITHUB_TOKEN 或 GH_TOKEN')
@@ -352,13 +355,13 @@ export async function runFinish(options, deps = {}) {
     const error = `父工单正文缺 ${missing.join('、')}，不猜，没部署`
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer: customer || '未知客户',
       requirement: requirement || parentIssue?.title || '',
       tried: error,
       link: parentIssue?.html_url || '',
     })
-    result.deploy = { ok: false, reason: 'bad_parent', error, missing }
+    result.deploy = { ok: false, reason: 'bad_parent', error, missing, deploySeq }
     return { output: result, exitCode: 1 }
   }
 
@@ -367,13 +370,13 @@ export async function runFinish(options, deps = {}) {
     const error = `软件简称拼不出来：传 --product，或让仓名是 ${customer}-<软件简称>；不猜`
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer,
       requirement,
       tried: error,
       link: parentIssue?.html_url || '',
     })
-    result.deploy = { ok: false, reason: 'bad_product', error }
+    result.deploy = { ok: false, reason: 'bad_product', error, deploySeq }
     return { output: result, exitCode: 1 }
   }
 
@@ -391,12 +394,13 @@ export async function runFinish(options, deps = {}) {
       link: parentIssue?.html_url || '',
       pr: result.pr?.number,
       notifier,
+      deploySeq,
     })
   } catch (error) {
-    deployed = { ok: false, reason: '部署失败', error: errorText(error) }
+    deployed = { ok: false, reason: '部署失败', error: errorText(error), deploySeq }
     await notifyDeployFailure({
       notifier,
-      key: eventKey({ owner, repo, subject: `#${parentIssue.number}`, event: '出事', scope: '部署失败' }),
+      key: deployEventKey('部署失败'),
       customer,
       requirement,
       tried: `部署脚本抛错：${errorText(error)}`,

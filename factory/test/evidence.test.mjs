@@ -532,15 +532,24 @@ test('证据齐时合进需求分支，写证据评论、加待验收、关票�
     )
 
     const comments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 2 })
-    assert.ok(
-      comments.some((row) => row.body.includes('四样证据') && row.body.includes(result.headSha)),
-      JSON.stringify(comments),
+    const evidenceComment = comments.find((row) => row.body.includes('四样证据'))
+    assert.ok(evidenceComment, JSON.stringify(comments))
+    assert.match(
+      evidenceComment.body,
+      new RegExp(`- 合并时的版本：\`${fixture.ticketHead}\``),
+      '合并时的版本取合并前的票分支头',
     )
+    assert.match(
+      evidenceComment.body,
+      new RegExp(`- 关票时的版本：\`${result.headSha}\``),
+      '关票时的版本取最终分支头',
+    )
+    assert.doesNotMatch(evidenceComment.body, /^- head：/m, '不再写单独的 head 行')
 
     const parentComments = await gh.listComments({ owner: 'acme', repo: 'demo', number: 1 })
     assert.ok(
       parentComments.some(
-        (row) => row.body.startsWith('进度 v1｜') && row.body.includes('细阶段：合分支'),
+        (row) => row.body.startsWith('进度') && row.body.includes('细阶段：合分支'),
       ),
       JSON.stringify(parentComments),
     )

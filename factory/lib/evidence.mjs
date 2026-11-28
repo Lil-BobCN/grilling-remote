@@ -824,7 +824,7 @@ function defaultPushBranch({ repoDir, branch }) {
   })
 }
 
-function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, preview, interrogateRow }) {
+function renderEvidenceComment({ rows, ticketBranch, reqBranch, mergedHead, finalHead, risk, preview, interrogateRow }) {
   const verify = rows.find((row) => row.phase === 'verify' && row.result === 'pass')
   const test = rows.find((row) => row.phase === 'test' && row.result === 'pass')
   const standard = rows.find(
@@ -840,7 +840,8 @@ function renderEvidenceComment({ rows, ticketBranch, reqBranch, headSha, risk, p
     `- 测试：pass${test?.decision ? `，${test.decision}` : ''}`,
     `- 评审：标准 pass${standard?.decision ? `（${standard.decision}）` : ''}；spec pass${spec?.decision ? `（${spec.decision}）` : ''}`,
     `- 分支：\`${ticketBranch}\` → \`${reqBranch}\``,
-    `- head：\`${headSha}\``,
+    `- 合并时的版本：\`${mergedHead}\``,
+    `- 关票时的版本：\`${finalHead}\``,
   ]
   if (risk === 'high') {
     lines.push(`- 高风险：已过 interrogate${interrogateRow?.decision ? `（${interrogateRow.decision}）` : ''}`)
@@ -1206,7 +1207,8 @@ export async function mergeTicket({
             rows,
             ticketBranch,
             reqBranch,
-            headSha: finalHead,
+            mergedHead: ticketHead,
+            finalHead,
             risk,
             preview: previewInfo,
             interrogateRow,
@@ -1243,6 +1245,7 @@ export async function mergeTicket({
               path: ticket.path || '其余',
               tier: '开发中',
               step: '合分支',
+              ticket: ticket.number,
               round: ticket.round || 1,
               stuck: false,
             }),

@@ -54,11 +54,12 @@ function parentTitle(parentIssue) {
  * `提案：补缺口` 末尾加一节 `## 实现票`。
  * 技术题仍从 `pending.md` 读；小需求没有地图，所以没有业务题。
  */
-export async function renderSmallProposal({ scratchDir, parentIssue }) {
+export async function renderSmallProposal({ scratchDir, parentIssue, compliance = '' }) {
   const proposal = await draftProposal({
     scratchDir,
     map: { notYetSpecified: '' },
     tickets: [],
+    compliance,
   })
   const acceptance = parseParentAcceptance(parentIssue?.body)
   const lines = [

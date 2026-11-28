@@ -102,8 +102,10 @@ function healthOk(result) {
   return true
 }
 
-function deployKey(orderId, event, version) {
-  return eventKey({ subject: orderId || '成品', event, scope: version })
+function deployKey(orderId, event, version, deploySeq) {
+  const scope =
+    deploySeq === undefined || deploySeq === null ? String(version) : `${version}:${deploySeq}`
+  return eventKey({ subject: orderId || '成品', event, scope })
 }
 
 /** 部署失败的「出事」通知。通知失败不影响已经做出的判断。 */
@@ -187,7 +189,9 @@ export async function deployProduct({
   healthCheck,
   sendDeliveryMail,
   notifier,
+  deploySeq,
 } = {}) {
+  const sequence = deploySeq === undefined || deploySeq === null ? Date.now() : deploySeq
   let address
   try {
     address = deliveryAddress({ customer, product })
@@ -195,7 +199,7 @@ export async function deployProduct({
     const tried = `交付地址拼不出来：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId, '出事', '部署失败'),
+      key: deployKey(orderId, '出事', '部署失败', sequence),
       customer,
       requirement: requirement || product,
       tried,
@@ -291,6 +295,7 @@ export async function deployProduct({
         address,
         version: textVersion,
         image: builtImage,
+        deploySeq: sequence,
         ...(warning ? { warning } : {}),
       }
     } catch (error) {
@@ -301,14 +306,22 @@ export async function deployProduct({
   const tried = failures.join('；')
   await notifyDeployFailure({
     notifier,
-    key: deployKey(orderId, '出事', '部署失败'),
+    key: deployKey(orderId, '出事', '部署失败', sequence),
     customer,
     requirement: requirementName,
     tried,
     link,
     attempt: 2,
   })
-  return { ok: false, reason: '部署失败', tried, address, version: textVersion, attempts: 2 }
+  return {
+    ok: false,
+    reason: '部署失败',
+    tried,
+    address,
+    version: textVersion,
+    attempts: 2,
+    deploySeq: sequence,
+  }
 }
 
 /**
@@ -324,6 +337,7 @@ export async function rollbackProduct({
   requirement = '回滚',
   orderId = '',
   link = '',
+  deploySeq,
 } = {}) {
   if (!address) return { ok: false, reason: 'bad_input', missing: ['address'] }
   if (!ADDRESS_RE.test(String(address))) {
@@ -343,7 +357,7 @@ export async function rollbackProduct({
     const tried = `${stage}：${errorText(error)}`
     await notifyDeployFailure({
       notifier,
-      key: deployKey(orderId || address, '出事', '回滚失败'),
+      key: deployKey(orderId || address, '出事', '回滚失败', deploySeq),
       customer: customer || address,
       requirement,
       reason: '回滚失败',

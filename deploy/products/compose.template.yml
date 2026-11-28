@@ -2,7 +2,7 @@
 # /data/products/<交付地址>/compose.yml，同目录的 .env 提供变量。
 #
 # 约束来自 docs/运维手册.md 第十二节：非 root、不挂 Docker socket、
-# 不用 host 网络、只绑 127.0.0.1、内存 512 MiB、CPU 0.5、pids 256、
+# 不用 host 网络、只绑 127.0.0.1、内存默认 512 MiB（APP_MEM_LIMIT 可配）、CPU 0.5、pids 256、
 # 每个软件一个独立 bridge 网络。共享 Postgres 由 helper 接进这个网络。
 services:
   app:
@@ -20,7 +20,7 @@ services:
     volumes:
       # 这个软件的上传文件和持久文件，容器用户可写。
       - ./data:/app/data
-    mem_limit: 512m
+    mem_limit: ${APP_MEM_LIMIT:-512m}
     cpus: 0.5
     pids_limit: 256
     security_opt:

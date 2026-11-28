@@ -5,7 +5,7 @@
  * 订单的 `issue` 写完整工单链接，或写 `{owner, repo, number}`。
  */
 import { logLine } from './log.mjs'
-import { PROGRESS_PREFIX } from './progress.mjs'
+import { isProgressLine } from './protocol.mjs'
 
 const cache = new Map()
 const COMMENT_PAGES = 3
@@ -60,7 +60,7 @@ function progressLines(body) {
   return body
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.startsWith(PROGRESS_PREFIX))
+    .filter((line) => isProgressLine(line))
 }
 
 async function requestJson(config, path) {

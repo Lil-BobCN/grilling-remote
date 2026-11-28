@@ -349,6 +349,9 @@ export async function run(
       const finishJob = jobs
         ? jobs.rowsFor({ owner, repo, parent: parent.number }).find((row) => row.action === 'finish')
         : null
+      const deploySeq = jobs
+        ? await jobs.nextDeploySeq({ owner, repo, parent: parent.number, now: clock() })
+        : undefined
       const result = await runFinish(
         {
           owner,
@@ -358,7 +361,12 @@ export async function run(
           main: 'main',
           'repo-dir': join(repoRoot, repo),
         },
-        { gh: client, notifier: notify, attempt: (finishJob?.attempt || 0) + 1 },
+        {
+          gh: client,
+          notifier: notify,
+          attempt: (finishJob?.attempt || 0) + 1,
+          deploySeq,
+        },
       )
       return { ...result.output, ok: result.exitCode === 0, exitCode: result.exitCode }
     })

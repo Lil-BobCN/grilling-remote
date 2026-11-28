@@ -190,7 +190,7 @@ function fakeNotifier() {
 const REVERIFY_PROBLEM = 'src/features/orders/index.test.mjs 直接引用功能内部文件 pg，违反 lint 路径规则'
 
 /** 按脚本返回评审和复验结论；fixer 调用时改一行代码，由 runFixerAudit 负责提交。 */
-function scriptedRunner({ reviews = [], verifies = [] } = {}) {
+function scriptedRunner({ reviews = [], verifies = [], reviewProblems = ['连接池缺 error 监听'] } = {}) {
   const calls = []
   let reviewIndex = 0
   let verifyIndex = 0
@@ -208,7 +208,7 @@ function scriptedRunner({ reviews = [], verifies = [] } = {}) {
           stdout: `AFK_VERDICT ${JSON.stringify({
             ok,
             evidence: ['https://github.com/acme/demo/pull/7'],
-            problems: ok ? [] : ['连接池缺 error 监听'],
+            problems: ok ? [] : reviewProblems,
           })}\n`,
           stderr: '',
         }
@@ -552,12 +552,49 @@ test('评审第一次没过：fixer 用 FIXER_TOOLS 改完提交，复评过再�
   assert.ok(rows.some((row) => row.phase === 'review' && row.result === 'pass'))
   assert.ok(rows.some((row) => row.phase === 'merge' && row.result === 'pass'))
 
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   const reviewProgress = progress.filter((body) => body.includes('细阶段：评审修复'))
   assert.equal(reviewProgress.length, 1, '评审失败那一轮要在父工单写一条进度')
-  assert.match(reviewProgress[0], /轮次：2/)
+  assert.match(reviewProgress[0], /轮次：1/)
   assert.ok(progress.some((body) => body.includes('细阶段：合分支')), '合并成功后写合分支进度')
   assert.equal(issueOf(fake, ticket.number).state, 'closed')
+})
+
+test('评审备注按标点截断，全部原因放折叠区', async (t) => {
+  const { fake, gh, parent, ticket } = await setupGithub(t)
+  const { repoDir } = await makeRepoFixture(t, ticket.number)
+  const problems = [
+    '连接池缺 error 监听，超时没处理；错误提示写死中文，重试次数没测；日志没带票号，复盘找不到对应记录；断言只覆盖正常路径，失败分支没有测试；最后一条原因也要保留',
+    '第二条原因'.repeat(20),
+    '第三条原因'.repeat(20),
+  ]
+  const runner = scriptedRunner({ reviews: ['fail', 'pass'], reviewProblems: problems })
+  const pipeline = createTicketPipeline({
+    runner,
+    previewFor: () => null,
+    notifier: fakeNotifier(),
+    log: () => {},
+  })
+
+  const result = await pipeline({
+    gh,
+    owner: OWNER,
+    repo: REPO,
+    parents: [parentSnapshot({ parent, ticket })],
+    repoDir,
+  })
+  assert.equal(result.runs[0].ok, true, JSON.stringify(result.runs[0]))
+
+  const review = commentsOf(fake, parent.number).find((body) => body.includes('细阶段：评审修复'))
+  assert.ok(review, '没有写评审修复进度')
+  const firstLine = review.split('\n')[0]
+  const note = firstLine.split('备注：')[1]
+  assert.ok(note.length <= 160, `可见备注 ${note.length} 字，超过 160`)
+  assert.ok(note.endsWith('…'))
+  assert.ok(review.includes('<details><summary>完整原因</summary>'))
+  for (const problem of problems) {
+    assert.ok(review.includes(problem), `折叠区缺原因：${problem.slice(0, 20)}`)
+  }
 })
 
 test('fixer 第 1 轮后复验失败：复验问题交给第 2 轮 fixer，通过后能合并', async (t) => {
@@ -597,7 +634,7 @@ test('fixer 第 1 轮后复验失败：复验问题交给第 2 轮 fixer，通�
   assert.equal(issueOf(fake, ticket.number).state, 'closed')
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
-  const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
+  const progress = comments.filter((comment) => comment.body.startsWith('进度'))
   const repair = progress.filter((comment) => comment.body.includes('细阶段：评审修复'))
   assert.equal(repair.length, 2, '两轮修复失败各写一条进度')
   assert.match(repair[1].body, /lint 路径规则/)
@@ -693,11 +730,11 @@ test('fixer 四轮仍没过：发出事、不合并，下一圈不再修，进�
   )
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
-  const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
+  const progress = comments.filter((comment) => comment.body.startsWith('进度'))
   assert.equal(progress.length, 5)
   assert.deepEqual(
     progress.map((comment) => /轮次：(\d+)/.exec(comment.body)?.[1]),
-    ['2', '3', '4', '5', '6'],
+    ['1', '1', '1', '1', '1'],
   )
   assert.equal(stallHits({ comments }).some((hit) => hit.reason === '三圈没进展'), true)
 
@@ -887,7 +924,7 @@ test('评审认证失败：管线返回 auth_failed，父工单打 needs-info �
   assert.equal(first.runs[0].ok, false)
   assert.equal(first.runs[0].reason, 'auth_failed')
   assert.ok(issueOf(fake, parent.number).labels.includes('needs-info'), '父工单要打 needs-info')
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1, '认证失败要写一条进度')
   assert.match(progress[0], /卡住：是/)
   assert.match(progress[0], /细阶段：评审/)
@@ -1056,10 +1093,10 @@ test('高风险 interrogate 判不过：fixer 修完重新验证、standard/spec
   assert.ok(rows.some((row) => row.phase === 'merge' && row.result === 'pass'))
   assert.equal(issueOf(fake, ticket.number).state, 'closed')
 
-  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, parent.number).filter((body) => body.startsWith('进度'))
   const repair = progress.filter((body) => body.includes('细阶段：评审修复'))
   assert.equal(repair.length, 1, 'interrogate 失败那一轮要在父工单写一条进度')
-  assert.match(repair[0], /轮次：2/)
+  assert.match(repair[0], /轮次：1/)
 })
 
 test('interrogate 四轮仍没过：发出事、不合并；轮次用完不再重跑同一 head 的 interrogate', async (t) => {
@@ -1108,11 +1145,11 @@ test('interrogate 四轮仍没过：发出事、不合并；轮次用完不再�
   )
 
   const comments = await gh.listComments({ owner: OWNER, repo: REPO, number: parent.number })
-  const progress = comments.filter((comment) => comment.body.startsWith('进度 v1｜'))
+  const progress = comments.filter((comment) => comment.body.startsWith('进度'))
   assert.equal(progress.length, 5)
   assert.deepEqual(
     progress.map((comment) => /轮次：(\d+)/.exec(comment.body)?.[1]),
-    ['2', '3', '4', '5', '6'],
+    ['1', '1', '1', '1', '1'],
   )
   assert.equal(stallHits({ comments }).some((hit) => hit.reason === '三圈没进展'), true)
 

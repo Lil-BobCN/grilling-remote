@@ -690,6 +690,7 @@ ADMIN_PATH=$ADMIN_PATH
 ADMIN_PASSPHRASE=$ADMIN_PASSPHRASE
 SESSION_SECRET=$SESSION_SECRET
 DATABASE_URL=$DATABASE_URL
+APP_MEM_LIMIT=1g
 EOF
     chmod 600 "$env"
     chown_if_root root:root "$env"
@@ -809,11 +810,12 @@ cmd_deploy() {
   fi
 
   # 健康检查通过才记版本；失败不把坏版本留在 .env 和 releases 里。
-  if wait_http "$PORT"; then
+  local wait_seconds=${AFK_DEPLOY_WAIT_SECONDS:-90}
+  if wait_http "$PORT" "$wait_seconds"; then
     record_release "$dir"
     log "部署完成：$address 在 127.0.0.1:$PORT 应答（镜像 ${IMAGE}）"
   else
-    printf '部署后 30 秒内 127.0.0.1:%s 没应答（镜像 %s），容器保留现场\n' "$PORT" "$IMAGE" >&2
+    printf '部署后 %s 秒内 127.0.0.1:%s 没应答（镜像 %s），容器保留现场\n' "$wait_seconds" "$PORT" "$IMAGE" >&2
     "$DOCKER" compose --project-directory "$dir" --project-name "$(slug_of "$address")" \
       --env-file "$dir/.env" -f "$dir/compose.yml" logs --tail 30 >&2 || true
     if [[ $switched -eq 1 ]]; then restore_previous_image "$dir" "$old_image"; fi

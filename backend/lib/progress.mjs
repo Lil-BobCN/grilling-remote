@@ -1,16 +1,15 @@
 /**
- * 客户进度的转档行：只认 `进度 v1｜` 开头的行。
+ * 客户进度的转档行：认 `进度｜` 开头的新写法，也认旧的 `进度 v1｜`。
  *
  * 订单记录里的建单前转档，和工单评论里的转档，格式相同、时间不同。
  * 这里只做解析、排序和拼接，不做显示。
  */
+import { isProgressLine, PROGRESS_PREFIX } from './protocol.mjs'
 
-export const PROGRESS_PREFIX = '进度 v1｜'
+export { PROGRESS_PREFIX }
 export const KNOWN_TIERS = ['已收到', '安排中', '开发中', '待客户验收', '已完成']
 
-export function isProgressLine(value) {
-  return typeof value === 'string' && value.trim().startsWith(PROGRESS_PREFIX)
-}
+export { isProgressLine }
 
 function timeValue(iso) {
   const value = Date.parse(iso || '')
@@ -29,14 +28,16 @@ export function parseProgressEntry(entry) {
 
   const subRaw = fields['细阶段'] || ''
   const [sub = '', ...rest] = subRaw.split(/\s+/)
+  const ticketText = fields['票'] || ''
 
   return {
     at: entry?.at || '',
     line,
     path: fields['路径'] || '',
-    tier: fields['客户档'] || '',
+    tier: fields['客户视角'] || fields['客户档'] || '',
     sub,
     progress: rest.join(' '),
+    ticket: /^\d+$/.test(ticketText) ? Number(ticketText) : undefined,
     round: Number(fields['轮次']) || 1,
     stuck: fields['卡住'] === '是',
     note: fields['备注'] || '',
@@ -85,9 +86,9 @@ export function mergeTransitions(order, issue) {
     merged.push({
       at: issue.closedAt,
       line: [
-        PROGRESS_PREFIX.slice(0, -1),
+        '进度',
         `路径：${last.path || '其余'}`,
-        '客户档：已完成',
+        '客户视角：已完成',
         '细阶段：关单',
         `轮次：${last.round}`,
         '卡住：否',

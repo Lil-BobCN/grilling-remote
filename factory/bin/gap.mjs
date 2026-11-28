@@ -5,8 +5,9 @@
  *   node factory/bin/gap.mjs apply-map --scratch <目录> --owner <owner> --repo <仓> \
  *     --requirement <需求名> --parent <父工单链接> [--mode replace]
  *   node factory/bin/gap.mjs propose --scratch <目录> --owner <owner> --repo <仓> --number <地图编号> \
- *     [--recommendations <推荐答案.json>]
- *   node factory/bin/gap.mjs propose --scratch <目录> --owner <owner> --repo <仓> --parent <父工单>
+ *     [--recommendations <推荐答案.json>] [--compliance "<一句话>"]
+ *   node factory/bin/gap.mjs propose --scratch <目录> --owner <owner> --repo <仓> --parent <父工单> \
+ *     [--compliance "<一句话>"]
  *   node factory/bin/gap.mjs point --owner <owner> --repo <仓> --number <父工单编号> \
  *     --answers '<JSON>'
  *   node factory/bin/gap.mjs point-small --owner <owner> --repo <仓> --parent <父工单> \
@@ -108,7 +109,11 @@ export async function run(argv, { gh, log = console } = {}) {
     if (await isSmallRequirement(scratchDir)) {
       const parentNumber = parentNumberFrom(required(options, 'parent'))
       const parentIssue = await client.getIssue({ owner, repo, number: parentNumber })
-      const proposal = await renderSmallProposal({ scratchDir, parentIssue })
+      const proposal = await renderSmallProposal({
+        scratchDir,
+        parentIssue,
+        compliance: options.compliance,
+      })
       const posted = await postProposal({
         gh: client,
         owner,
@@ -143,6 +148,7 @@ export async function run(argv, { gh, log = console } = {}) {
       tickets,
       mapUrl: mapIssue.html_url,
       recommendations,
+      compliance: options.compliance,
     })
     const posted = await postProposal({
       gh: client,

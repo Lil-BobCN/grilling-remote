@@ -43,6 +43,7 @@ import { parentCustomer, parentRequirement } from '../lib/ignition.mjs'
 import { createNotifier, sendEvent } from '../lib/notify.mjs'
 import { previewNeeded, startPreview, stopPreview } from '../lib/preview.mjs'
 import { localPreviewDir, writeLocalPreviewEnv } from './preview.mjs'
+import { clientRound } from '../lib/progress.mjs'
 
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 const AGENTS_DIR = join(REPO_ROOT, 'factory', 'agents')
@@ -277,11 +278,20 @@ export async function ensureEvidenceBeforeMerge({
   preview,
   notifier,
   now,
+  clock,
   fixer,
   onReviewRound,
   maxFixRounds = resolveMaxFixRounds(),
   cleanCheck = verifyInCleanCheckout,
 } = {}) {
+  const rowClock =
+    typeof clock === 'function'
+      ? clock
+      : typeof now === 'function'
+        ? now
+        : now !== undefined && now !== null
+          ? () => now
+          : () => new Date()
   let rows = await readTrail({ repoDir, ticket: ticketNumber })
   const gaps = auditGaps(rows)
 
@@ -396,7 +406,7 @@ export async function ensureEvidenceBeforeMerge({
       await appendTrail({
         repoDir,
         ticket: ticketNumber,
-        ts: now,
+        ts: rowClock(),
         phase: 'test',
         decision: result.command || '干净检查',
         why: `${CLEAN_CHECK_MARKER} head ${boundHead || head}`,
@@ -420,6 +430,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'review')) return []
       if (stopOnAbort(audit, 'review')) return []
@@ -434,6 +445,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'review')) return []
       if (stopOnAbort(audit, 'review')) return []
@@ -451,7 +463,7 @@ export async function ensureEvidenceBeforeMerge({
     if (cleanProblems.length) return cleanProblems
     const fixedHead = await git(repoDir, ['rev-parse', branch])
     if (!plan) {
-      const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now })
+      const audit = await runVerifyAudit({ repoDir, ticket: ticketNumber, branch, runner, extraBrief, now, clock: rowClock })
       if (stopOnAuth(audit, 'verify')) return []
       if (stopOnAbort(audit, 'verify')) return []
       return audit.ok ? [] : audit.problems.length ? audit.problems : ['验证没过']
@@ -469,6 +481,7 @@ export async function ensureEvidenceBeforeMerge({
         runner,
         extraBrief,
         now,
+        clock: rowClock,
       })
       if (stopOnAuth(audit, 'verify')) break
       if (stopOnAbort(audit, 'verify')) break
@@ -503,6 +516,7 @@ export async function ensureEvidenceBeforeMerge({
           runner,
           extraBrief,
           now,
+          clock: rowClock,
         })
         if (stopOnAuth(audit, 'verify')) break
         if (stopOnAbort(audit, 'verify')) break
@@ -651,7 +665,7 @@ async function runMerge(options, deps = {}) {
   if (!parentIssue) throw new Error('找不到父工单，用 --parent 指定')
 
   const comments = await gh.listComments({ owner, repo, number: parentIssue.number }).catch(() => [])
-  const round = comments.filter((row) => String(row.body).startsWith('进度 v1｜')).length + 1
+  const round = clientRound(comments)
   const ticket = {
     number: issue.number,
     title: issue.title,

@@ -104,7 +104,7 @@ test('其余单已提交+点头：补缺口 → 排队中，写安排中进度�
   assert.deepEqual(types(actions), ['setState', 'comment', 'notify'])
   assert.equal(actions[0].from, '已提交')
   assert.equal(actions[0].to, '排队中')
-  assert.match(actions[1].body, /^进度 v1｜路径：其余｜客户档：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
+  assert.match(actions[1].body, /^进度｜路径：其余｜客户视角：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
   assert.equal(actions[2].event, '该跑 to-spec')
   assert.equal(actions[2].data.customer, 'acme')
   assert.equal(actions[2].data.requirement, 'yuyue-quhuo')
@@ -159,7 +159,8 @@ test('其余单排队中+有 open 子票+点头：拆票 → 开发中并点火�
   assert.deepEqual(types(actions), ['setState', 'comment', 'ignite'])
   assert.equal(actions[0].to, '开发中')
   assert.equal(actions[2].ticket.number, 52)
-  assert.equal(actions[1].body.includes('客户档：开发中'), true)
+  assert.equal(actions[1].body.includes('客户视角：开发中'), true)
+  assert.match(actions[1].body, /票：52/)
 })
 
 test('待验收的子票不再点火', () => {
@@ -227,6 +228,7 @@ test('小需求已提交+点头：补缺口+一张 open 子票 → 开发中并�
   assert.equal(actions[0].to, '开发中')
   assert.equal(actions[2].ticket.number, 51)
   assert.match(actions[1].body, /路径：小需求/)
+  assert.match(actions[1].body, /票：51/)
 })
 
 test('小需求已提交+点头：补缺口+没有 open 子票 → needs-info，推需要人看', () => {
@@ -248,7 +250,7 @@ test('待验收+驳回： → 回开发中，写已驳回进度，另开修复�
   assert.deepEqual(types(actions), ['setState', 'comment', 'createFixTicket'])
   assert.equal(actions[0].from, '待验收')
   assert.equal(actions[0].to, '开发中')
-  assert.match(actions[1].body, /客户档：已驳回｜细阶段：记驳回/)
+  assert.match(actions[1].body, /客户视角：已驳回｜细阶段：记驳回/)
   assert.equal(actions[2].rejection.body.includes('取货时间不能选'), true)
 })
 
@@ -271,8 +273,8 @@ test('开发中 → 停', () => {
   assert.deepEqual(route({ stateLabel: '状态:开发中', comments: [gate('点头：拆票')] }), [])
 })
 
-function progressComment(tier, step, round) {
-  return gate(progressLine({ path: '其余', tier, step, round, stuck: false }))
+function progressComment(tier, step, round, ticket = 51) {
+  return gate(progressLine({ path: '其余', tier, step, ticket, round, stuck: false }))
 }
 
 test('排队中：三圈同进度 → needs-info 和出事，不点火', () => {
@@ -292,7 +294,7 @@ test('排队中：三圈同进度 → needs-info 和出事，不点火', () => {
   const incident = actions.find((action) => action.type === 'notify' && action.event === '出事')
   assert.equal(incident.data.reason, '三圈没进展')
   assert.equal(incident.key, '#42:出事:三圈没进展')
-  assert.match(incident.data.tried, /连续 3 轮/)
+  assert.match(incident.data.tried, /连续 3 条/)
   assert.match(actions.find((action) => action.type === 'comment').body, /备注：三圈没进展/)
 })
 
@@ -320,6 +322,35 @@ test('开发中：同类问题跨票两次 → needs-info 和出事', () => {
   assert.equal(incident.key, '#42:出事:同类两次')
   assert.match(incident.data.tried, /漏了错误处理/)
   assert.match(incident.data.tried, /#51、#52/)
+  const comment = actions.find((action) => action.type === 'comment')
+  assert.match(comment.body, /票：51/)
+  assert.match(comment.body, /票：52/)
+})
+
+test('同类两次的长原因：可见备注截断，折叠区留全文', () => {
+  const longA = `连接池缺 error 监听，${'超时没处理；'.repeat(20)}`
+  const longB = `错误提示写死中文，${'重试次数没测；'.repeat(20)}`
+  const trails = [
+    { ticket: 51, rows: [{ phase: 'review', decision: '标准', evidence: longA, result: 'fail' }] },
+    { ticket: 52, rows: [{ phase: 'review', decision: 'spec', evidence: longA, result: 'fail' }] },
+    { ticket: 51, rows: [{ phase: 'review', decision: '标准', evidence: longB, result: 'fail' }] },
+    { ticket: 52, rows: [{ phase: 'review', decision: 'spec', evidence: longB, result: 'fail' }] },
+  ]
+  const actions = routeParent({
+    parent: parent({ labels: labels('状态:开发中') }),
+    comments: [],
+    subIssues: [sub({ number: 51 }), sub({ number: 52 })],
+    trails,
+    now: NOW,
+  })
+  const comment = actions.find((action) => action.type === 'comment')
+  const note = comment.body.split('\n')[0].split('备注：')[1]
+  assert.ok(note.length <= 160, `可见备注 ${note.length} 字`)
+  assert.ok(note.endsWith('…'))
+  assert.ok(comment.body.includes('<details><summary>完整原因</summary>'))
+  assert.ok(comment.body.includes('连接池缺error监听'), '折叠区保留第一条原因')
+  assert.ok(comment.body.includes('错误提示写死中文'), '折叠区保留第二条原因')
+  assert.ok(comment.body.split('<details>')[1].length > 160, '折叠区比可见备注长')
 })
 
 test('排队中：进度有推进就继续点火', () => {
@@ -457,6 +488,42 @@ test('finish 失败后退避：没到时间不重发，过了退避再试', () =
 
   jobs[0].lastBeat = new Date(NOW.getTime() - 11 * 60 * 1000).toISOString()
   assert.deepEqual(types(routeParent(options)), ['finish', 'setState'], '过了退避时间再试')
+})
+
+test('人工放行 needs-info：预算归零，下一轮立刻选到 finish', async (t) => {
+  const store = await loadStore(await jobFile(t))
+  const failed = new Date(NOW.getTime() - 40 * 60_000)
+  for (let index = 0; index < 3; index += 1) {
+    await store.recordFailure({
+      owner: OWNER,
+      repo: REPO,
+      parent: 42,
+      action: 'finish',
+      reason: '评审没过',
+      now: new Date(failed.getTime() + index * 1000),
+      policy: { maxAttempts: 3 },
+    })
+  }
+  await store.stop({
+    owner: OWNER,
+    repo: REPO,
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '三圈没进展',
+    now: failed,
+  })
+  await store.clearStop({ owner: OWNER, repo: REPO, parent: 42, now: NOW, resetBudget: true })
+
+  const actions = routeParent({
+    parent: parent({ labels: labels('状态:开发中'), order: 'o-0001', branchesMerged: true }),
+    comments: [],
+    subIssues: [sub({ number: 51, state: 'closed' })],
+    closedNumbers: [51],
+    now: NOW,
+    jobs: store.rowsFor({ owner: OWNER, repo: REPO, parent: 42 }),
+  })
+  assert.deepEqual(types(actions), ['finish', 'setState'])
 })
 
 test('已提交父工单贴 needs-info：补缺口不再跑', () => {
@@ -953,15 +1020,15 @@ test('runOnce：已提交+点头：补缺口 → 排队中，写进度，推该�
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:排队中'])
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
-  assert.match(progress[0], /^进度 v1｜路径：其余｜客户档：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
+  assert.match(progress[0], /^进度｜路径：其余｜客户视角：安排中｜细阶段：\S+｜轮次：1｜卡住：否$/)
   assert.equal(notifier.delivered.size, 1)
   assert.equal([...notifier.delivered.values()][0].event, '该跑 to-spec')
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number), ['状态:排队中'])
   assert.equal(notifier.delivered.size, 1)
 })
@@ -1120,15 +1187,20 @@ test('runOnce：部署失败写 stop，下一轮不再收尾、不开重复 PR',
   let calls = 0
   const finish = async () => {
     calls += 1
-    return { ok: false, reason: '部署失败', deploy: { ok: false, reason: 'bad_address', error: '地址不通' } }
+    return {
+      ok: false,
+      reason: '部署失败',
+      deploy: { ok: false, reason: 'bad_address', error: '地址不通', deploySeq: 7 },
+    }
   }
   const jobs = await loadStore(await jobFile(t))
   const config = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5, repoRoot: root, jobs }
+  const notifier = fakeNotifier()
 
   const firstReport = await runOnce({
     gh,
     customers: customers(),
-    notifier: fakeNotifier(),
+    notifier,
     finish,
     clock: () => NOW,
     config,
@@ -1138,6 +1210,12 @@ test('runOnce：部署失败写 stop，下一轮不再收尾、不开重复 PR',
   const row = jobs.get([...Object.keys(jobs.table.jobs)][0])
   assert.equal(row.stop, 'deploy-failed')
   assert.match(row.reason, /部署失败/)
+  assert.ok(
+    [...notifier.delivered.keys()].some((key) =>
+      key.endsWith(':作业失败:finish:升级:7'),
+    ),
+    `升级 key 没带部署序号：${[...notifier.delivered.keys()].join(', ')}`,
+  )
 
   await runOnce({
     gh,
@@ -1738,8 +1816,9 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
   const event = await watchdog.tick()
   assert.equal(event.event, '出事')
-  assert.match(event.data.reason, /轮次超时/)
-  assert.equal(event.key, `调度器:出事:轮次超时:${jobs.heartbeat.roundStart}`)
+  assert.match(event.data.reason, /心跳停止/)
+  assert.match(event.data.tried, /心跳停了 11 分钟/)
+  assert.equal(event.key, `调度器:出事:心跳停止:${jobs.heartbeat.roundStart}`)
   assert.ok(config.notifiedKeys.has(event.key), '探活发送要留下 sent 记录')
   assert.equal(event.data.customer, '工厂')
   assert.match(event.link, /^file:\/\//, '出事通知必须带 link，否则真 notifier 拒收')
@@ -1750,6 +1829,26 @@ test('看门狗：一轮挂住超过阈值发一次出事，结束一轮后不�
 
   await jobs.endRound({ now: clock() })
   assert.equal(await watchdog.tick(), null)
+})
+
+test('看门狗：轮次跑了 31 分钟但心跳新鲜，不报', async (t) => {
+  const jobs = await loadStore(await jobFile(t))
+  let now = NOW.getTime()
+  const clock = () => new Date(now)
+  await jobs.startRound({ now: clock() })
+  now += 31 * 60_000
+  await jobs.beat({ now: clock() })
+  const notifier = fakeNotifier()
+  const watchdog = createWatchdog({
+    jobs,
+    notifier,
+    clock,
+    stallMs: 30 * 60_000,
+    log: () => {},
+    config: {},
+  })
+  assert.equal(await watchdog.tick(), null)
+  assert.equal(notifier.calls.length, 0)
 })
 
 test('runJobStep 在长步骤里按时写心跳', async () => {
@@ -1923,7 +2022,7 @@ test('runLoop 自动看门狗：一轮挂住会发「出事」', async (t) => {
   }
   assert.equal(notifier.calls.length, 1, '同一轮只发一次')
   assert.equal(notifier.calls[0].event, '出事')
-  assert.match(notifier.calls[0].data.reason, /轮次超时/)
+  assert.match(notifier.calls[0].data.reason, /心跳停止/)
   assert.match(notifier.calls[0].link, /^file:\/\//)
 
   controller.abort()
@@ -1971,14 +2070,14 @@ test('小需求：点头+一张子票 → 开发中，贴 Sandcastle 并点火�
   assert.deepEqual(labelsOf(fake, OWNER, REPO, child.number).sort(), ['Sandcastle', '状态:排队中'].sort())
   assert.equal(ignite.calls.length, 1)
   assert.equal(ignite.calls[0].ticket.number, child.number)
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
 
   // 新实例：新的通知器、新的锁目录、新的内存去重集合。
   const restarted = { owner: OWNER, lockDir: await lockDir(t), maxActive: 5 }
   await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), ignite: ignite.ignite, clock: () => NOW, config: restarted })
 
   assert.equal(ignite.calls.length, 1, '重启后不重复点火')
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.equal(labelsOf(fake, OWNER, REPO, child.number).filter((name) => name === 'Sandcastle').length, 1)
 })
 
@@ -2436,9 +2535,9 @@ test('待验收+驳回： → 回开发中，写已驳回进度，另开修复�
   await runOnce({ gh, customers: customers(), notifier: fakeNotifier(), createFixTicket: fix.createFixTicket.bind(fix), clock: () => NOW, config })
 
   assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('状态:开发中'))
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
-  assert.match(progress[0], /客户档：已驳回｜细阶段：记驳回/)
+  assert.match(progress[0], /客户视角：已驳回｜细阶段：记驳回/)
   assert.equal(fix.calls.length, 1)
   assert.match(fix.calls[0].rejection.body, /取货时间不能选/)
 
@@ -2466,13 +2565,13 @@ test('小需求却是排队中 → needs-info，写卡住进度并推需要人�
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
 
   assert.ok(labelsOf(fake, OWNER, REPO, parent.number).includes('needs-info'))
-  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜'))
+  const progress = commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度'))
   assert.equal(progress.length, 1)
   assert.match(progress[0], /卡住：是/)
   assert.equal([...notifier.delivered.values()][0].event, 'needs-info')
 
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 1)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 1)
   assert.equal(labelsOf(fake, OWNER, REPO, parent.number).filter((name) => name === 'needs-info').length, 1)
   assert.equal(notifier.delivered.size, 1)
 })
@@ -2486,7 +2585,14 @@ test('排队中三圈同进度：runOnce 推 needs-info 和出事，不点火，
       owner: OWNER,
       repo: REPO,
       number: parent.number,
-      body: progressLine({ path: '其余', tier: '开发中', step: '开工', round, stuck: false }),
+      body: progressLine({
+        path: '其余',
+        tier: '开发中',
+        step: '开工',
+        ticket: child.number,
+        round,
+        stuck: false,
+      }),
     })
   }
   await gh.createComment({ owner: OWNER, repo: REPO, number: parent.number, body: '点头：拆票' })
@@ -2503,16 +2609,16 @@ test('排队中三圈同进度：runOnce 推 needs-info 和出事，不点火，
   assert.ok(incident, '没有发出事通知')
   assert.equal(incident.key, `${OWNER}/${REPO}:#${parent.number}:出事:三圈没进展`)
   assert.equal(incident.data.reason, '三圈没进展')
-  assert.match(incident.data.tried, /连续 3 轮/)
+  assert.match(incident.data.tried, /连续 3 条/)
 
   const progressAfterFirst = commentsOf(fake, OWNER, REPO, parent.number).filter((body) =>
-    body.startsWith('进度 v1｜'),
+    body.startsWith('进度'),
   ).length
   assert.equal(progressAfterFirst, 4)
   await runOnce({ gh, customers: customers(), notifier, clock: () => NOW, config })
   assert.equal(notifier.delivered.size, 2)
   assert.equal(
-    commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length,
+    commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length,
     progressAfterFirst,
   )
 })
@@ -2635,7 +2741,7 @@ test('没接入点火实现时整组动作都跳过，不先改状态', async (t
   })
 
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number).sort(), ['状态:已提交', '大小:小需求'].sort())
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 0)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 0)
   assert.equal(report.repos[0].parents[0].decision, 'develop')
   assert.equal(report.repos[0].parents[0].executed.skipped, 'ignite')
 })
@@ -2669,7 +2775,7 @@ test('抢不到仓锁时整张票不动，等下一轮', async (t) => {
 
   assert.equal(ignite.calls.length, 0)
   assert.deepEqual(labelsOf(fake, OWNER, REPO, parent.number).sort(), ['状态:已提交', '大小:小需求'].sort())
-  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度 v1｜')).length, 0)
+  assert.equal(commentsOf(fake, OWNER, REPO, parent.number).filter((body) => body.startsWith('进度')).length, 0)
   assert.equal(report.repos[0].parents[0].executed.skipped, 'locked')
 })
 
@@ -2887,16 +2993,26 @@ test('同一停滞连续 5 轮：needs-info key 稳定，轮次进 data，只送
       return { code: 0, stdout: '{}' }
     },
   }
-  const comments = [1, 2, 3].map((round) => ({
-    body: progressLine({ path: '其余', tier: '开发中', step: '开工', round, stuck: false }),
-  }))
+  const comments = [
+    { body: progressLine({ path: '其余', tier: '安排中', step: '写规格', round: 3 }) },
+    ...[1, 2, 3].map((round) => ({
+      body: progressLine({
+        path: '其余',
+        tier: '开发中',
+        step: '开工',
+        ticket: 51,
+        round,
+        stuck: false,
+      }),
+    })),
+  ]
   const seen = []
 
   for (let index = 0; index < 5; index += 1) {
     const actions = routeParent({
       parent: parent({ labels: labels('状态:排队中') }),
       comments,
-      subIssues: [],
+      subIssues: [sub({ number: 51 })],
       spec: null,
       now: NOW,
       owner: OWNER,

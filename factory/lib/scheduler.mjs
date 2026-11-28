@@ -18,7 +18,13 @@ import { acquireFileLock } from './lock.mjs'
 import { notificationEvent, sendEvent as sendNotification } from './notify.mjs'
 import { repeatProblems, roundsWithoutProgress } from './stall.mjs'
 import { frontier } from './tickets.mjs'
-import { parseProgress, progressLine } from './progress.mjs'
+import {
+  clientRound,
+  parseProgress,
+  progressComment,
+  progressLine,
+  visibleNote,
+} from './progress.mjs'
 
 export const STATES = ['已提交', '排队中', '开发中', '待验收']
 
@@ -110,15 +116,7 @@ function isWaitingSignal(kind) {
 }
 
 function roundOf(comments = []) {
-  let latest = null
-  for (const comment of comments) {
-    for (const line of String(comment?.body || '').split(/\r?\n/)) {
-      const parsed = parseProgress(line)
-      if (parsed) latest = parsed
-    }
-  }
-  if (!latest) return 1
-  return latest.tier === '已驳回' ? latest.round + 1 : latest.round
+  return clientRound(comments)
 }
 
 /** 驳回之后已经写过进度行，说明这一条驳回处理过了，不能再开一张修复票。 */
@@ -141,18 +139,33 @@ function pathOf(parent) {
  *
  * @returns {Array<{reason: string, detail: string}>} 命中的判据；空数组表示没停
  */
-export function stallHits({ comments = [], trails = [] } = {}) {
+export function stallHits({ comments = [], trails = [], openTickets = null } = {}) {
   const hits = []
-  const rounds = roundsWithoutProgress({ comments })
-  if (rounds.stalled) hits.push({ reason: '三圈没进展', detail: rounds.reason })
+  const rounds = roundsWithoutProgress({ comments, openTickets })
+  if (rounds.stalled) {
+    hits.push({
+      reason: '三圈没进展',
+      detail: rounds.reason,
+      ticket: rounds.ticket,
+      tickets: rounds.tickets,
+    })
+  }
 
   const repeated = repeatProblems({ trails })
   if (repeated.repeat) {
+    const hitTickets = [
+      ...new Set(
+        repeated.repeats.flatMap((item) =>
+          item.tickets.map((ticket) => Number(ticket)).filter((ticket) => Number.isInteger(ticket)),
+        ),
+      ),
+    ]
     hits.push({
       reason: '同类两次',
       detail: repeated.repeats
         .map((item) => `${item.problem}（#${item.tickets.join('、#')}）`)
         .join('；'),
+      tickets: hitTickets,
     })
   }
   return hits
@@ -161,7 +174,14 @@ export function stallHits({ comments = [], trails = [] } = {}) {
 /** 命中停法：打 needs-info、写卡住进度、推 `出事`，不点火。 */
 function stallActions({ parent, comments, state, hits, owner, repo }) {
   const detail = hits.map((hit) => `${hit.reason}：${hit.detail}`).join('；')
-  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo })
+  const tickets = [
+    ...new Set(
+      hits.flatMap((hit) =>
+        Array.isArray(hit.tickets) ? hit.tickets : hit.ticket === undefined ? [] : [hit.ticket],
+      ),
+    ),
+  ]
+  const actions = needsInfoActions({ parent, comments, state, reason: detail, owner, repo, tickets })
   for (const hit of hits) {
     actions.push(
       notifyAction({
@@ -191,14 +211,15 @@ function stageFor(state, small) {
   return '建单'
 }
 
-function progressFor({ parent, state, comments, tier, step, stuck, note = '' }) {
+function progressFor({ parent, state, comments, tier, step, ticket, stuck, note = '' }) {
   return progressLine({
     path: pathOf(parent),
     tier: tier || customerTier(state),
     step: step || stageFor(state, isSmall(parent)),
+    ticket,
     round: roundOf(comments),
     stuck: stuck ?? (hasLabel(parent, NEEDS_INFO_LABEL) || hasLabel(parent, '点火超时')),
-    note,
+    note: visibleNote(note),
   })
 }
 
@@ -213,14 +234,21 @@ function notifyAction({ parent, owner, repo, event, scope = '', data, link }) {
   }
 }
 
-function needsInfoActions({ parent, comments, state, reason, owner, repo }) {
-  const body = progressFor({
-    parent,
-    state,
-    comments,
-    stuck: true,
-    note: reason,
-  })
+function needsInfoActions({ parent, comments, state, reason, owner, repo, tickets = [] }) {
+  const targets = tickets.length ? tickets : [undefined]
+  const lines = targets
+    .map((ticket) =>
+      progressFor({
+        parent,
+        state,
+        comments,
+        ticket,
+        stuck: true,
+        note: reason,
+      }),
+    )
+    .join('\n')
+  const body = progressComment(lines, reason)
   return [
     { type: 'addLabel', name: NEEDS_INFO_LABEL },
     { type: 'comment', body },
@@ -325,6 +353,7 @@ export function routeParent({
 
   const small = isSmall(parent)
   const signal = latestSignal(comments)
+  const openTickets = subIssues.filter(isOpen).map((ticket) => ticket.number)
 
   if (state === '待验收') {
     if (signal?.kind === '驳回：' && !progressAfter(comments, signal.index)) {
@@ -393,7 +422,7 @@ export function routeParent({
       if (!already && (repoBusy || activeCount >= maxActive)) return []
       return [
         { type: 'setState', from: '已提交', to: '开发中' },
-        { type: 'comment', body: progressFor({ parent, state: '开发中', comments }) },
+        { type: 'comment', body: progressFor({ parent, state: '开发中', comments, ticket: ticket.number }) },
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }
@@ -405,7 +434,7 @@ export function routeParent({
     if (state === '开发中') {
       const finish = finishActions({ parent, subIssues, jobs, now, jobPolicy })
       if (finish.length) return finish
-      const hits = stallHits({ comments, trails })
+      const hits = stallHits({ comments, trails, openTickets })
       if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
       return igniteNextActions({ subIssues, closedNumbers, repoBusy, activeCount, maxActive, jobs, now, jobPolicy })
     }
@@ -438,7 +467,7 @@ export function routeParent({
   }
 
   if (state === '排队中' || state === '开发中') {
-    const hits = stallHits({ comments, trails })
+    const hits = stallHits({ comments, trails, openTickets })
     if (hits.length) return stallActions({ parent, comments, state, hits, owner, repo })
   }
 
@@ -467,7 +496,7 @@ export function routeParent({
       if (!already && (repoBusy || activeCount >= maxActive)) return []
       return [
         { type: 'setState', from: '排队中', to: '开发中' },
-        { type: 'comment', body: progressFor({ parent, state: '开发中', comments }) },
+        { type: 'comment', body: progressFor({ parent, state: '开发中', comments, ticket: ticket.number }) },
         ...(already ? [] : [{ type: 'ignite', ticket, ticketNumber: ticket.number }]),
       ]
     }
@@ -1556,7 +1585,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
   }
   const ensureStopLabel = () =>
     ensureIssueLabel({ gh, owner, repo, number: parent.number, name: NEEDS_INFO_LABEL })
-  const failureEvent = (action, result, row, scope, reason = '作业失败') =>
+  const failureEvent = (action, result, row, scope, reason = '作业失败', extra = {}) =>
     notifyAction({
       parent,
       owner,
@@ -1567,6 +1596,7 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         reason,
         tried: failureText(result),
         attempt: row?.attempt ?? 0,
+        ...extra,
       },
     })
   // 同一故障只报一次：key 稳定，attempt 放 data；到上限另发一条换 key 的升级。
@@ -1659,10 +1689,17 @@ async function noteJobResults({ gh, jobs, owner, repo, parent, actions, executed
         }),
       )
       await guard(ensureStopLabel())
+      const deploySeq = finishResult.deploy?.deploySeq
+      const deployScope =
+        deploySeq === undefined || deploySeq === null
+          ? '作业失败:finish:升级'
+          : `作业失败:finish:升级:${deploySeq}`
       await guard(
         deliverEvent({
           notifier,
-          event: failureEvent('finish', { reason }, row, '作业失败:finish:升级', '部署失败，作业停了'),
+          event: failureEvent('finish', { reason }, row, deployScope, '部署失败，作业停了', {
+            deploy_seq: deploySeq,
+          }),
           config,
           now,
         }),
@@ -1881,21 +1918,30 @@ async function notePipelineTimeout({ jobs, gh, owner, repo, parents, active, err
   }
 }
 
-/** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop。 */
+/** 父工单没有 needs-info 标签了，说明运营者放行：清掉这张单的 stop，needs-info 的重置重试预算。 */
 async function reconcileJobStops({ jobs, owner, repo, parent, now, report }) {
   if (!jobs) return
   try {
     const rows = jobs.rowsFor({ owner, repo, parent: parent.number })
     if (!blockingStop(rows)) return
     if (hasLabel(parent, NEEDS_INFO_LABEL)) return
-    await jobs.clearStop({ owner, repo, parent: parent.number, now })
+    const cleared = await jobs.clearStop({
+      owner,
+      repo,
+      parent: parent.number,
+      now,
+      resetBudget: true,
+    })
+    if (cleared) {
+      logLine({ level: 'info', msg: '人工放行', owner, repo, parent: parent.number, cleared })
+    }
   } catch (error) {
     report.errors.push({ repo, parent: parent.number, jobs: true, message: error.message })
   }
 }
 
 /**
- * 看门狗：一轮开始后超过 stallMs 没结束，或心跳停了 stallMs，发一次「出事」。
+ * 看门狗：心跳停了 stallMs 就发一次「出事」，不看这一轮跑了多久。
  * 同一轮只发一次；一轮结束（roundStart 清空）后自然安静。
  */
 export function createWatchdog({
@@ -1913,11 +1959,11 @@ export function createWatchdog({
     const at = clock()
     const stalled = jobs.stalledFor(at, { stallMs })
     if (!stalled) return null
-    // 探活事件的身份固定：同一轮超时只报一次，轮次开始时间放 scope。
+    // 探活事件的身份固定：同一轮只报一次，轮次开始时间放 scope。
     const key = eventKey({
       subject: '调度器',
       event: '出事',
-      scope: `轮次超时:${stalled.roundStart}`,
+      scope: `心跳停止:${stalled.roundStart}`,
     })
     if (config.notifiedKeys?.has(key)) return null
     const minutes = Math.max(1, Math.round(stalled.stalledMs / 60000))
@@ -1930,20 +1976,21 @@ export function createWatchdog({
       data: {
         customer: '工厂',
         requirement: '调度器',
-        reason: '轮次超时',
-        tried: `这一轮从 ${stalled.roundStart} 开始，${minutes} 分钟没跑完`,
+        reason: '心跳停止',
+        tried: `心跳停了 ${minutes} 分钟`,
         heartbeat: stalled.lastBeat,
+        round_start: stalled.roundStart,
       },
     }
     if (typeof notifier?.send !== 'function') {
-      log({ level: 'error', msg: '轮次超时通知没发出去', reason: '没有注入 notifier' })
+      log({ level: 'error', msg: '心跳停止通知没发出去', reason: '没有注入 notifier' })
       return event
     }
     try {
       const result = await deliverEvent({ notifier, event, config, now: at })
       if (result?.skipped) return null
     } catch (error) {
-      log({ level: 'error', msg: '轮次超时通知没发出去', error: error.message })
+      log({ level: 'error', msg: '心跳停止通知没发出去', error: error.message })
     }
     return event
   }

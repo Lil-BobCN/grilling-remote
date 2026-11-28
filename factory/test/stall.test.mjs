@@ -6,29 +6,92 @@ import test from 'node:test'
 import { progressLine } from '../lib/progress.mjs'
 import { repeatProblems, roundsWithoutProgress } from '../lib/stall.mjs'
 
-function progress(tier, step, round) {
-  return { body: progressLine({ path: '其余', tier, step, round, stuck: false }) }
+function progress({ tier = '开发中', step = '评审修复', round = 1, ticket, stuck = false } = {}) {
+  return { body: progressLine({ path: '其余', tier, step, ticket, round, stuck }) }
 }
 
-test('同一张票三圈没进展：最近三轮客户档和细阶段都一样', () => {
+test('F11 三条旧收尾没有票号，不参与判断', () => {
   const comments = [
-    progress('开发中', '开工', 1),
-    progress('开发中', '开工', 2),
-    progress('开发中', '开工', 3),
+    progress({ step: '合分支', round: 5 }),
+    progress({ step: '合分支', round: 6 }),
+    progress({ step: '合分支', round: 7 }),
+  ]
+  const result = roundsWithoutProgress({ comments })
+  assert.equal(result.stalled, false)
+  assert.deepEqual(result.tickets, [])
+})
+
+test('三张不同票各一条合分支收尾，不判停滞', () => {
+  const comments = [
+    progress({ step: '合分支', round: 5, ticket: 9 }),
+    progress({ step: '合分支', round: 6, ticket: 10 }),
+    progress({ step: '合分支', round: 7, ticket: 11 }),
+  ]
+  const result = roundsWithoutProgress({ comments })
+  assert.equal(result.stalled, false)
+})
+
+test('同一张票连续三条评审修复，同一次运行里也算', () => {
+  const comments = [
+    progress({ ticket: 12, round: 1 }),
+    progress({ ticket: 12, round: 1 }),
+    progress({ ticket: 12, round: 1 }),
   ]
   const result = roundsWithoutProgress({ comments })
   assert.equal(result.stalled, true)
-  assert.equal(result.rounds, 3)
-  assert.match(result.reason, /连续 3 轮/)
+  assert.equal(result.ticket, 12)
+  assert.deepEqual(result.tickets, [12])
+  assert.match(result.reason, /票 #12/)
+})
 
-  const moved = roundsWithoutProgress({
-    comments: [progress('开发中', '开工', 1), progress('开发中', '开工', 2), progress('待客户验收', '已部署', 3)],
-  })
-  assert.equal(moved.stalled, false)
+test('同一张票两条评审修复后合分支，不判停滞', () => {
+  const comments = [
+    progress({ ticket: 12 }),
+    progress({ ticket: 12 }),
+    progress({ ticket: 12, step: '合分支' }),
+  ]
+  assert.equal(roundsWithoutProgress({ comments }).stalled, false)
+})
 
-  const tooFew = roundsWithoutProgress({ comments: [progress('开发中', '开工', 1)] })
+test('卡住进度插在两条评审修复后面，三连断开', () => {
+  const comments = [
+    progress({ ticket: 12 }),
+    progress({ ticket: 12 }),
+    progress({ ticket: 12, step: '开工', stuck: true }),
+  ]
+  assert.equal(roundsWithoutProgress({ comments }).stalled, false)
+})
+
+test('已关闭的票跳过，不再判停滞', () => {
+  const comments = [
+    progress({ ticket: 8 }),
+    progress({ ticket: 8 }),
+    progress({ ticket: 8 }),
+  ]
+  const open = roundsWithoutProgress({ comments, openTickets: [8] })
+  assert.equal(open.stalled, true)
+  const closed = roundsWithoutProgress({ comments, openTickets: [9] })
+  assert.equal(closed.stalled, false)
+})
+
+test('两张票各自三连，命中结果带两个票号', () => {
+  const comments = [
+    progress({ ticket: 9 }),
+    progress({ ticket: 9 }),
+    progress({ ticket: 9 }),
+    progress({ ticket: 10 }),
+    progress({ ticket: 10 }),
+    progress({ ticket: 10 }),
+  ]
+  const result = roundsWithoutProgress({ comments })
+  assert.equal(result.stalled, true)
+  assert.deepEqual(result.tickets, [9, 10])
+})
+
+test('不够三条不判停滞', () => {
+  const tooFew = roundsWithoutProgress({ comments: [progress({ ticket: 12 })] })
   assert.equal(tooFew.stalled, false)
-  assert.match(tooFew.reason, /不够 3 轮/)
+  assert.match(tooFew.reason, /不够 3 条/)
 })
 
 test('同类问题跨票两次：失败的评审问题文字相同才算', () => {

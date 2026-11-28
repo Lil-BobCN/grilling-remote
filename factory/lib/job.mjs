@@ -237,6 +237,20 @@ export function createJobStore({
       return row
     },
 
+    /**
+     * 部署序号：只增不减，记在 finish 行上。
+     * 每次收尾要部署时取一个，人工放行和 recordSuccess 都不会清零。
+     */
+    async nextDeploySeq({ owner, repo, parent, now: at } = {}) {
+      const key = jobKey({ owner, repo, parent, action: 'finish' })
+      const previous =
+        table.jobs[key] || baseRow({ owner, repo, parent, ticket: null, action: 'finish', at })
+      const deploySeq = (Number(previous.deploySeq) || 0) + 1
+      putRow(key, { ...previous, deploySeq, updatedAt: stamp(at) })
+      await flush()
+      return deploySeq
+    },
+
     /** 管道开始：在作业表里写 running 标记和开始时间。 */
     async markRunning({ owner, repo, parent, ticket = null, action, reason = '', now: at } = {}) {
       const key = jobKey({ owner, repo, parent, ticket, action })
@@ -293,14 +307,23 @@ export function createJobStore({
       return row
     },
 
-    /** 清掉这张父工单所有 stop，留着 attempt；运营者摘标签后恢复用。 */
-    async clearStop({ owner, repo, parent, now: at } = {}) {
+    /**
+     * 清掉这张父工单所有 stop，默认留着 attempt。
+     * `resetBudget` 打开时，只有被清的 stop 是 `needs-info` 才把 attempt 归零、
+     * lastBeat 设为现在，让人工放行后下一轮立即能跑。其他 stop 保持原样。
+     */
+    async clearStop({ owner, repo, parent, now: at, resetBudget = false } = {}) {
       let changed = 0
       for (const row of Object.values(table.jobs)) {
         if (row?.owner !== owner || row?.repo !== repo || row?.parent !== parent) continue
         if (!row.stop) continue
+        const manualRelease = resetBudget && row.stop === 'needs-info'
         row.stop = ''
         row.reason = ''
+        if (manualRelease) {
+          row.attempt = 0
+          row.lastBeat = stamp(at)
+        }
         row.updatedAt = stamp(at)
         changed += 1
       }
@@ -331,18 +354,23 @@ export function createJobStore({
       return { ...table.heartbeat }
     },
 
-    /** 一轮卡了多久；没在跑就返回 null。 */
+    /**
+     * 这一轮卡了多久。只看心跳：有 lastBeat 时按 now - lastBeat 算，
+     * 没有心跳才退回轮次开始时间。一轮结束（roundStart 清空）返回 null。
+     */
     stalledFor(at, { stallMs = 15 * 60 * 1000 } = {}) {
       const start = Date.parse(table.heartbeat.roundStart || '')
       if (!Number.isFinite(start)) return null
       const beat = Date.parse(table.heartbeat.lastBeat || '')
       const end = msOf(at)
-      const stalledMs = Math.max(end - start, Number.isFinite(beat) ? end - beat : 0)
+      const basis = Number.isFinite(beat) ? 'heartbeat' : 'roundStart'
+      const stalledMs = basis === 'heartbeat' ? end - beat : end - start
       if (stalledMs < stallMs) return null
       return {
         roundStart: table.heartbeat.roundStart,
         lastBeat: table.heartbeat.lastBeat,
         stalledMs,
+        basis,
       }
     },
 

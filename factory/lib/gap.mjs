@@ -32,13 +32,15 @@ const GATE_REMINDER =
   '提醒：补缺口\n\n地图还没补完，暂不写点头。Not yet specified 要清空，开放的决定票要全关。' +
   '带清图协议的地图还要看决定票结论、接下来和 Decisions so far。'
 
+const DEFAULT_COMPLIANCE = '按本单实际收集的信息判断；收个人信息要写明用途和保存期限'
+
 const GATE_CHECKS = [
   ['技术栈', '用默认技术栈，照模板仓已有的写法。'],
   ['部署到哪', '我们管理的香港服务器，客户不用买、不用备案、不用碰 DNS。'],
   ['第三方服务与账号', '默认不接；要用由运营者开账号，客户不自己注册。'],
   ['数据怎么存', '用默认技术栈自带的数据存储。'],
   ['每月花多少', '按最低配置起步，账单由运营者盯。'],
-  ['合规', '不收个人信息，不接支付；客户明确要再接。'],
+  ['合规', DEFAULT_COMPLIANCE],
   ['接缝', '测试打在一层，按项目默认边界。'],
   ['词汇表', '先读客户工作区 GLOSSARY.md；命名由运营者确认后写进客户仓 GLOSSARY.md。'],
   ['查重', '先搜 open 和 closed 工单，有重复就停下报运营者。'],
@@ -143,6 +145,7 @@ export async function draftProposal({
   tickets = [],
   mapUrl = '',
   recommendations = {},
+  compliance = '',
 }) {
   let pendingText = ''
   try {
@@ -162,6 +165,7 @@ export async function draftProposal({
     recommended: recommend(question),
   }))
   const questions = [...technical, ...business]
+  const complianceLine = String(compliance || '').trim() || DEFAULT_COMPLIANCE
 
   const parts = ['提案：补缺口']
   if (mapUrl) parts.push('', `地图已还原：${mapUrl}；剩余项在 map 上。`)
@@ -173,7 +177,10 @@ export async function draftProposal({
     '',
     '## 闸门检查',
     '',
-    ...GATE_CHECKS.map(([name, recommendation]) => `- ${name}：${recommendation}`),
+    ...GATE_CHECKS.map(
+      ([name, recommendation]) =>
+        `- ${name}：${name === '合规' ? complianceLine : recommendation}`,
+    ),
     '',
     '出处：docs/工厂流程.md 第八节 C1。客户的答案当推荐值；和这里不同就按客户的改。',
   )

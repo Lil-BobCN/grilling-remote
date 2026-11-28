@@ -157,7 +157,7 @@ test('管理员列表把工单评论和订单记录拼起来，关票后推成�
     })
     const body = await response.json()
     const last = body.orders[0].transitions.at(-1)
-    assert.ok(last.line.includes('客户档：已完成'))
+    assert.ok(last.line.includes('客户视角：已完成'))
     assert.equal(last.at, '2026-11-16T10:00:00Z')
     assert.equal(body.orders[0].issue_url, 'https://github.com/acme/demo/issues/7')
   } finally {

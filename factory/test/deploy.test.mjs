@@ -260,6 +260,35 @@ test('两次都失败：保留上一版不动、发出事通知、不标已交�
   assert.equal(incident.data.customer, 'acme')
 })
 
+test('部署失败通知 key 带部署序号：同序号共用，新序号换 key', async () => {
+  const deps = deployDeps({
+    healthCheck: async () => {
+      throw new Error('502')
+    },
+  })
+  const base = {
+    repoDir: '/repo',
+    customer: 'acme',
+    product: 'shop',
+    orderId: 'o-0001',
+    version: 'abc1234',
+    ...deps,
+  }
+
+  await deployProduct({ ...base, deploySeq: 1 })
+  await deployProduct({ ...base, deploySeq: 1 })
+  await deployProduct({ ...base, deploySeq: 2 })
+
+  const keys = deps.sent
+    .filter((event) => event.event === '出事' && event.data.reason === '部署失败')
+    .map((event) => event.key)
+  assert.equal(keys.length, 3)
+  assert.equal(keys[0], keys[1], '同一次部署的内部重试共用一个 key')
+  assert.notEqual(keys[1], keys[2], '下一次部署序号变了，key 必须不同')
+  assert.ok(keys[0].includes('部署失败:1'), `key 带部署序号：${keys[0]}`)
+  assert.ok(keys[2].includes('部署失败:2'), `key 带新部署序号：${keys[2]}`)
+})
+
 test('回滚一条命令，跑同一组健康检查', async () => {
   const deps = deployDeps()
   const result = await rollbackProduct({
@@ -649,10 +678,10 @@ test('finish 合主干成功后默认调用部署和代码 zip，版本用 merge
     const issue = fake.state.issues
       .get(`${OWNER}/${REPO}`)
       .find((row) => row.number === parent.number)
-    const progress = issue.comments.filter((row) => row.body.startsWith('进度 v1｜'))
+    const progress = issue.comments.filter((row) => row.body.startsWith('进度'))
     assert.ok(
       progress.some((row) =>
-        /^进度 v1｜路径：其余｜客户档：待客户验收｜细阶段：已部署｜轮次：1｜卡住：否$/.test(row.body),
+        /^进度｜路径：其余｜客户视角：待客户验收｜细阶段：已部署｜轮次：1｜卡住：否$/.test(row.body),
       ),
       `父工单没有部署进度评论：${JSON.stringify(progress.map((row) => row.body))}`,
     )

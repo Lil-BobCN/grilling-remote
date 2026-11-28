@@ -36,6 +36,17 @@ function errorText(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * 审计行的时间来源。优先用调用方传的 clock，每写一行取一次；
+ * 没有 clock 时退回固定的 now，保留旧调用和测试的行为。
+ */
+function timeSource({ now, clock } = {}) {
+  if (typeof clock === 'function') return clock
+  if (typeof now === 'function') return now
+  if (now !== undefined && now !== null) return () => now
+  return () => new Date()
+}
+
 function tail(text, limit = 400) {
   const value = String(text ?? '').trim()
   return value.length > limit ? value.slice(-limit) : value
@@ -261,8 +272,10 @@ export async function runVerifyAudit({
   extraBrief = '',
   record = true,
   now,
+  clock,
 } = {}) {
   if (!repoDir || !ticket || !branch) throw new Error('验证需要 repoDir、ticket 和 branch')
+  const currentTime = timeSource({ now, clock })
   if (typeof runner?.run !== 'function') throw new Error('验证需要注入 runner')
   // 绑代码提交，不绑只改 `.audit` 的提交；下一轮 lastCodeCommit 才认这条记录。
   const headSha = await lastCodeCommit(repoDir, await git(repoDir, ['rev-parse', branch]))
@@ -304,7 +317,7 @@ export async function runVerifyAudit({
       await appendTrail({
         repoDir,
         ticket,
-        ts: now,
+        ts: currentTime(),
         phase: 'verify',
         decision: headSha,
         why: `${before ? `改前 ${before}` : '按验收条件验证'}${id ? ` · verifier=${id}` : ''}`,
@@ -321,7 +334,7 @@ export async function runVerifyAudit({
       await appendTrail({
         repoDir,
         ticket,
-        ts: now,
+        ts: currentTime(),
         phase: 'test',
         decision: command,
         why: '验证 agent 跑的测试',
@@ -375,8 +388,10 @@ export async function runReviewAudit({
   extraBrief = '',
   record = true,
   now,
+  clock,
 } = {}) {
   if (!repoDir || !ticket || !branch) throw new Error('评审需要 repoDir、ticket 和 branch')
+  const currentTime = timeSource({ now, clock })
   if (typeof runner?.run !== 'function') throw new Error('评审需要注入 runner')
   const decisions = REVIEW_DECISIONS[mode]
   if (!decisions) throw new Error(`评审模式只能是 ${Object.keys(REVIEW_DECISIONS).join('、')}`)
@@ -414,7 +429,7 @@ export async function runReviewAudit({
       await appendTrail({
         repoDir,
         ticket,
-        ts: now,
+        ts: currentTime(),
         phase: 'review',
         decision,
         why: `head ${headSha}`,

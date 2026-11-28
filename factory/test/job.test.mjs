@@ -8,6 +8,7 @@ import {
   blockingStop,
   createJobStore,
   findJob,
+  jobBlocked,
   jobKey,
   policyBackoffMs,
   retryDelayMs,
@@ -212,6 +213,145 @@ test('stop 挡住动作，清掉 stop 后放行', async (t) => {
   assert.equal(blockingStop(rows), null)
 })
 
+test('人工放行：stop 是 needs-info 时重置 attempt 和 lastBeat，下一轮立即能跑', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const failed = new Date('2026-11-20T10:00:00+08:00')
+  for (let index = 0; index < 3; index += 1) {
+    await store.recordFailure({
+      owner: 'acme',
+      repo: 'demo',
+      parent: 42,
+      action: 'finish',
+      reason: '评审没过',
+      now: new Date(failed.getTime() + index * 1000),
+      policy: { maxAttempts: 3 },
+    })
+  }
+  await store.stop({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '三圈没进展',
+    now: failed,
+  })
+  let row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), { action: 'finish' })
+  assert.equal(row.attempt, 3)
+
+  const released = new Date(failed.getTime() + 40 * 60_000)
+  await store.clearStop({ owner: 'acme', repo: 'demo', parent: 42, now: released, resetBudget: true })
+  row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), { action: 'finish' })
+  assert.equal(row.stop, '')
+  assert.equal(row.attempt, 0)
+  assert.equal(row.lastBeat, released.toISOString())
+  assert.equal(jobBlocked(row, { now: released }), false)
+  assert.equal(retryDelayMs(row, { now: released }), 0)
+})
+
+test('不加 resetBudget 的 clearStop 保持原行为', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const failed = new Date('2026-11-20T10:00:00+08:00')
+  for (let index = 0; index < 3; index += 1) {
+    await store.recordFailure({
+      owner: 'acme',
+      repo: 'demo',
+      parent: 42,
+      action: 'finish',
+      reason: '评审没过',
+      now: new Date(failed.getTime() + index * 1000),
+      policy: { maxAttempts: 3 },
+    })
+  }
+  await store.stop({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '三圈没进展',
+    now: failed,
+  })
+
+  const released = new Date(failed.getTime() + 40 * 60_000)
+  await store.clearStop({ owner: 'acme', repo: 'demo', parent: 42, now: released })
+  const row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), { action: 'finish' })
+  assert.equal(row.stop, '')
+  assert.equal(row.attempt, 3)
+  assert.equal(row.lastBeat, failed.toISOString())
+})
+
+test('人工放行不重置 auth-failed 的预算', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const failed = new Date('2026-11-20T10:00:00+08:00')
+  for (let index = 0; index < 2; index += 1) {
+    await store.recordFailure({
+      owner: 'acme',
+      repo: 'demo',
+      parent: 42,
+      action: 'pipeline',
+      reason: '403',
+      now: new Date(failed.getTime() + index * 1000),
+    })
+  }
+  await store.stop({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    action: 'pipeline',
+    stop: 'auth-failed',
+    reason: '403 没权限',
+    now: failed,
+  })
+
+  const released = new Date(failed.getTime() + 40 * 60_000)
+  await store.clearStop({ owner: 'acme', repo: 'demo', parent: 42, now: released, resetBudget: true })
+  const row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), {
+    action: 'pipeline',
+  })
+  assert.equal(row.stop, '')
+  assert.equal(row.attempt, 2)
+  assert.equal(row.lastBeat, failed.toISOString())
+})
+
+test('部署序号只增不减，人工放行不清', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const now = new Date('2026-11-20T10:00:00+08:00')
+
+  assert.equal(await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }), 1)
+  assert.equal(await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }), 2)
+
+  await store.stop({
+    owner: 'acme',
+    repo: 'demo',
+    parent: 42,
+    action: 'finish',
+    stop: 'needs-info',
+    reason: '部署失败',
+    now,
+  })
+  await store.clearStop({ owner: 'acme', repo: 'demo', parent: 42, now, resetBudget: true })
+  assert.equal(
+    await store.nextDeploySeq({ owner: 'acme', repo: 'demo', parent: 42, now }),
+    3,
+    '人工放行不重置部署序号',
+  )
+
+  await store.recordSuccess({ owner: 'acme', repo: 'demo', parent: 42, action: 'finish', now })
+  const row = findJob(store.rowsFor({ owner: 'acme', repo: 'demo', parent: 42 }), {
+    action: 'finish',
+  })
+  assert.equal(row.deploySeq, 3)
+})
+
 test('心跳：开始写 lastBeat，结束记 lastEnd，停止进程后按注入时钟判断卡住', async (t) => {
   const dir = await tempDir(t)
   const store = createJobStore({ filePath: join(dir, 'jobs.json') })
@@ -234,6 +374,37 @@ test('心跳：开始写 lastBeat，结束记 lastEnd，停止进程后按注入
   await store.endRound({ now: clock() })
   assert.equal(store.heartbeat.roundStart, null)
   assert.equal(store.stalledFor(clock(), { stallMs: 10 * 60_000 }), null, '一轮结束就不算卡住')
+})
+
+test('看门狗只看心跳：轮次跑了 31 分钟但心跳新鲜，不报', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const clock = clockFrom('2026-11-20T10:00:00+08:00')
+
+  await store.startRound({ now: clock() })
+  clock.advance(31 * 60_000)
+  await store.beat({ now: clock() })
+  assert.equal(store.stalledFor(clock(), { stallMs: 30 * 60_000 }), null)
+
+  clock.advance(31 * 60_000)
+  const stalled = store.stalledFor(clock(), { stallMs: 30 * 60_000 })
+  assert.equal(stalled.stalledMs, 31 * 60_000)
+  assert.equal(stalled.basis, 'heartbeat')
+})
+
+test('看门狗：没有心跳才退回轮次开始时间', async (t) => {
+  const dir = await tempDir(t)
+  const store = createJobStore({ filePath: join(dir, 'jobs.json') })
+  await store.load()
+  const clock = clockFrom('2026-11-20T10:00:00+08:00')
+
+  await store.startRound({ now: clock() })
+  store.heartbeat.lastBeat = ''
+  clock.advance(31 * 60_000)
+  const stalled = store.stalledFor(clock(), { stallMs: 30 * 60_000 })
+  assert.equal(stalled.stalledMs, 31 * 60_000)
+  assert.equal(stalled.basis, 'roundStart')
 })
 
 test('退避按指数增长，有上限', () => {

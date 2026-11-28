@@ -9,7 +9,7 @@
  */
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { FAILED_UPLOAD_STATUSES } from '../../backend/lib/protocol.mjs'
 import { logLine } from './log.mjs'
@@ -17,6 +17,8 @@ import { notificationEvent } from './notify.mjs'
 
 const UPLOAD_ID = /^upload-[A-Za-z0-9._-]+$/
 const ALLOWED_FILES = new Set(['meta.json', 'package.zip'])
+const MAX_WORK_FILE_BYTES = 128 * 1024 * 1024
+const MAX_WORK_TOTAL_BYTES = 512 * 1024 * 1024
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -57,6 +59,94 @@ async function readJsonOrNull(path) {
   } catch (error) {
     if (error.code === 'ENOENT' || error instanceof SyntaxError) return null
     throw error
+  }
+}
+
+function unsafeEntryName(name) {
+  const normalized = name.replace(/\\/g, '/')
+  if (!normalized || normalized.includes('\0')) return true
+  if (normalized.startsWith('/')) return true
+  if (normalized.length >= 2 && normalized[1] === ':') return true
+  return normalized.split('/').some((part) => part === '..')
+}
+
+function runBsdtar(args, timeout) {
+  return new Promise((resolve, reject) => {
+    execFile('bsdtar', args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(String(stderr || error.message || error).trim()))
+        return
+      }
+      resolve(String(stdout))
+    })
+  })
+}
+
+/** 用 bsdtar 列条目，拿到权限、大小和名字；格式是 macOS 的 `bsdtar -tvf`。 */
+async function listZipEntries(zipPath) {
+  let listing
+  try {
+    listing = await runBsdtar(['-tvf', zipPath], 120000)
+  } catch (error) {
+    throw new Error(`读不出 package.zip 的条目：${error.message}`)
+  }
+  const entries = []
+  for (const line of listing.split('\n')) {
+    if (!line.trim()) continue
+    const parsed = /^(\S{10})\s+\S+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.*)$/.exec(line)
+    if (!parsed) throw new Error(`package.zip 的条目列表看不懂：${line}`)
+    entries.push({ mode: parsed[1], size: Number(parsed[2]), name: parsed[3] })
+  }
+  return entries
+}
+
+/**
+ * 安全解压：先查条目，再解到临时目录，成功后才换到 work 目录。
+ * 拒绝绝对路径、`..`、符号链接，限制单文件和总大小；失败清临时目录，已有 work 不动。
+ */
+async function extractPackage(zipPath, workDir) {
+  const entries = await listZipEntries(zipPath)
+  let total = 0
+  for (const entry of entries) {
+    const kind = entry.mode[0]
+    if (kind === 'l' || kind === 'h') {
+      throw new Error(`package.zip 里有符号链接，拒绝解压：${entry.name}`)
+    }
+    if (kind !== '-' && kind !== 'd') {
+      throw new Error(`package.zip 里有不支持的条目，拒绝解压：${entry.name}`)
+    }
+    if (unsafeEntryName(entry.name)) {
+      throw new Error(`package.zip 里有不安全的路径，拒绝解压：${entry.name}`)
+    }
+    if (kind === '-' && entry.size > MAX_WORK_FILE_BYTES) {
+      throw new Error(`package.zip 里有文件超过 128 MB：${entry.name}`)
+    }
+    total += entry.size
+    if (total > MAX_WORK_TOTAL_BYTES) {
+      throw new Error('package.zip 解压后总大小超过 512 MB')
+    }
+  }
+
+  const tmpDir = await mkdtemp(join(dirname(workDir), '.work-'))
+  try {
+    try {
+      await runBsdtar(['-xf', zipPath, '-C', tmpDir], 300000)
+    } catch (error) {
+      throw new Error(`解压 package.zip 失败：${error.message}`)
+    }
+    await rm(workDir, { recursive: true, force: true })
+    await rename(tmpDir, workDir)
+  } catch (error) {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
+}
+
+async function isDirectory(path) {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    return false
   }
 }
 
@@ -279,6 +369,30 @@ export async function pullInbox({
       complete = true
     }
 
+    const workDir = join(dir, 'work')
+    let work = previous.work || null
+    let workError = null
+    if (complete) {
+      const sha = typeof meta.sha256 === 'string' ? meta.sha256 : ''
+      const alreadyExtracted =
+        Boolean(work?.sha256) && work.sha256 === sha && (await isDirectory(workDir))
+      if (!alreadyExtracted) {
+        try {
+          await extractPackage(zipPath, workDir)
+          work = { sha256: sha, extracted_at: stamp }
+        } catch (error) {
+          work = null
+          workError = String(error && error.message ? error.message : error)
+          logLine({
+            level: 'warning',
+            msg: 'package.zip 解压失败，保留 zip，继续后面的包',
+            id,
+            error: workError,
+          })
+        }
+      }
+    }
+
     const metaPath = join(dir, 'meta.json')
     let localMeta = null
     try {
@@ -297,6 +411,8 @@ export async function pullInbox({
       updated_at: stamp,
       ...(previous.notified_at ? { notified_at: previous.notified_at } : {}),
       ...(previous.removed_remote_at ? { removed_remote_at: previous.removed_remote_at } : {}),
+      ...(work ? { work } : {}),
+      ...(workError ? { work_error: workError } : {}),
     }
 
     if (meta.operator_alert && !archive.notified_at) {

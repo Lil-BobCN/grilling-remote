@@ -163,7 +163,7 @@ node factory/bin/deploy.mjs rollback --address <交付地址>
 node factory/bin/deploy.mjs zip --repo-dir <仓库目录> --ref <提交> --address <交付地址> --version <版本>
 ```
 
-`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。客户仓根有 `.env.example` 时先传到服务器，交给 `product-init` 当 env 契约。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后在父工单写一条 `进度 v1｜…｜细阶段：已部署｜…`，再调 `afk-uploads mark-delivered` 把地址写进订单；软件简称取 `--product` 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜。部署成功后打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
+`deploy` 在 Mac 上构建 `linux/amd64` 镜像，`scp` 传到源站，调 `product-load` 和 `product-deploy`，最后走 `https://<地址>/` 健康检查。客户仓根有 `.env.example` 时先传到服务器，交给 `product-init` 当 env 契约。失败整套重试一次，两次都失败保留上一版并发「出事」通知。合主干后 `factory/bin/finish.mjs` 默认自动调用它，部署成功后在父工单写一条 `进度｜…｜细阶段：已部署｜…`，再调 `afk-uploads mark-delivered` 把地址写进订单；软件简称取 `--product` 或仓名 `<客户简称>-<软件简称>` 的后缀，拼不出就报错不猜。部署成功后打一份代码 zip 发到下载目录；`--no-deploy` 同时关掉部署和 zip。跨机器要设 `AFK_SERVER=dev@<服务器>`，其余外部命令的覆盖方式见 `factory/bin/deploy.mjs` 头部注释。
 
 ## 预览环境
 
@@ -225,7 +225,7 @@ AFK_SERVER=dev@<服务器地址> bash deploy/products/backup-sync.sh
 
 - `dev` 不进 `docker` 组。sudoers 只加一条：`dev ALL=(root) NOPASSWD: /usr/local/sbin/afk-product *`。
 - app 容器非 root、不挂 Docker socket、不用 host 网络，只把端口绑在 `127.0.0.1`。
-- 每个容器的上限：内存 512 MiB、CPU 0.5、pids 256。
+- 每个容器的上限：新成品默认内存 1 GiB（`.env` 的 `APP_MEM_LIMIT`），预览和老成品保持 512 MiB；CPU 0.5、pids 256。
 - 共享 Postgres 不发布端口，总钥匙只在 `/data/products/postgres/.env`（600 root），不进 app 容器。
 - 每个软件一个 bridge 网络，共享 Postgres 接进每个网络；app 之间没有共同网络，不能互访。
 
